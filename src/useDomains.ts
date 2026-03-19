@@ -34,6 +34,8 @@ interface DomainConfig {
   setStudents:      Dispatch<SetStateAction<Student[]>>;
   setPayments:      Dispatch<SetStateAction<Payment[]>>;
   setExpenses:      Dispatch<SetStateAction<Expense[]>>;
+  setTlogs:         Dispatch<SetStateAction<any[]>>;
+  setUClasses:      Dispatch<SetStateAction<any[]>>;
   setTeachers:      Dispatch<SetStateAction<Teacher[]>>;
   setMaterials:     Dispatch<SetStateAction<Material[]>>;
   setLeaveRequests: Dispatch<SetStateAction<LeaveRequest[]>>;
@@ -49,7 +51,7 @@ export function useDomains(cfg: DomainConfig) {
   const {
     scriptUrl, students, payments, expenses, tlogs, uClasses,
     teachers, materials,
-    setStudents, setPayments, setExpenses, setTeachers, setMaterials, setLeaveRequests,
+    setStudents, setPayments, setExpenses, setTlogs, setUClasses, setTeachers, setMaterials, setLeaveRequests,
     loadData,
     silentRef, lastLoadTimeRef, isSavingRef,
   } = cfg;
@@ -219,11 +221,17 @@ export function useDomains(cfg: DomainConfig) {
   const handleSaveClass = useCallback(async (form: any) =>
     withSave(async () => {
       if (!form['Mã Lớp']?.trim()) throw new Error('⚠️ Mã lớp là bắt buộc!');
-      await api({ action: editClass ? 'updateClass' : 'saveClass', ...sanitizeObject(form) });
+      // Optimistic update
+      if (editClass) {
+        setUClasses(prev => prev.map(c => c['Mã Lớp'] === form['Mã Lớp'] ? { ...c, ...form } : c));
+      } else {
+        setUClasses(prev => [...prev, form]);
+      }
       setEditClass(null);
+      await api({ action: editClass ? 'updateClass' : 'saveClass', ...sanitizeObject(form) });
       setSilent(); loadData();
     }, editClass ? '✅ Đã cập nhật lớp!' : '✅ Đã thêm lớp mới!')
-  , [withSave, editClass, api, setSilent, loadData]);
+  , [withSave, editClass, api, setUClasses, setSilent, loadData]);
 
   const [bulkStudents, setBulkStudents] = useState<Student[]>([]);
 
@@ -330,28 +338,55 @@ export function useDomains(cfg: DomainConfig) {
   ════════════════════════════════════════════ */
   const handleSaveDiary = useCallback(async (form: any) => {
     const isEdit = !!form.originalDate;
+
+    /* ── Optimistic update: hiện entry ngay lập tức, không chờ GAS ── */
+    const attList = sanitizeAttendance(form.attendance || []);
+    const present = attList.filter((a: any) => (a.trangThai || a['Trạng thái']) === 'Có mặt').length;
+    const absent  = attList.filter((a: any) => (a.trangThai || a['Trạng thái']) === 'Vắng').length;
+    const late    = attList.filter((a: any) => (a.trangThai || a['Trạng thái']) === 'Muộn').length;
+    const dateFormatted = formatDate(form.date);
+    const optimisticLog = {
+      rawDate: form.date, date: dateFormatted,
+      originalDate: form.originalDate || form.date,
+      originalClassId: form.originalClassId || form.classId,
+      originalCaDay: form.originalCaDay || form.caDay || '',
+      classId: form.classId, content: form.content || '',
+      homework: form.homework || '---', teacherNote: '',
+      teacherName: form.teacherName || '', caDay: form.caDay || '',
+      present, absent, late, attendanceList: attList,
+    };
+    if (isEdit) {
+      setTlogs(prev => prev.map(l =>
+        l.classId === form.originalClassId &&
+        formatDate(l.date) === formatDate(form.originalDate) &&
+        l.caDay === (form.originalCaDay || form.caDay)
+          ? optimisticLog : l
+      ));
+    } else {
+      setTlogs(prev => [optimisticLog, ...prev]);
+    }
+    setEditDiary(null);
+
     return withSave(async () => {
       if (!form.content?.trim()) throw new Error('⚠️ Vui lòng nhập nội dung bài dạy!');
-      const clean = sanitizeObject(form);
       await api({
         action:         isEdit ? 'updateDiary' : 'saveDiary',
-        date:           formatDate(clean.date),
-        classId:        clean.classId,        // FIX: maLop → classId
-        caDay:          clean.caDay || '',
-        teacherName:    clean.teacherName,
-        attendanceList: sanitizeAttendance(form.attendance), // FIX: attendance → attendanceList
-        content:        clean.content,
-        homework:       clean.homework || '---',
+        date:           dateFormatted,
+        classId:        form.classId,
+        caDay:          form.caDay || '',
+        teacherName:    form.teacherName || '',
+        attendanceList: attList,
+        content:        form.content,
+        homework:       form.homework || '---',
         ...(isEdit && {
-          originalDate:     clean.originalDate,
-          originalClassId:  clean.originalClassId,
-          originalCaDay:    clean.originalCaDay || '',
+          originalDate:     form.originalDate,
+          originalClassId:  form.originalClassId,
+          originalCaDay:    form.originalCaDay || '',
         }),
       });
-      setEditDiary(null);
       setSilent(); loadData();
     }, isEdit ? '✅ Đã cập nhật buổi dạy!' : '✅ Đã ghi buổi dạy!');
-  }, [withSave, api, setSilent, loadData]);
+  }, [withSave, api, setTlogs, setSilent, loadData]);
 
   /* ════════════════════════════════════════════
      DELETE (chung)

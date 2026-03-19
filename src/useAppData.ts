@@ -351,7 +351,7 @@ export function useAppData({ scriptUrl, teacherList }: { scriptUrl: string; teac
     students, uClasses, payments, expenses, tlogs,
     teachers, leaveRequests, materials, summary,
     loading, gsOk, loadData,
-    setStudents, setPayments, setExpenses,
+    setStudents, setUClasses, setPayments, setExpenses, setTlogs,
     setTeachers, setMaterials, setLeaveRequests,
     /* FIX S1+S3+D4: refs return trực tiếp */
     silentRef,

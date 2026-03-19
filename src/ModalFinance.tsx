@@ -360,7 +360,7 @@ export function FABModal({
               intent="success"
               loading={isSaving}
               icon={<Save size={14} />}
-              onClick={() => onSaveFee(fee)}
+              onClick={() => { onClose(); onSaveFee(fee); }}
               style={{ boxShadow: '0 4px 14px rgba(5,150,105,0.4)', flex: 1, maxWidth: 200 }}
             >
               {isEditing ? 'Cập nhật thu' : 'Ghi sổ thu'}
@@ -370,7 +370,7 @@ export function FABModal({
               intent="danger"
               loading={isSaving}
               icon={<Save size={14} />}
-              onClick={() => onSaveExpense(exp)}
+              onClick={() => { onClose(); onSaveExpense(exp); }}
               style={{ boxShadow: '0 4px 14px rgba(220,38,38,0.4)', flex: 1, maxWidth: 200 }}
             >
               {isEditing ? 'Cập nhật chi' : 'Ghi sổ chi'}

@@ -25,7 +25,12 @@ function ClassDetailModal({ cls, curMo, curYr, students, isPaid, onClose, onEdit
   isPaid: (sid: string, mo: number, yr: number) => boolean;
   onClose: () => void; onEdit: () => void;
 }) {
-  const clsStudents = students.filter(s => s.classId === cls['Mã Lớp']);
+  // Chỉ tính HS đang học — bỏ qua HS đã nghỉ
+  const clsStudents = students.filter(s =>
+    s.classId === cls['Mã Lớp'] &&
+    s.status !== 'inactive' &&
+    (!s.endDate || s.endDate === '---' || s.endDate === '')
+  );
   const paid   = clsStudents.filter(s => isPaid(s.id, curMo, curYr));
   const unpaid = clsStudents.filter(s => !isPaid(s.id, curMo, curYr));
   const pct = clsStudents.length > 0 ? Math.round(paid.length / clsStudents.length * 100) : 0;
@@ -160,9 +165,13 @@ export default function ClassesTab({ uClasses,students,curMo,curYr,qCls,setQCls,
     return p.length > 0 ? p.join(' | ') : (c['Ca học'] || '---');
   }, []);
 
-  // FIX C4: memoize clsStats — O(students × classes) computation
+  // FIX C4: memoize clsStats — chỉ tính HS đang học (bỏ HS nghỉ)
   const clsStats = React.useMemo(() => uClasses.map(c => {
-    const cls = students.filter(s => s.classId === c['Mã Lớp']);
+    const cls = students.filter(s =>
+      s.classId === c['Mã Lớp'] &&
+      s.status !== 'inactive' &&
+      (!s.endDate || s.endDate === '---' || s.endDate === '')
+    );
     const paidCount = cls.filter(s => isPaid(s.id, curMo, curYr)).length;
     const pct = cls.length > 0 ? Math.round(paidCount / cls.length * 100) : 0;
     return { ...c, studentCount: cls.length, paidCount, pct };

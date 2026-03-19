@@ -60,7 +60,12 @@ export function DiaryModal({
 
   if(!open) return null;
 
-  const cls=students.filter(s=>s.classId===classId);
+  // Chỉ lấy học sinh đang học (chưa nghỉ) trong lớp
+  const cls=students.filter(s=>
+    s.classId===classId &&
+    s.status!=='inactive' &&
+    (!s.endDate || s.endDate==='---' || s.endDate==='')
+  );
   const caList=caDayOptions.length>0?caDayOptions:['7h30','9h','13h30','15h30','17h30','19h30'];
   const classOptions=uniqueClasses.map(c=>({value:c['Mã Lớp'],label:`Lớp ${c['Mã Lớp']}`}));
   const caOptions=[{value:'',label:'-- Chọn ca dạy --'},...caList.map(ca=>({value:ca,label:`⏰ ${ca}`}))];

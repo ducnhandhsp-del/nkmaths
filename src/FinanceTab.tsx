@@ -14,7 +14,7 @@
  * ✅ [v28.2] Chi tiêu: phân trang tương tự Sổ cái
  * ✅ [v28.2] Zalo: thêm nút copy message vào clipboard
  */
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { DollarSign, TrendingDown, Eye, Edit3, Trash2, Plus, Copy, Check } from 'lucide-react';
 import { fmtVND, formatDate, capitalizeName, exportCSV, parseDMY, isStudentActive } from './helpers';
 import { Badge, Pager, FilterTabs } from './dsComponents';
@@ -97,8 +97,11 @@ export default function FinanceTab({
   const totalRevenue = summary?.totalRevenue ?? 0;
   const totalExpense = summary?.totalExpense ?? 0;
   const pagedFin = filtFin.slice((pgF - 1) * IPP, pgF * IPP);
-  // FIX: bỏ khai báo [fM, fY] — biến không dùng trong component (logic filter ở useDomains)
-  const makeZaloMsg = (s: Student) => zaloTpl.replace('[Thang]', String(curMo)).replace('[Ten]', s.name).replace('[SoTien]', fmtVND(baseTuition));
+
+  // FIX Bug 4: dùng fM (tháng đang filter) thay vì curMo (tháng thực tế)
+  // để nội dung Zalo đúng với tháng user đang xem công nợ
+  const [fM] = (fMo || `${String(curMo).padStart(2,'0')}/${curYr}`).split('/').map(Number);
+  const makeZaloMsg = (s: Student) => zaloTpl.replace('[Thang]', String(fM)).replace('[Ten]', s.name).replace('[SoTien]', fmtVND(baseTuition));
   const fmtDesc = (desc: string) => (desc||'').replace(/[Hh]ọc phí\s+tháng\s+0?(\d{1,2})\s+năm\s+(\d{4})/i, 'HP T$1/$2');
 
   // FIX: dùng isStudentActive từ helpers, nhất quán toàn app
@@ -107,6 +110,8 @@ export default function FinanceTab({
 
   // Phân trang sổ cái
   const [pgLedger, setPgLedger] = useState(1);
+  // FIX Bug 3: reset về trang 1 khi có phiếu mới (optimistic update thêm vào đầu)
+  useEffect(() => { setPgLedger(1); }, [payments.length]);
   const pagedLedger = useMemo(() => {
     const sorted = payments.slice().reverse();
     return sorted.slice((pgLedger - 1) * LEDGER_IPP, pgLedger * LEDGER_IPP);
@@ -114,6 +119,8 @@ export default function FinanceTab({
 
   // Phân trang chi tiêu
   const [pgExpense, setPgExpense] = useState(1);
+  // FIX Bug 3: reset về trang 1 khi có phiếu chi mới
+  useEffect(() => { setPgExpense(1); }, [expenses.length]);
   const pagedExpense = useMemo(() => {
     const sorted = expenses.slice().reverse();
     return sorted.slice((pgExpense - 1) * EXPENSE_IPP, pgExpense * EXPENSE_IPP);

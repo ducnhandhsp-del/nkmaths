@@ -76,7 +76,7 @@ export default function App() {
     students, uClasses, payments, expenses, tlogs,
     teachers, leaveRequests, materials, summary,
     loading, gsOk, loadData,
-    setStudents, setPayments, setExpenses,
+    setStudents, setUClasses, setPayments, setExpenses, setTlogs,
     setTeachers, setMaterials, setLeaveRequests,
     silentRef, lastLoadTimeRef, isSavingRef,
   } = appData;
@@ -85,7 +85,7 @@ export default function App() {
   const d = useDomains({
     scriptUrl, students, payments, expenses, tlogs, uClasses,
     teachers, materials,
-    setStudents, setPayments, setExpenses,
+    setStudents, setUClasses, setPayments, setExpenses, setTlogs,
     setTeachers, setMaterials, setLeaveRequests,
     loadData,
     silentRef,
@@ -334,14 +334,14 @@ export default function App() {
         open={showStudent}
         onClose={() => { setShowStudent(false); d.setEditStudent(null); }}
         editing={d.editStudent} uniqueClasses={uClasses} uniqueBranches={d.uniqueBranches}
-        isSaving={d.saving} onSave={async (f) => { await d.handleSaveStudent(f); setShowStudent(false); }}
+        isSaving={d.saving} onSave={(f) => { setShowStudent(false); d.setEditStudent(null); d.handleSaveStudent(f); }}
         existingIds={students.map(s => s.id)}
       />
       <ClassModal
         open={showClass}
         onClose={() => { setShowClass(false); d.setEditClass(null); }}
         editing={d.editClass} isSaving={d.saving}
-        onSave={async (f) => { await d.handleSaveClass(f); setShowClass(false); }}
+        onSave={(f) => { setShowClass(false); d.setEditClass(null); d.handleSaveClass(f); }}
         uniqueBranches={d.uniqueBranches} teacherList={teacherList}
       />
       <FABModal
@@ -355,7 +355,15 @@ export default function App() {
         open={showDiary}
         onClose={() => { setShowDiary(false); d.setEditDiary(null); setPreselectedDiaryClass(''); setPreselectedDiaryDate(''); setPreselectedDiaryCaDay(''); }}
         uniqueClasses={uClasses} students={students} isSaving={d.saving}
-        onSave={async (f) => { await d.handleSaveDiary(f); setShowDiary(false); }}
+        onSave={(f) => {
+          // Đóng modal ngay lập tức — save chạy background, toast báo kết quả
+          setShowDiary(false);
+          d.setEditDiary(null);
+          setPreselectedDiaryClass('');
+          setPreselectedDiaryDate('');
+          setPreselectedDiaryCaDay('');
+          d.handleSaveDiary(f);
+        }}
         editingLog={d.editDiary} caDayOptions={caDayOptions}
         preselectedClassId={preselectedDiaryClass}
         preselectedDate={preselectedDiaryDate}
