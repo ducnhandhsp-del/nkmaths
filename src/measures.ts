@@ -154,8 +154,10 @@ export const calcStudentAttendance = (
   let present = 0, absent = 0, late = 0;
   tlogs.forEach(log =>
     (log.attendanceList || []).forEach((a: any) => {
-      if ((a.maHS || a['Mã HS']) !== studentId) return;
-      const st = a['Trạng thái'] || '';
+      // Support both GAS v29 camelCase and legacy Vietnamese keys
+      const id = a.maHS || a['Mã HS'] || a.MaHS || '';
+      if (id !== studentId) return;
+      const st = a.trangThai || a['Trạng thái'] || a.TrangThai || '';
       if (st === 'Có mặt') present++;
       else if (st === 'Vắng') absent++;
       else if (st === 'Muộn') late++;

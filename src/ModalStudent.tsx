@@ -157,10 +157,17 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
   };
 
   const s=student, ph=String(s.parentPhone||'').replace(/\D/g,'');
-  const resolveT=(raw:string)=>{ const l=(raw||'').toLowerCase(); if(l.includes('nhân')) return 'Lê Đức Nhân'; if(l.includes('kiên')) return 'Nguyễn Thị Kiên'; return raw||'---'; };
+  // Không hardcode tên GV — dùng giá trị thật từ student.teacher
+  const resolveT=(raw:string)=>raw||'---';
   const isInactive=s.status==='inactive'||(s.endDate&&s.endDate!=='---'&&s.endDate!=='');
   let present=0,absent=0,late=0;
-  if(tlogs) tlogs.forEach(log=>(log.attendanceList||[]).forEach((a:any)=>{ if((a.maHS||a['Mã HS'])!==s.id) return; const st=a['Trạng thái']||''; if(st==='Có mặt') present++; else if(st==='Vắng') absent++; else if(st==='Muộn') late++; }));
+  // Support both GAS v29 camelCase (trangThai) and legacy Vietnamese keys ('Trạng thái')
+  if(tlogs) tlogs.forEach(log=>(log.attendanceList||[]).forEach((a:any)=>{
+    const id = a.maHS || a['Mã HS'] || a.MaHS || '';
+    if(id !== s.id) return;
+    const st = a.trangThai || a['Trạng thái'] || a.TrangThai || '';
+    if(st==='Có mặt') present++; else if(st==='Vắng') absent++; else if(st==='Muộn') late++;
+  }));
   const totalSessions=present+absent+late, attendPct=totalSessions>0?Math.round(present/totalSessions*100):null;
   // Tất cả giao dịch, sort mới nhất lên đầu
   const allPayments=(payments||[]).filter(p=>p.studentId===s.id).sort((a,b)=>b.date.localeCompare(a.date));

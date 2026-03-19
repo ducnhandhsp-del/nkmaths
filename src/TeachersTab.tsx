@@ -6,7 +6,7 @@
  * - No Avatar
  * - Full-screen detail panel
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Users, Award, School, Phone, Mail, X, Edit3, Eye, Plus, Save, DollarSign } from 'lucide-react';
 import { fmtVND } from './helpers';
 import { ModalWrap, Field } from './UIComponents';
@@ -84,12 +84,21 @@ function TeacherModal({ open, onClose, editing, onSave, isSaving }: {
 interface Props { teachers:Teacher[]; uClasses:any[]; tlogs:any[]; onSave:(f:any)=>void; isSaving:boolean; }
 
 export default function TeachersTab({ teachers:propTeachers, uClasses, tlogs, onSave, isSaving }: Props) {
-  const teachers = propTeachers.length > 0 ? propTeachers : DEMO_TEACHERS;
+  // Không dùng DEMO_TEACHERS nữa — hiện trạng thái empty state thật thay vì dữ liệu giả
+  const teachers = propTeachers;
   const [showModal,setShowModal] = useState(false);
   const [editing,setEditing] = useState<Teacher|null>(null);
   const [detail,setDetail] = useState<Teacher|null>(null);
   const [search,setSearch] = useState('');
   const [hovRow,setHovRow] = useState<string|null>(null);
+
+  // Tự cập nhật detail panel khi teachers thay đổi (sau optimistic update)
+  useEffect(() => {
+    if (detail) {
+      const updated = teachers.find(t => t.id === detail.id);
+      if (updated) setDetail(updated);
+    }
+  }, [teachers]);
 
   const filtered = teachers.filter(t => !search || t.name.toLowerCase().includes(search.toLowerCase()));
   const active   = teachers.filter(t => t.status==='active').length;
@@ -128,9 +137,19 @@ export default function TeachersTab({ teachers:propTeachers, uClasses, tlogs, on
             </thead>
             <tbody>
               {filtered.length===0
-                ? <tr><td colSpan={6} style={{ padding:'56px 16px', textAlign:'center', color:'#94a3b8', fontStyle:'italic' }}>Chưa có giáo viên nào</td></tr>
+                ? <tr><td colSpan={6} style={{ padding:'56px 16px', textAlign:'center' }}>
+                    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:10 }}>
+                      <span style={{ fontSize:36 }}>👨‍🏫</span>
+                      <p style={{ color:'#94a3b8', fontStyle:'italic', fontSize:14, margin:0 }}>
+                        {search ? `Không tìm thấy "${search}"` : 'Chưa có giáo viên — nhấn + để thêm mới'}
+                      </p>
+                      {!search && <p style={{ color:'#cbd5e1', fontSize:12, margin:0 }}>
+                        Dữ liệu GV lưu trong Google Sheets sheet "GiaoVien"
+                      </p>}
+                    </div>
+                  </td></tr>
                 : filtered.map((t,idx)=>{
-                  const st=STATUS_MAP[t.status];
+                  const st=STATUS_MAP[t.status] ?? STATUS_MAP['active'];
                   return (
                     <tr key={t.id} onMouseEnter={()=>setHovRow(t.id)} onMouseLeave={()=>setHovRow(null)}
                       style={trStyle(idx, hovRow===t.id)}>
@@ -140,7 +159,7 @@ export default function TeachersTab({ teachers:propTeachers, uClasses, tlogs, on
                       </td>
                       <td style={TD}><span style={{ color:'#475569' }}>{t.specialization} · {t.qualification}</span></td>
                       <td style={TD}><span style={{ background:'#fffbeb',color:'#d97706',fontSize:11,fontWeight:700,padding:'3px 9px',borderRadius:6 }}>{t.experience} năm</span></td>
-                      <td style={TD}><span style={{ fontWeight:700,color:'#059669' }}>{fmtVND(t.baseSalary)}</span></td>
+                      <td style={TD}><span style={{ fontWeight:700,color:'#059669' }}>{fmtVND(t.baseSalary ?? 0)}</span></td>
                       <td style={TD}><span style={{ background:st.bg,color:st.color,fontSize:11,fontWeight:700,padding:'3px 9px',borderRadius:6 }}>{st.label}</span></td>
                       <td style={{ ...TD, textAlign:'center' }}>
                         <TableActions actions={[
@@ -170,7 +189,7 @@ export default function TeachersTab({ teachers:propTeachers, uClasses, tlogs, on
               <div style={{ background:'linear-gradient(135deg,#fffbeb,#fef3c7)', borderRadius:10, padding:18, marginBottom:20, border:'1px solid #fde68a' }}>
                 <h4 style={{ fontSize:19, fontWeight:800, color:'#0f172a', margin:0 }}>{detail.name}</h4>
                 <p style={{ fontSize:13, color:'#d97706', fontWeight:600, margin:'4px 0' }}>{detail.specialization} · {detail.qualification}</p>
-                <span style={{ background:STATUS_MAP[detail.status].bg, color:STATUS_MAP[detail.status].color, fontSize:11, fontWeight:700, padding:'3px 9px', borderRadius:6 }}>{STATUS_MAP[detail.status].label}</span>
+                <span style={{ background:(STATUS_MAP[detail.status]??STATUS_MAP['active']).bg, color:(STATUS_MAP[detail.status]??STATUS_MAP['active']).color, fontSize:11, fontWeight:700, padding:'3px 9px', borderRadius:6 }}>{(STATUS_MAP[detail.status]??STATUS_MAP['active']).label}</span>
               </div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginBottom:18 }}>
                 {[
@@ -195,7 +214,7 @@ export default function TeachersTab({ teachers:propTeachers, uClasses, tlogs, on
               ))}
               <div style={{ background:'#ecfdf5', borderRadius:8, padding:14, marginTop:10 }}>
                 <p style={{ fontSize:10,fontWeight:700,color:'#059669',textTransform:'uppercase',marginBottom:7 }}>💰 Thu nhập</p>
-                {[['Lương cơ bản',fmtVND(detail.baseSalary)],['Phụ cấp',fmtVND(detail.allowance)],['Lương/giờ',fmtVND(detail.hourlyRate)]].map(([k,v])=>(
+                {[['Lương cơ bản',fmtVND(detail.baseSalary ?? 0)],['Phụ cấp',fmtVND(detail.allowance ?? 0)],['Lương/giờ',fmtVND(detail.hourlyRate ?? 0)]].map(([k,v])=>(
                   <div key={k} style={{ display:'flex',justifyContent:'space-between',fontSize:13,marginBottom:4 }}>
                     <span style={{ color:'#64748b' }}>{k}:</span>
                     <span style={{ fontWeight:700,color:'#0f172a' }}>{v}</span>

@@ -116,11 +116,11 @@ export interface Teacher {
   idNumber?:      string;
   specialization: string;
   qualification:  string;
-  experience:     number;
-  baseSalary:     number;
-  hourlyRate:     number;
-  allowance:      number;
-  status:         'active' | 'inactive' | 'onleave';
+  experience?:    number;
+  baseSalary?:    number;
+  hourlyRate?:    number;
+  allowance?:     number;
+  status:         'active' | 'inactive' | 'onleave' | string;
   classes:        string[];
   schedule?:      any;
   notes?:         string;

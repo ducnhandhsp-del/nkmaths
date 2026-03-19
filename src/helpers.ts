@@ -104,8 +104,10 @@ export const selCls   = 'w-full px-3 py-2.5 rounded-xl border border-slate-200 t
 export const taCls    = 'w-full px-3 py-2.5 rounded-xl border border-slate-200 text-base font-medium text-slate-900 outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 placeholder:text-slate-300 resize-none bg-white';
 
 /* ── Format helpers ── */
-export const fmtVND = (n: number) =>
-  n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0') + 'đ';
+export const fmtVND = (n: number | undefined | null): string => {
+  const safe = typeof n === 'number' && isFinite(n) ? n : 0;
+  return safe.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0') + 'đ';
+};
 
 /**
  * formatDate — BUG FIX v23.0: xử lý ISO UTC string từ GAS đúng timezone.

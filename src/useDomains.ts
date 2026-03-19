@@ -66,9 +66,11 @@ export function useDomains(cfg: DomainConfig) {
   /* ── api helper ── */
   const api = useCallback((body: object) =>
     fetchWithTimeout(scriptUrl, {
-      method: 'POST',
-      body: JSON.stringify(body),
-      timeout: RULES.network.fetchTimeout,
+      method:   'POST',
+      redirect: 'follow',
+      headers:  { 'Content-Type': 'text/plain' },
+      body:     JSON.stringify(body),
+      timeout:  RULES.network.fetchTimeout,
     })
   , [scriptUrl]);
 
@@ -110,14 +112,35 @@ export function useDomains(cfg: DomainConfig) {
       if (!editStudent && students.some(s => s.id === normalizedId))
         throw new Error(`⚠️ Mã HS "${normalizedId}" đã tồn tại!`);
       form = { ...form, id: normalizedId };
+
+      // Optimistic update: đóng modal & cập nhật UI ngay lập tức
+      const optimistic: Student = {
+        id: normalizedId, name: form.name?.trim() || '',
+        dob: form.dob || '', branch: form.branch || '',
+        grade: form.grade || '', school: form.school || '',
+        teacher: form.teacher || '---', parentName: form.parentName || '',
+        parentPhone: form.parentPhone || '', studentPhone: form.studentPhone || '',
+        address: form.address || '', academicLevel: form.academicLevel || '',
+        goal: form.goal || '', supportNeeded: form.supportNeeded || '',
+        classId: form.classId || '', startDate: form.startDate || '',
+        endDate: form.endDate || '', status: form.status || 'active',
+        notes: form.notes || '', facebookUrl: form.facebookUrl || '',
+      };
+      if (editStudent) {
+        setStudents(prev => prev.map(s => s.id === normalizedId ? { ...s, ...optimistic } : s));
+      } else {
+        setStudents(prev => [optimistic, ...prev]);
+      }
+      setEditStudent(null);
+
+      // Gửi lên GAS (không block UI)
       await api({
-        action:    editStudent ? 'updateHS' : 'saveHS',
+        action: editStudent ? 'updateHS' : 'saveHS',
         ...sanitizeObject({ ...form, startDate: form.startDate ? formatDate(form.startDate) : '' }),
       });
-      setEditStudent(null);
       setSilent(); loadData();
     }, editStudent ? '✅ Đã cập nhật học sinh!' : '✅ Đã thêm học sinh mới!')
-  , [withSave, editStudent, students, api, setSilent, loadData]);
+  , [withSave, editStudent, students, api, setStudents, setSilent, loadData]);
 
   const handleToggleStudentStatus = useCallback(async (s: Student, chosenEndDate?: string) => {
     const isInactive = s.status === 'inactive' || (s.endDate && s.endDate !== '---' && s.endDate !== '');
@@ -222,8 +245,8 @@ export function useDomains(cfg: DomainConfig) {
       const dateFormatted = formatDate(form.date);
       const description  = `Học phí tháng ${thangHP} năm ${namHP}`;
       const clean        = sanitizeObject({ ...form, maHS, soTien: Number(form.soTien), date: dateFormatted, description, thangHP, namHP });
-      await api({ action: editPayment ? 'updatePayment' : 'savePayment', timeStamp: t, soCT, ...clean });
-      setEditPayment(null);
+
+      // Optimistic update: đóng modal & hiện invoice ngay, không chờ GAS
       const previewPayment: Payment = {
         id: soCT, docNum: soCT, date: dateFormatted,
         studentId: maHS,
@@ -233,10 +256,19 @@ export function useDomains(cfg: DomainConfig) {
         description, amount: Number(form.soTien), note: form.note || '',
         thangHP, namHP,
       } as any;
+      setEditPayment(null);
+      if (!editPayment) {
+        setPayments(prev => [previewPayment, ...prev]);
+      } else {
+        setPayments(prev => prev.map(p => p.id === editPayment.id ? previewPayment : p));
+      }
       setVInvoice(previewPayment);
+
+      // Gửi lên GAS (không block UI)
+      await api({ action: editPayment ? 'updatePayment' : 'savePayment', timeStamp: t, soCT, ...clean });
       setSilent(); loadData();
     }, editPayment ? '✅ Đã cập nhật phiếu thu!' : '✅ Đã ghi phiếu thu!')
-  , [withSave, editPayment, students, api, setSilent, loadData]);
+  , [withSave, editPayment, students, api, setPayments, setSilent, loadData]);
 
   const handleSaveExpense = useCallback(async (form: any) =>
     withSave(async () => {
@@ -249,15 +281,32 @@ export function useDomains(cfg: DomainConfig) {
       const mm = (n.getMonth() + 1).toString().padStart(2,'0');
       const dd = n.getDate().toString().padStart(2,'0');
       const soCT = form.docNum || `PC-${yy}${mm}${dd}-${n.getTime().toString(36).slice(-4).toUpperCase()}`;
+      const dateFormatted = formatDate(form.date);
+
+      // Optimistic update: đóng modal & cập nhật danh sách ngay
+      const optimistic: Expense = {
+        id: soCT, docNum: soCT, date: dateFormatted,
+        description: form.description?.trim() || '',
+        category: form.category || '',
+        amount: Number(form.amount),
+        spender: form.spender || '',
+      };
+      setEditExpense(null);
+      if (!editExpense) {
+        setExpenses(prev => [optimistic, ...prev]);
+      } else {
+        setExpenses(prev => prev.map(e => e.id === editExpense.id ? optimistic : e));
+      }
+
+      // Gửi lên GAS (không block UI)
       await api({
         action: editExpense ? 'updateExpense' : 'saveExpense',
         timeStamp: t, soCT,
-        ...sanitizeObject({ ...form, amount: Number(form.amount), date: formatDate(form.date) }),
+        ...sanitizeObject({ ...form, amount: Number(form.amount), date: dateFormatted }),
       });
-      setEditExpense(null);
       setSilent(); loadData();
     }, editExpense ? '✅ Đã cập nhật phiếu chi!' : '✅ Đã ghi phiếu chi!')
-  , [withSave, editExpense, api, setSilent, loadData]);
+  , [withSave, editExpense, api, setExpenses, setSilent, loadData]);
 
   /* ════════════════════════════════════════════
      DIARY DOMAIN
@@ -328,41 +377,69 @@ export function useDomains(cfg: DomainConfig) {
   ════════════════════════════════════════════ */
   const handleSaveTeacher = useCallback(async (form: any) => {
     const isEdit = !!(form.id?.trim()) && teachers.some(t => t.id === form.id.trim());
-    const payload = {
+    const payload: Teacher = {
       ...form,
-      id:       isEdit ? form.id.trim() : `GV${Date.now()}`,
-      classes:  form.classes || [],
-      status:   form.status  || 'active',
+      id:        isEdit ? form.id.trim() : `GV${Date.now()}`,
+      classes:   form.classes  || [],
+      status:    form.status   || 'active',
+      createdAt: form.createdAt || new Date().toISOString(),
     };
     await withSave(async () => {
+      // Optimistic update: cập nhật danh sách GV ngay
+      if (isEdit) {
+        setTeachers(prev => prev.map(t => t.id === payload.id ? { ...t, ...payload } : t));
+      } else {
+        setTeachers(prev => [payload, ...prev]);
+      }
+      // Gửi lên GAS (không block UI)
       await api({ action: isEdit ? 'updateTeacher' : 'saveTeacher', ...payload });
       setSilent(); loadData();
     }, '✅ Đã lưu giáo viên!');
-  }, [teachers, withSave, api, setSilent, loadData]);
+  }, [teachers, withSave, api, setTeachers, setSilent, loadData]);
 
   /* ════════════════════════════════════════════
      MATERIALS DOMAIN — đồng bộ GAS sheet HocLieu
   ════════════════════════════════════════════ */
   const handleSaveMaterial = useCallback(async (form: any) => {
     const isEdit = !!(form.id) && materials.some(m => m.id === form.id);
+    const optimisticId = isEdit ? form.id : `HL${Date.now()}`;
+    const tagsArr: string[] = Array.isArray(form.tags)
+      ? form.tags
+      : (form.tags ? String(form.tags).split(',').map((t: string) => t.trim()).filter(Boolean) : []);
     const payload = {
       ...form,
-      id:         isEdit ? form.id : `HL${Date.now()}`,
-      tags:       Array.isArray(form.tags) ? form.tags.join(',') : (form.tags || ''),
+      id:         optimisticId,
+      tags:       tagsArr.join(','),
       uploadDate: form.uploadDate || new Date().toISOString(),
     };
+    const optimistic: Material = {
+      ...form,
+      id:           optimisticId,
+      tags:         tagsArr,
+      uploadedAt:   form.uploadedAt || new Date().toISOString(),
+      uploadedBy:   form.uploadedBy || '',
+    };
     await withSave(async () => {
+      // Optimistic update: cập nhật danh sách học liệu ngay
+      if (isEdit) {
+        setMaterials(prev => prev.map(m => m.id === optimisticId ? { ...m, ...optimistic } : m));
+      } else {
+        setMaterials(prev => [optimistic, ...prev]);
+      }
+      // Gửi lên GAS (không block UI)
       await api({ action: isEdit ? 'updateMaterial' : 'saveMaterial', ...payload });
       setSilent(); loadData();
     }, '✅ Đã lưu học liệu!');
-  }, [materials, withSave, api, setSilent, loadData]);
+  }, [materials, withSave, api, setMaterials, setSilent, loadData]);
 
   const handleDeleteMaterial = useCallback(async (id: string) => {
+    // Optimistic: xóa khỏi UI trước
+    setMaterials(prev => prev.filter(m => m.id !== id));
     await withSave(async () => {
       await api({ action: 'deleteMaterial', id });
       setSilent(); loadData();
     }, '✅ Đã xóa học liệu!');
-  }, [withSave, api, setSilent, loadData]);
+  }, [withSave, api, setMaterials, setSilent, loadData]);
 
   /* leaveRequests đã bỏ tính năng */
   const handleApproveLeave = useCallback((_id: string) => {}, []);

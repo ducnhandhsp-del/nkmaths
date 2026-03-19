@@ -178,9 +178,15 @@ export const groupByMonth = (
         const p = s.split('/');
         return { mo: parseInt(p[1]), yr: parseInt(p[2]) };
       }
-      if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
-        const dt = new Date(s.slice(0, 10));
+      // ISO with time (GAS Date objects) → use local date parts via new Date()
+      if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+        const dt = new Date(s);
         if (!isNaN(dt.getTime())) return { mo: dt.getMonth() + 1, yr: dt.getFullYear() };
+      }
+      // Plain YYYY-MM-DD → parse components directly (avoid UTC midnight shift)
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+        const parts = s.split('-');
+        return { mo: parseInt(parts[1]), yr: parseInt(parts[0]) };
       }
       return null;
     };

@@ -192,7 +192,10 @@ export function DiaryDetailModal({ log, onClose }: { log:any; onClose:()=>void }
               <div style={{ padding:'8px 12px',background:'#f8fafc',borderBottom:'1.5px solid #e2e8f0' }}><p style={{ fontSize:10,fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.08em',margin:0 }}>Danh sách điểm danh</p></div>
               <div style={{ maxHeight:200,overflowY:'auto' }}>
                 {l.attendanceList.map((a:any,i:number)=>{
-                  const name=a['Họ và tên']||a['tenHS']||'---',status=a['Trạng thái']||'---',note=a['Ghi chú']||a['ghiChu']||'',sty=STATUS_STYLES[status]||STATUS_STYLES['Có mặt'];
+                  const name=a['Họ và tên']||a.tenHS||a['tenHS']||'---';
+                  const status=a.trangThai||a['Trạng thái']||a.TrangThai||'---';
+                  const note=a.ghiChu||a['Ghi chú']||a['ghiChu']||'';
+                  const sty=STATUS_STYLES[status]||STATUS_STYLES['Có mặt'];
                   return (
                     <div key={i} style={{ display:'flex',alignItems:'center',justifyContent:'space-between',padding:'9px 14px',borderBottom:'1px solid #f1f5f9',background:status!=='Có mặt'?sty.bg:'white' }}>
                       <div style={{ flex:1,minWidth:0 }}>

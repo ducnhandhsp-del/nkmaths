@@ -361,7 +361,14 @@ export default function OperationsTab({ filtD, pgD, setPgD, qD, setQD, dCls, set
   const absStats = useMemo(() => {
     const map = new Map<string, { id: string; name: string; classId: string; parentPhone: string; absent: number; late: number; present: number; streak: number }>();
     students.filter(s => s.status !== 'inactive' && (!s.endDate || s.endDate === '---' || s.endDate === '')).forEach(s => map.set(s.id, { id: s.id, name: s.name, classId: s.classId, parentPhone: s.parentPhone || '', absent: 0, late: 0, present: 0, streak: 0 }));
-    tlogs.forEach(log => (log.attendanceList || []).forEach((a: any) => { const row = map.get(a.maHS || a['Mã HS']); if (!row) return; const st = a['Trạng thái'] || ''; if (st === 'Vắng') row.absent++; else if (st === 'Muộn') row.late++; else row.present++; }));
+    // Support both GAS v29 camelCase (trangThai) and legacy Vietnamese keys ('Trạng thái')
+    const getStatus = (a: any) => a.trangThai || a['Trạng thái'] || a.TrangThai || '';
+    const getId = (a: any) => a.maHS || a['Mã HS'] || a.MaHS || '';
+    tlogs.forEach(log => (log.attendanceList || []).forEach((a: any) => {
+      const row = map.get(getId(a)); if (!row) return;
+      const st = getStatus(a);
+      if (st === 'Vắng') row.absent++; else if (st === 'Muộn') row.late++; else if (st === 'Có mặt') row.present++;
+    }));
     const byClass = new Map<string, any[]>();
     [...tlogs].sort((a: any, b: any) => parseDMY(b.rawDate||b.date) - parseDMY(a.rawDate||a.date))
       .forEach((l: any) => { if (!byClass.has(l.classId)) byClass.set(l.classId, []); byClass.get(l.classId)!.push(l); });
@@ -370,8 +377,8 @@ export default function OperationsTab({ filtD, pgD, setPgD, qD, setQD, dCls, set
       const logs = (byClass.get(s.classId) || []).slice(0, 10);
       let streak = 0;
       for (const log of logs) {
-        const a = (log.attendanceList || []).find((a: any) => (a.maHS || a['Mã HS']) === s.id);
-        if (a && a['Trạng thái'] === 'Vắng') streak++; else if (a) break;
+        const a = (log.attendanceList || []).find((a: any) => getId(a) === s.id);
+        if (a && getStatus(a) === 'Vắng') streak++; else if (a) break;
       }
       row.streak = streak;
     });

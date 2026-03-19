@@ -21,13 +21,14 @@ const DAYS_VN = ['CN','T2','T3','T4','T5','T6','T7'];
 /* ── Today's schedule banner ── */
 function TodaySchedule({ uClasses }: { uClasses: any[] }) {
   const todayIdx  = new Date().getDay(); // 0=Sun
-  const todayCode = DAYS_VN[todayIdx];  // 'T2','T3',... or 'CN'
+  const todayCode = DAYS_VN[todayIdx];
 
-  function classesToday(teacherKeyword: string) {
+  function classesToday(teacherName: string) {
+    const keyword = teacherName.split(' ').pop()?.toLowerCase() || '';
     return uClasses
       .filter(c => {
         const gv = String(c['Giáo viên'] || '').toLowerCase();
-        if (!gv.includes(teacherKeyword.toLowerCase())) return false;
+        if (!gv.includes(keyword)) return false;
         const buois = [c['Buổi 1'], c['Buổi 2'], c['Buổi 3']].filter(Boolean);
         return buois.some(b => String(b).trim().startsWith(todayCode));
       })
@@ -39,49 +40,51 @@ function TodaySchedule({ uClasses }: { uClasses: any[] }) {
       })
       .sort((a, b) => {
         const toMin = (t: string) => { const m = t.match(/(\d+)[h:](\d*)/); return m ? parseInt(m[1]) * 60 + parseInt(m[2] || '0') : 0; };
-        const aMin = a.times[0] ? toMin(a.times[0]) : 0;
-        const bMin = b.times[0] ? toMin(b.times[0]) : 0;
-        return aMin - bMin;
+        return toMin(a.times[0] || '') - toMin(b.times[0] || '');
       });
   }
 
-  // Find teacher names from classes
-  const teachers = [...new Set(uClasses.map(c => c['Giáo viên']).filter(Boolean))];
-  const nhan = teachers.find(t => String(t).toLowerCase().includes('nhân'));
-  const kien = teachers.find(t => String(t).toLowerCase().includes('kiên'));
-
-  const nhanClasses = nhan ? classesToday('nhân') : [];
-  const kienClasses = kien ? classesToday('kiên') : [];
-
+  // Lấy tất cả GV duy nhất từ classes — không hardcode
+  const uniqueTeachers = [...new Set(uClasses.map(c => c['Giáo viên']).filter(Boolean))] as string[];
   const todayName = ['Chủ nhật','Thứ 2','Thứ 3','Thứ 4','Thứ 5','Thứ 6','Thứ 7'][todayIdx];
 
-  const BannerRow = ({ teacherName, classes, color, bg, border }: { teacherName: string; classes: {classId: string; times: string[]}[]; color: string; bg: string; border: string }) => (
-    <div style={{ background: bg, border: `1px solid ${border}`, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-        <CalendarCheck size={15} color={color} />
-        <span style={{ fontSize: 13, fontWeight: 700, color, whiteSpace: 'nowrap' }}>
-          {teacherName} · {todayName}:
-        </span>
-      </div>
-      {classes.length === 0
-        ? <span style={{ fontSize: 13, color: '#94a3b8', fontStyle: 'italic' }}>Không có lớp</span>
-        : classes.map((c, i) => (
-            <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'white', border: `1px solid ${border}`, borderRadius: 6, padding: '3px 10px', fontSize: 12, fontWeight: 700, color }}>
-              <span style={{ background: color, color: 'white', borderRadius: 4, padding: '1px 6px', fontSize: 11 }}>{c.classId}</span>
-              {c.times.length > 0 && <span style={{ color: '#64748b', fontWeight: 600 }}>{c.times.join(', ')}</span>}
-            </span>
-          ))
-      }
-    </div>
-  );
+  const BANNER_COLORS = [
+    { color: '#6366f1', bg: '#f5f3ff', border: '#ddd6fe' },
+    { color: '#059669', bg: '#ecfdf5', border: '#a7f3d0' },
+    { color: '#0284c7', bg: '#eff6ff', border: '#bfdbfe' },
+    { color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
+  ];
 
-  if (!nhan && !kien) return null;
+  if (uniqueTeachers.length === 0) return null;
 
   return (
     <div style={{ border: '1px solid #e8edf2', borderRadius: 10, overflow: 'hidden', boxShadow: '0 1px 6px rgba(0,0,0,0.05)' }}>
-      {nhan && <BannerRow teacherName={nhan} classes={nhanClasses} color="#6366f1" bg="#f5f3ff" border="#ddd6fe" />}
-      {kien && nhan && <div style={{ height: 1, background: '#e2e8f0' }} />}
-      {kien && <BannerRow teacherName={kien} classes={kienClasses} color="#059669" bg="#ecfdf5" border="#a7f3d0" />}
+      {uniqueTeachers.map((teacherName, i) => {
+        const classes = classesToday(teacherName);
+        const { color, bg, border } = BANNER_COLORS[i % BANNER_COLORS.length];
+        return (
+          <React.Fragment key={teacherName}>
+            {i > 0 && <div style={{ height: 1, background: '#e2e8f0' }} />}
+            <div style={{ background: bg, border: `0px solid ${border}`, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                <CalendarCheck size={15} color={color} />
+                <span style={{ fontSize: 13, fontWeight: 700, color, whiteSpace: 'nowrap' }}>
+                  {teacherName} · {todayName}:
+                </span>
+              </div>
+              {classes.length === 0
+                ? <span style={{ fontSize: 13, color: '#94a3b8', fontStyle: 'italic' }}>Không có lớp</span>
+                : classes.map((c, j) => (
+                    <span key={j} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'white', border: `1px solid ${border}`, borderRadius: 6, padding: '3px 10px', fontSize: 12, fontWeight: 700, color }}>
+                      <span style={{ background: color, color: 'white', borderRadius: 4, padding: '1px 6px', fontSize: 11 }}>{c.classId}</span>
+                      {c.times.length > 0 && <span style={{ color: '#64748b', fontWeight: 600 }}>{c.times.join(', ')}</span>}
+                    </span>
+                  ))
+              }
+            </div>
+          </React.Fragment>
+        );
+      })}
     </div>
   );
 }
@@ -100,8 +103,13 @@ function SmartAlerts({ students, tlogs, payments, curMo, curYr, isPaid, goScreen
       const logs = (byClass.get(s.classId) || []).slice(0, 8);
       let streak = 0;
       for (const log of logs) {
-        const a = (log.attendanceList || []).find((a: any) => (a.maHS || a['Mã HS']) === s.id);
-        if (a && a['Trạng thái'] === 'Vắng') streak++; else if (a) break;
+        // Support both GAS v29 (trangThai camelCase) and legacy ('Trạng thái')
+        const a = (log.attendanceList || []).find((a: any) =>
+          (a.maHS || a['Mã HS'] || a.MaHS) === s.id
+        );
+        if (!a) continue;
+        const status = a.trangThai || a['Trạng thái'] || a.TrangThai || '';
+        if (status === 'Vắng') streak++; else if (status) break;
       }
       return { ...s, streak };
     }).filter(s => s.streak >= 2).sort((a, b) => b.streak - a.streak);
@@ -248,7 +256,12 @@ export default function OverviewTab({
 
   const teachingActs = useMemo(() => {
     const acts: any[] = [];
-    students.forEach(s => { const ts = parseDMY(s.startDate || ''); if (ts) acts.push({ iconBg: '#ecfdf5', iconColor: '#059669', desc: `HS mới: ${capitalizeName(s.name)} — Lớp ${s.classId}`, time: ts, dateStr: s.startDate, type: 'student' }); });
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    // Chỉ hiện HS mới đăng ký trong 30 ngày gần nhất
+    students.forEach(s => {
+      const ts = parseDMY(s.startDate || '');
+      if (ts > thirtyDaysAgo) acts.push({ iconBg: '#ecfdf5', iconColor: '#059669', desc: `HS mới: ${capitalizeName(s.name)} — Lớp ${s.classId}`, time: ts, dateStr: s.startDate, type: 'student' });
+    });
     tlogs.forEach(l => { const ts = parseDMY(l.date || ''); if (ts) acts.push({ iconBg: '#f5f3ff', iconColor: '#7c3aed', desc: `${l.classId}: ${l.content || '---'} · ${l.present ?? 0} có mặt`, time: ts, dateStr: l.date, type: 'diary' }); });
     return acts.filter(a => a.time > 0).sort((a, b) => b.time - a.time).slice(0, 12);
   }, [students, tlogs]);
