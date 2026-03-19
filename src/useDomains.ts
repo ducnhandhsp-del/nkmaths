@@ -63,16 +63,23 @@ export function useDomains(cfg: DomainConfig) {
 
   const savingRef = useRef(false);
 
-  /* ── api helper ── */
-  const api = useCallback((body: object) =>
-    fetchWithTimeout(scriptUrl, {
+  /* ── api helper — kiểm tra HTTP status lẫn GAS response body ── */
+  const api = useCallback(async (body: object): Promise<any> => {
+    const res = await fetchWithTimeout(scriptUrl, {
       method:   'POST',
       redirect: 'follow',
       headers:  { 'Content-Type': 'text/plain' },
       body:     JSON.stringify(body),
       timeout:  RULES.network.fetchTimeout,
-    })
-  , [scriptUrl]);
+    });
+    if (!res.ok) throw new Error(`Server lỗi HTTP ${res.status}`);
+    const data = await res.json().catch(() => null);
+    // GAS trả về { ok: false, error: "..." } khi ghi Sheet thất bại
+    if (data && data.ok === false) {
+      throw new Error(data.error || 'GAS ghi thất bại');
+    }
+    return data;
+  }, [scriptUrl]);
 
   /* ── withSave ── */
   const withSave = useCallback(async (fn: () => Promise<void>, successMsg?: string) => {
@@ -85,12 +92,15 @@ export function useDomains(cfg: DomainConfig) {
       if (successMsg) toast.success(successMsg);
     } catch (err: any) {
       toast.error('❌ ' + (err.message || 'Lỗi khi lưu'));
+      // Rollback optimistic updates bằng cách load lại từ Sheet
+      // Không setSilent → loading spinner hiện để user biết đang đồng bộ lại
+      try { loadData(); } catch {}
     } finally {
       savingRef.current = false;
       isSavingRef.current = false;
       setSaving(false);
     }
-  }, [isSavingRef]);
+  }, [isSavingRef, loadData]);
 
   /* FIX S1: setSilent set trực tiếp vào silentRef — không còn hack qua __setSilent
      FIX D4: reset lastLoadTimeRef về 0 → visibility event sẽ force reload ngay */
