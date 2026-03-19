@@ -334,7 +334,7 @@ export function useDomains(cfg: DomainConfig) {
       if (!form.content?.trim()) throw new Error('⚠️ Vui lòng nhập nội dung bài dạy!');
       const clean = sanitizeObject(form);
       await api({
-        action:      isEdit ? 'updateDaily' : 'saveDaily',
+        action:      isEdit ? 'updateDiary' : 'saveDiary',
         date:        formatDate(clean.date),
         maLop:       clean.classId,
         caDay:       clean.caDay || '',
