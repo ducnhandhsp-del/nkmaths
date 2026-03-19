@@ -396,7 +396,7 @@ export default function OperationsTab({ filtD, pgD, setPgD, qD, setQD, dCls, set
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
                         <span style={{ fontSize: 36 }}>📖</span>
                         <p style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: 14, margin: 0 }}>Chưa có nhật ký nào</p>
-                        <button onClick={onAddDiary} style={{ padding: '7px 18px', background: '#7c3aed', color: '#64748b', border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer', borderRadius: 6 }}>+ Ghi buổi đầu tiên</button>
+                        <button onClick={() => onAddDiary()} style={{ padding: '7px 18px', background: '#7c3aed', color: 'white', border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer', borderRadius: 6 }}>+ Ghi buổi đầu tiên</button>
                       </div>
                     </td></tr>
                   : paged.map((l, i) => (
@@ -535,7 +535,7 @@ export default function OperationsTab({ filtD, pgD, setPgD, qD, setQD, dCls, set
         </div>
       )}
 
-      {sub === 'diary' && <FAB onClick={onAddDiary} label="Ghi buổi dạy mới" color="#7c3aed" shadow="0 8px 24px rgba(124,58,237,0.5)" />}
+      {sub === 'diary' && <FAB onClick={() => onAddDiary()} label="Ghi buổi dạy mới" color="#7c3aed" shadow="0 8px 24px rgba(124,58,237,0.5)" />}
     </div>
   );
 }

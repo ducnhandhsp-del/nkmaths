@@ -77,6 +77,7 @@ export function DiaryModal({
   };
 
   const doSave=()=>{
+    if(!classId){toast.error('⚠️ Vui lòng chọn lớp học!');return;}
     if(!caDay){toast.error('⚠️ Vui lòng chọn ca dạy!');return;}
     if(!content.trim()){toast.error('⚠️ Vui lòng nhập nội dung bài dạy!');return;}
     onSave({ date,classId,caDay,content,homework:hw||'---',teacherName:cls[0]?.teacher||'',

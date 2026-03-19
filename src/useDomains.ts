@@ -92,15 +92,15 @@ export function useDomains(cfg: DomainConfig) {
       if (successMsg) toast.success(successMsg);
     } catch (err: any) {
       toast.error('❌ ' + (err.message || 'Lỗi khi lưu'));
-      // Rollback optimistic updates bằng cách load lại từ Sheet
-      // Không setSilent → loading spinner hiện để user biết đang đồng bộ lại
+      // FIX: silentRef=true → không hiện LoadingScreen khi lỗi save
+      silentRef.current = true;
       try { loadData(); } catch {}
     } finally {
       savingRef.current = false;
       isSavingRef.current = false;
       setSaving(false);
     }
-  }, [isSavingRef, loadData]);
+  }, [isSavingRef, silentRef, loadData]);
 
   /* FIX S1: setSilent set trực tiếp vào silentRef — không còn hack qua __setSilent
      FIX D4: reset lastLoadTimeRef về 0 → visibility event sẽ force reload ngay */
@@ -336,7 +336,7 @@ export function useDomains(cfg: DomainConfig) {
       await api({
         action:         isEdit ? 'updateDiary' : 'saveDiary',
         date:           formatDate(clean.date),
-        classId:        clean.classId,        // FIX: maLop → classId (GAS đọc d.classId)
+        classId:        clean.classId,        // FIX: maLop → classId
         caDay:          clean.caDay || '',
         teacherName:    clean.teacherName,
         attendanceList: sanitizeAttendance(form.attendance), // FIX: attendance → attendanceList

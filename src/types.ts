@@ -9,7 +9,7 @@ export type Screen =
   | 'reports'
   | 'settings';
 
-export type FinanceSub = 'ledger' | 'debt';
+export type FinanceSub = 'ledger' | 'debt' | 'expense';
 export type OperationsSub = 'diary' | 'leave' | 'schedule' | 'absence';
 
 export interface Student {

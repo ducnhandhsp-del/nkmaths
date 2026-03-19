@@ -121,9 +121,13 @@ export default function App() {
   }, []);
 
   const handleAddDiary = useCallback((classId?: string, date?: string, caDay?: string) => {
-    setPreselectedDiaryClass(classId || '');
-    setPreselectedDiaryDate(date || '');
-    setPreselectedDiaryCaDay(caDay || '');
+    // Guard: các button onClick đôi khi pass MouseEvent thay vì string
+    const safeClassId = typeof classId === 'string' ? classId : '';
+    const safeDate    = typeof date    === 'string' ? date    : '';
+    const safeCaDay   = typeof caDay   === 'string' ? caDay   : '';
+    setPreselectedDiaryClass(safeClassId);
+    setPreselectedDiaryDate(safeDate);
+    setPreselectedDiaryCaDay(safeCaDay);
     d.setEditDiary(null);
     setShowDiary(true);
   }, [d.setEditDiary]); // stable: useState setter không thay đổi
