@@ -28,6 +28,7 @@ export interface Student {
   goal:          string;
   supportNeeded: string;
   notes?:        string;
+  facebookUrl?:  string;
   classId:       string;
   startDate:     string;
   endDate:       string;

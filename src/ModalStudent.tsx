@@ -82,6 +82,7 @@ export function StudentModal({
             <Input label="Trường đang học" value={f.school||''} onChange={v=>u('school',v)} size="lg"/>
             <Select label="Cơ sở" value={f.branch||defaultBranch} onChange={v=>u('branch',v)} options={branchOptions} size="lg"/>
             <Input label="Mục tiêu" value={f.goal||''} onChange={v=>u('goal',v)} placeholder="8 điểm học kỳ tới" size="lg"/>
+            <Input label="Facebook / Messenger URL" value={f.facebookUrl||''} onChange={v=>u('facebookUrl',v)} placeholder="https://facebook.com/ten.phu.huynh" size="lg"/>
             <div style={{ gridColumn:'1/-1', display:'flex', flexDirection:'column', gap:4 }}>
               <label style={{ fontSize:11,fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.08em' }}>Ghi chú / Nhận xét GV</label>
               <textarea value={f.notes||''} onChange={e=>u('notes',e.target.value)} rows={3}
@@ -108,10 +109,11 @@ export function StudentModal({
   );
 }
 
-export function StudentDetailModal({ student, onClose, tlogs, payments, onToggleStatus, onSaveNote }: {
+export function StudentDetailModal({ student, onClose, tlogs, payments, onToggleStatus, onSaveNote, onSaveFacebook }: {
   student:Student; onClose:()=>void; tlogs?:any[]; payments?:Payment[];
   onToggleStatus?:(student:Student,endDate?:string)=>Promise<void>;
   onSaveNote?:(student:Student,notes:string)=>Promise<void>;
+  onSaveFacebook?:(student:Student,facebookUrl:string)=>Promise<void>;
 }) {
   const [toggling,setToggling]=useState(false);
   const [showEndPicker,setShowEndPicker]=useState(false);
@@ -122,6 +124,17 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
   const initialNote = student.notes || (() => { try { return localStorage.getItem(noteKey)||''; } catch { return ''; } })();
   const [note, setNote] = useState<string>(initialNote);
   const [noteSaving, setNoteSaving] = useState(false);
+
+  // Facebook URL
+  const [fbUrl, setFbUrl] = useState<string>(student.facebookUrl || '');
+  const [fbSaving, setFbSaving] = useState(false);
+  const [fbSaved, setFbSaved] = useState(false);
+  const saveFb = async () => {
+    if (!onSaveFacebook) return;
+    setFbSaving(true);
+    try { await onSaveFacebook(student, fbUrl); setFbSaved(true); setTimeout(()=>setFbSaved(false), 2000); }
+    finally { setFbSaving(false); }
+  };
   const [noteSaved,  setNoteSaved]  = useState(false);
 
   // Reset note khi mở modal cho HS khác
@@ -257,6 +270,37 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
             }
           </div>
 
+          {/* Facebook URL */}
+          <div style={{ marginTop:16 }}>
+            <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8 }}>
+              <p style={{ fontSize:12,fontWeight:700,color:'#2563eb',textTransform:'uppercase',letterSpacing:'0.08em',margin:0 }}>💬 Facebook / Messenger</p>
+              {fbSaved && <span style={{ fontSize:11,fontWeight:700,color:'#059669' }}>✓ Đã lưu</span>}
+            </div>
+            <div style={{ display:'flex',gap:8 }}>
+              <input
+                value={fbUrl}
+                onChange={e=>setFbUrl(e.target.value)}
+                placeholder="https://facebook.com/ten.phu.huynh hoặc https://m.me/username"
+                style={{ flex:1,padding:'9px 12px',borderRadius:8,border:'1.5px solid #e2e8f0',fontSize:13,fontFamily:'inherit',color:'#1e293b',outline:'none',boxSizing:'border-box' as any }}
+                onFocus={e=>e.target.style.borderColor='#2563eb'}
+                onBlur={e=>e.target.style.borderColor='#e2e8f0'}
+              />
+              {onSaveFacebook && (
+                <button onClick={saveFb} disabled={fbSaving}
+                  style={{ padding:'9px 14px',borderRadius:8,border:'none',background:fbSaving?'#f1f5f9':'#2563eb',color:fbSaving?'#94a3b8':'white',fontSize:12,fontWeight:700,cursor:fbSaving?'default':'pointer',whiteSpace:'nowrap',flexShrink:0 }}>
+                  {fbSaving ? '...' : '💾 Lưu'}
+                </button>
+              )}
+            </div>
+            {fbUrl && (
+              <a href={fbUrl.startsWith('http') ? fbUrl : `https://m.me/${fbUrl}`}
+                target="_blank" rel="noopener noreferrer"
+                style={{ display:'inline-flex',alignItems:'center',gap:6,marginTop:8,fontSize:12,fontWeight:700,color:'#2563eb',textDecoration:'none' }}>
+                → Mở Messenger
+              </a>
+            )}
+          </div>
+
           {/* Ghi chú giáo viên */}
           <div style={{ marginTop:16 }}>
             <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8 }}>
@@ -293,6 +337,14 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
             <a href={`tel:${ph}`} style={{ flex:1 }}><Button variant="outline" intent="success" fullWidth size="lg">📞 Gọi điện</Button></a>
             <a href={`https://zalo.me/${ph}`} target="_blank" rel="noopener noreferrer" style={{ flex:1,textDecoration:'none' }}><Button variant="outline" intent="primary" fullWidth size="lg">💬 Zalo PH</Button></a>
           </>}
+          {s.facebookUrl && (
+            <a href={s.facebookUrl.startsWith('http') ? s.facebookUrl : `https://m.me/${s.facebookUrl}`}
+              target="_blank" rel="noopener noreferrer" style={{ flex:1,textDecoration:'none' }}>
+              <Button variant="outline" intent="primary" fullWidth size="lg" style={{ background:'#e8f0fe',color:'#2563eb',borderColor:'#c7d2fe' }}>
+                💬 Messenger
+              </Button>
+            </a>
+          )}
           <Button variant="outline" intent="neutral" fullWidth size="lg" onClick={onClose}>Đóng</Button>
         </div>
       </div>

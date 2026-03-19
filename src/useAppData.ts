@@ -157,28 +157,132 @@ export function useAppData({ scriptUrl, teacherList }: UseAppDataOptions): AppDa
     if (!silentRef.current) setLoading(true);
 
     try {
-      const res = await fetchWithTimeout(`${scriptUrl}?t=${Date.now()}`, {
-        method: 'GET', redirect: 'follow',
+      const res = await fetchWithTimeout(scriptUrl, {
+        method: 'POST',
+        redirect: 'follow',
         timeout: RULES.network.fetchTimeout,
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ action: 'getData' }),
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'GAS error');
 
-      const hs  = transformStudents(data.students || []);
-      const py  = transformPayments(data.payments || [], hs);
-      const ex  = transformExpenses(data.expenses || []);
-      const logs = transformLogs(data.teachingLogs || [], data.attendanceLogs || []);
+      const raw = data;
+
+      // GAS v29 trả về: { hs, uCls, py, ex, logs, tv, hl, summary }
+      // Fallback sang key cũ nếu có
+      const rawStudents  = raw.hs       || raw.students      || [];
+      const rawPayments  = raw.py       || raw.payments       || [];
+      const rawExpenses  = raw.ex       || raw.expenses       || [];
+      const rawLogs      = raw.logs     || raw.teachingLogs   || [];
+      const rawClasses   = raw.uCls     || raw.classes        || [];
+      const rawTeachers  = raw.tv       || raw.teachers       || [];
+      const rawMaterials = raw.hl       || raw.materials      || [];
+
+      // GAS v29 đã transform sẵn → dùng trực tiếp nếu có field 'id'
+      // nếu là raw sheet (field tiếng Việt) → dùng transform cũ
+      const hs = rawStudents.length > 0 && rawStudents[0].id
+        ? rawStudents.map((s: any) => ({
+            id:            String(s.id            || ''),
+            name:          String(s.name          || '---'),
+            dob:           String(s.dob           || ''),
+            branch:        String(s.branch        || ''),
+            grade:         String(s.grade         || ''),
+            school:        String(s.school        || ''),
+            teacher:       resolveTeacher(s.teacher, teacherList),
+            parentName:    String(s.parentName    || ''),
+            parentPhone:   String(s.parentPhone   || ''),
+            studentPhone:  String(s.studentPhone  || ''),
+            address:       String(s.address       || ''),
+            academicLevel: String(s.academicLevel || ''),
+            goal:          String(s.goal          || ''),
+            supportNeeded: String(s.supportNeeded || ''),
+            classId:       String(s.classId       || ''),
+            startDate:     String(s.startDate     || ''),
+            endDate:       String(s.endDate       || ''),
+            status:        String(s.status        || 'active'),
+            notes:         String(s.notes         || ''),
+            facebookUrl:   String(s.facebookUrl   || ''),
+          }))
+        : transformStudents(rawStudents);
+
+      const py = rawPayments.length > 0 && rawPayments[0].docNum
+        ? rawPayments.map((p: any) => ({
+            id:          String(p.docNum      || ''),
+            date:        String(p.date        || ''),
+            docNum:      String(p.docNum      || ''),
+            studentId:   String(p.studentId   || ''),
+            studentName: String(p.studentName || hs.find((s: any) => s.id === p.studentId)?.name || '?'),
+            payer:       String(p.payer       || '---'),
+            method:      String(p.method      || '---'),
+            description: String(p.description || ''),
+            amount:      Number(p.amount)     || 0,
+            note:        String(p.note        || ''),
+            thangHP:     Number(p.thangHP)    || 0,
+            namHP:       Number(p.namHP)      || 0,
+          }))
+        : transformPayments(rawPayments, hs);
+
+      const ex = rawExpenses.length > 0 && rawExpenses[0].docNum
+        ? rawExpenses.map((e: any) => ({
+            id:          String(e.docNum      || ''),
+            date:        String(e.date        || ''),
+            docNum:      String(e.docNum      || ''),
+            description: String(e.description || ''),
+            category:    String(e.category    || ''),
+            amount:      Number(e.amount)     || 0,
+            spender:     String(e.spender     || ''),
+          }))
+        : transformExpenses(rawExpenses);
+
+      const logs = rawLogs.length > 0 && rawLogs[0].classId
+        ? rawLogs.map((l: any) => ({
+            rawDate:         String(l.rawDate         || l.date || ''),
+            date:            String(l.date            || ''),
+            originalDate:    String(l.originalDate    || l.date || ''),
+            originalClassId: String(l.originalClassId || l.classId || ''),
+            originalCaDay:   String(l.originalCaDay   || l.caDay || ''),
+            classId:         String(l.classId         || ''),
+            content:         String(l.content         || '---'),
+            homework:        String(l.homework        || '---'),
+            teacherNote:     String(l.teacherNote     || ''),
+            teacherName:     resolveTeacher(l.teacherName, teacherList),
+            caDay:           String(l.caDay           || ''),
+            present:         Number(l.present)        || 0,
+            absent:          Number(l.absent)         || 0,
+            late:            Number(l.late)           || 0,
+            attendanceList:  (l.attendanceList || []).map((a: any) => ({
+              maHS:          String(a.maHS        || a.MaHS    || a['Mã HS']    || ''),
+              'Mã HS':       String(a.maHS        || a.MaHS    || a['Mã HS']    || ''),
+              tenHS:         String(a.tenHS       || ''),
+              'Trạng thái':  String(a.trangThai   || a.TrangThai || a['Trạng thái'] || 'Có mặt'),
+              'Ghi chú':     String(a.ghiChu      || a.GhiChu   || a['Ghi chú']   || ''),
+            })),
+          })).sort((a: any, b: any) => parseDMY(b.date) - parseDMY(a.date))
+        : transformLogs(rawLogs, []);
 
       const clsMap = new Map<string, any>();
-      (data.classes || []).forEach((c: any) => {
-        if (!clsMap.has(c['Mã Lớp'])) {
-          clsMap.set(c['Mã Lớp'], { ...c, 'Giáo viên': resolveTeacher(c['Giáo viên'], teacherList) });
-        }
+      rawClasses.forEach((c: any) => {
+        // GAS v29 dùng key MaLop, app cũ dùng 'Mã Lớp'
+        const maLop = c.MaLop || c['Ma Lop'] || c['Mã Lớp'] || '';
+        if (!maLop || clsMap.has(maLop)) return;
+        clsMap.set(maLop, {
+          'Mã Lớp':    maLop,
+          'Tên Lớp':   c.TenLop  || c['Tên Lớp']  || '',
+          'Khối':      c.Khoi    || c['Khối']      || '',
+          'Giáo viên': resolveTeacher(c.GiaoVien || c['Giáo viên'] || '', teacherList),
+          'Cơ sở':     c.CoSo    || c['Cơ sở']    || '',
+          'Buổi 1':    c.Buoi1   || c['Buổi 1']   || '',
+          'Buổi 2':    c.Buoi2   || c['Buổi 2']   || '',
+          'Buổi 3':    c.Buoi3   || c['Buổi 3']   || '',
+        });
       });
 
-      const newTeachers  = (data.teachers || []).map((t: any) => ({ ...t, classes: t.classes || [] }));
-      const newLeaves    = (data.leaveRequests || []).map((r: any) => ({ ...r }));
-      const newMaterials = (data.materials || []).map((m: any) => ({ ...m, tags: m.tags || [] }));
+      const newTeachers  = rawTeachers.map((t: any) => ({ ...t, classes: t.classes || [] }));
+      const newMaterials2 = rawMaterials.map((m: any) => ({ ...m, tags: Array.isArray(m.tags) ? m.tags : (m.tags ? String(m.tags).split(',').map((t: string) => t.trim()).filter(Boolean) : []) }));
+
+      const newLeaves     = (raw.leaveRequests || []).map((r: any) => ({ ...r }));
 
       setStudents(hs);
       setPayments(py);
@@ -186,12 +290,6 @@ export function useAppData({ scriptUrl, teacherList }: UseAppDataOptions): AppDa
       setUClasses(Array.from(clsMap.values()));
       setTlogs(logs);
 
-      /*
-       * Merge strategy cho 3 domain chưa có GAS sheet:
-       * - Nếu GAS trả về data mới → dùng GAS (cloud wins), sync lại localStorage
-       * - Nếu GAS trả về rỗng → giữ nguyên localStorage (đã load khi init)
-       * Khi GAS sau này có sheet riêng, chỉ cần bỏ điều kiện length > 0
-       */
       if (newTeachers.length > 0) {
         setTeachers(newTeachers);
         try { localStorage.setItem('ltn-teachers', JSON.stringify(newTeachers)); } catch {}
@@ -200,9 +298,9 @@ export function useAppData({ scriptUrl, teacherList }: UseAppDataOptions): AppDa
         setLeaveRequests(newLeaves);
         try { localStorage.setItem('ltn-leaves', JSON.stringify(newLeaves)); } catch {}
       }
-      if (newMaterials.length > 0) {
-        setMaterials(newMaterials);
-        try { localStorage.setItem('ltn-materials', JSON.stringify(newMaterials)); } catch {}
+      if (newMaterials2.length > 0) {
+        setMaterials(newMaterials2);
+        try { localStorage.setItem('ltn-materials', JSON.stringify(newMaterials2)); } catch {}
       }
       setSummary({
         totalRevenue: py.reduce((s, p) => s + p.amount, 0),

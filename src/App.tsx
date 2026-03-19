@@ -345,7 +345,7 @@ export default function App() {
         isSaving={d.saving} onConfirm={d.handleConfirmBulkTransfer}
       />
 
-      {vStudent   && <StudentDetailModal student={vStudent} onClose={() => setVStudent(null)} tlogs={tlogs} payments={payments} onToggleStatus={d.handleToggleStudentStatus} onSaveNote={d.handleSaveNote} />}
+      {vStudent   && <StudentDetailModal student={vStudent} onClose={() => setVStudent(null)} tlogs={tlogs} payments={payments} onToggleStatus={d.handleToggleStudentStatus} onSaveNote={d.handleSaveNote} onSaveFacebook={d.handleSaveFacebook} />}
       {vDiary     && <DiaryDetailModal log={vDiary} onClose={() => setVDiary(null)} />}
       {d.vInvoice && <InvoiceModal payment={d.vInvoice} onClose={() => d.setVInvoice(null)} centerName={centerName} bankId={bankId} accountNo={accountNo} accountName={accountName} />}
       {vExpense   && <ExpenseModal expense={vExpense} onClose={() => setVExpense(null)} centerName={centerName} />}

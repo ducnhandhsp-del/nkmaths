@@ -15,7 +15,7 @@ import toast from 'react-hot-toast';
 import type { Student, Payment, Expense, Teacher, LeaveRequest, Material, DeleteTarget } from './types';
 import {
   fetchWithTimeout, formatDate, sanitizeObject, sanitizeAttendance,
-  parseCaDayToHours, parseDMY, isStudentActive, saveLocal,
+  parseCaDayToHours, parseDMY, isStudentActive,
 } from './helpers';
 import { buildPaidMap, isPaidFn, getActiveStudents, calcPaidPct, countPaidStudents } from './measures';
 import { RULES } from './rules';
@@ -144,6 +144,20 @@ export function useDomains(cfg: DomainConfig) {
       setSilent(); loadData();
     }, isInactive ? '✅ Đã kích hoạt lại!' : '✅ Đã đánh dấu nghỉ học!');
   }, [withSave, api, setSilent, loadData]);
+
+  const handleSaveFacebook = useCallback(async (s: Student, facebookUrl: string) =>
+    withSave(async () => {
+      await api({
+        action: 'updateHS', id: s.id, name: s.name, dob: s.dob, branch: s.branch,
+        grade: s.grade, school: s.school, teacher: s.teacher, parentName: s.parentName,
+        parentPhone: s.parentPhone, studentPhone: s.studentPhone, address: s.address,
+        academicLevel: s.academicLevel, goal: s.goal, supportNeeded: s.supportNeeded,
+        notes: s.notes || '', facebookUrl,
+        classId: s.classId, startDate: s.startDate, endDate: s.endDate || '', status: s.status,
+      });
+      setSilent(); loadData();
+    }, '✅ Đã lưu Facebook URL!')
+  , [withSave, api, setSilent, loadData]);
 
   const handleSaveNote = useCallback(async (s: Student, notes: string) =>
     withSave(async () => {
@@ -280,18 +294,21 @@ export function useDomains(cfg: DomainConfig) {
   const handleDelete = useCallback(async (delTarget: DeleteTarget) => {
     if (!delTarget) return;
 
-    /* Teacher và Material: local-only (chưa có GAS action) */
+    /* Teacher: gọi GAS deleteTeacher */
     if (delTarget.type === 'teacher') {
-      const updated = teachers.filter(t => t.id !== delTarget.id);
-      setTeachers(updated);
-      saveLocal('ltn-teachers', updated);
-      toast.success('✅ Đã xóa thành công!'); return;
+      await withSave(async () => {
+        await api({ action: 'deleteTeacher', id: delTarget.id });
+        setSilent(); loadData();
+      }, '✅ Đã xóa giáo viên!');
+      return;
     }
+    /* Material: gọi GAS deleteMaterial */
     if (delTarget.type === 'material') {
-      const updated = materials.filter(m => m.id !== delTarget.id);
-      setMaterials(updated);
-      saveLocal('ltn-materials', updated);
-      toast.success('✅ Đã xóa thành công!'); return;
+      await withSave(async () => {
+        await api({ action: 'deleteMaterial', id: delTarget.id });
+        setSilent(); loadData();
+      }, '✅ Đã xóa học liệu!');
+      return;
     }
 
     const actionMap: Record<string, string> = {
@@ -307,78 +324,49 @@ export function useDomains(cfg: DomainConfig) {
   }, [withSave, api, setSilent, loadData, setTeachers, setMaterials]);
 
   /* ════════════════════════════════════════════
-     TEACHERS DOMAIN (local state)
+     TEACHERS DOMAIN — đồng bộ GAS sheet GiaoVien
   ════════════════════════════════════════════ */
-  const handleSaveTeacher = useCallback((form: any) => {
+  const handleSaveTeacher = useCallback(async (form: any) => {
     const isEdit = !!(form.id?.trim()) && teachers.some(t => t.id === form.id.trim());
-    let updated: Teacher[];
-    if (isEdit) {
-      updated = teachers.map(t => t.id === form.id.trim() ? { ...t, ...form } : t);
-    } else {
-      updated = [...teachers, {
-        ...form,
-        id:        `T${Date.now()}`,
-        classes:   form.classes || [],
-        createdAt: new Date().toISOString(),
-      }];
-    }
-    setTeachers(updated);
-    saveLocal('ltn-teachers', updated);
-    toast.success('✅ Đã lưu giáo viên!');
-  }, [teachers, setTeachers]);
+    const payload = {
+      ...form,
+      id:       isEdit ? form.id.trim() : `GV${Date.now()}`,
+      classes:  form.classes || [],
+      status:   form.status  || 'active',
+    };
+    await withSave(async () => {
+      await api({ action: isEdit ? 'updateTeacher' : 'saveTeacher', ...payload });
+      setSilent(); loadData();
+    }, '✅ Đã lưu giáo viên!');
+  }, [teachers, withSave, api, setSilent, loadData]);
 
   /* ════════════════════════════════════════════
-     MATERIALS DOMAIN (local state)
+     MATERIALS DOMAIN — đồng bộ GAS sheet HocLieu
   ════════════════════════════════════════════ */
-  const handleSaveMaterial = useCallback((form: any) => {
+  const handleSaveMaterial = useCallback(async (form: any) => {
     const isEdit = !!(form.id) && materials.some(m => m.id === form.id);
-    let updated: Material[];
-    if (isEdit) {
-      updated = materials.map(m => m.id === form.id ? { ...m, ...form } : m);
-    } else {
-      updated = [...materials, {
-        ...form,
-        id:         `M${Date.now()}`,
-        uploadedAt: new Date().toISOString(),
-        tags:       form.tags || [],
-      }];
-    }
-    setMaterials(updated);
-    saveLocal('ltn-materials', updated);
-    toast.success('✅ Đã lưu học liệu!');
-  }, [materials, setMaterials]);
+    const payload = {
+      ...form,
+      id:         isEdit ? form.id : `HL${Date.now()}`,
+      tags:       Array.isArray(form.tags) ? form.tags.join(',') : (form.tags || ''),
+      uploadDate: form.uploadDate || new Date().toISOString(),
+    };
+    await withSave(async () => {
+      await api({ action: isEdit ? 'updateMaterial' : 'saveMaterial', ...payload });
+      setSilent(); loadData();
+    }, '✅ Đã lưu học liệu!');
+  }, [materials, withSave, api, setSilent, loadData]);
 
-  const handleDeleteMaterial = useCallback((id: string) => {
-    const updated = materials.filter(m => m.id !== id);
-    setMaterials(updated);
-    saveLocal('ltn-materials', updated);
-    toast.success('✅ Đã xóa!');
-  }, [materials, setMaterials]);
+  const handleDeleteMaterial = useCallback(async (id: string) => {
+    await withSave(async () => {
+      await api({ action: 'deleteMaterial', id });
+      setSilent(); loadData();
+    }, '✅ Đã xóa học liệu!');
+  }, [withSave, api, setSilent, loadData]);
 
-  /* ════════════════════════════════════════════
-     LEAVE REQUESTS DOMAIN
-  ════════════════════════════════════════════ */
-  const handleApproveLeave = useCallback((id: string) => {
-    setLeaveRequests(prev => {
-      const updated = prev.map(l =>
-        l.id === id ? { ...l, status: 'approved' as const, approvedAt: new Date().toISOString() } : l
-      );
-      saveLocal('ltn-leaves', updated);
-      return updated;
-    });
-    toast.success('✅ Đã duyệt đơn!');
-  }, [setLeaveRequests]);
-
-  const handleRejectLeave = useCallback((id: string) => {
-    setLeaveRequests(prev => {
-      const updated = prev.map(l =>
-        l.id === id ? { ...l, status: 'rejected' as const } : l
-      );
-      saveLocal('ltn-leaves', updated);
-      return updated;
-    });
-    toast.success('Đã từ chối đơn!');
-  }, [setLeaveRequests]);
+  /* leaveRequests đã bỏ tính năng */
+  const handleApproveLeave = useCallback((_id: string) => {}, []);
+  const handleRejectLeave  = useCallback((_id: string) => {}, []);
 
   /* ════════════════════════════════════════════
      DERIVED STATE — tính từ data, không phải UI state
@@ -487,6 +475,7 @@ export function useDomains(cfg: DomainConfig) {
     handleDelete,
     handleToggleStudentStatus,
     handleSaveNote,
+    handleSaveFacebook,
     handleSaveTeacher,
     handleSaveMaterial,
     handleDeleteMaterial,

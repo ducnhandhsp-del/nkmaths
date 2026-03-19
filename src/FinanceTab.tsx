@@ -6,7 +6,7 @@
  * ✅ Công nợ đặt ĐẦU TIÊN
  */
 import React, { useMemo, useState } from 'react';
-import { DollarSign, TrendingDown, Eye, Edit3, Trash2, Plus, Search, Check, X as XIcon } from 'lucide-react';
+import { DollarSign, TrendingDown, Eye, Edit3, Trash2, Plus, Search } from 'lucide-react';
 import { fmtVND, formatDate, capitalizeName, exportCSV } from './helpers';
 import { Badge, Pager, FilterTabs } from './dsComponents';
 import { FAB } from './AppComponents';
@@ -16,6 +16,12 @@ import type { Payment, Expense, Student, SummaryData, FinanceSub } from './types
 const ZaloIcon = () => (
   <svg viewBox="0 0 48 48" style={{ width:16, height:16 }} fill="currentColor">
     <path d="M24 4C12.954 4 4 12.954 4 24c0 3.594.945 6.97 2.6 9.89L4 44l10.374-2.554A19.9 19.9 0 0024 44c11.046 0 20-8.954 20-20S35.046 4 24 4zm-6.5 13h3v10h-3V17zm4.5 0h3v1.5c.8-.95 1.95-1.5 3-1.5 2.75 0 4 1.9 4 4.5V27h-3v-5.5c0-1.4-.55-2.5-2-2.5s-2 1.1-2 2.5V27h-3V17z"/>
+  </svg>
+);
+
+const MessengerIcon = () => (
+  <svg viewBox="0 0 24 24" style={{ width:15, height:15 }} fill="currentColor">
+    <path d="M12 2C6.477 2 2 6.145 2 11.259c0 2.84 1.32 5.38 3.4 7.1v3.461l3.154-1.737A10.7 10.7 0 0012 20.518c5.523 0 10-4.145 10-9.259C22 6.145 17.523 2 12 2zm1.045 12.447l-2.55-2.72-4.98 2.72 5.474-5.806 2.614 2.72 4.915-2.72-5.473 5.806z"/>
   </svg>
 );
 
@@ -121,7 +127,7 @@ export default function FinanceTab({
       {/* ══ CÔNG NỢ ══ */}
       {finSub === 'debt' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Niên khóa:</span>
             <span style={{ fontSize: 11, fontWeight: 700, color: '#6366f1', background: '#eef2ff', border: '1px solid #c7d2fe', padding: '2px 10px' }}>{schoolYear}</span>
             <button onClick={() => exportCSV(`cong-no-t${curMo}-${curYr}`,
@@ -136,85 +142,95 @@ export default function FinanceTab({
             </button>
           </div>
           <div style={TABLE_WRAP}>
-            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' as any }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 'min-content' }}>
-                <thead>
-                  <tr>
-                    <th style={{ ...TH_SHARED, textAlign: 'left' }}>Học sinh</th>
-                    <th style={{ ...TH_SHARED, textAlign: 'center' }}>Lớp</th>
-                    {schoolYearMonths.map(fm => {
-                      const isCur = fm.m === curMo && fm.y === curYr;
-                      return (
-                        <th key={`${fm.m}-${fm.y}`} style={{ ...TH_SHARED, textAlign: 'center', minWidth: 44, background: isCur ? '#EEF2FF' : '#F8FAFC', color: isCur ? '#4F46E5' : '#64748B', borderLeft: isCur ? '2px solid #C7D2FE' : undefined, borderRight: isCur ? '2px solid #C7D2FE' : undefined }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                            <span>{fm.label}</span>
-                            {isCur && <span style={{ fontSize: 7, fontWeight: 800, color: '#c7d2fe', background: 'rgba(255,255,255,0.15)', padding: '1px 4px', letterSpacing: '0.1em' }}>NOW</span>}
-                          </div>
-                        </th>
-                      );
-                    })}
-                    <th style={{ ...TH_SHARED, textAlign: 'center', background: '#fef2f2', color: '#be123c', minWidth: 52 }}>Nợ</th>
-                    <th style={{ ...TH_SHARED, textAlign: 'right', background: '#fef2f2', color: '#be123c', minWidth: 90 }}>Tổng nợ</th>
-                    <th style={{ ...TH_SHARED, textAlign: 'center' }}>Thao tác</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pagedFin.length === 0
-                    ? <tr><td colSpan={schoolYearMonths.length + 5} style={{ padding: '48px 16px', textAlign: 'center', color: '#94a3b8', fontStyle: 'italic' }}>Không có dữ liệu</td></tr>
-                    : pagedFin.map((s, rowIdx) => {
-                      const ph = String(s.parentPhone || '').replace(/\D/g, '');
-                      const zMsg = makeZaloMsg(s);
-                      const unpaidCount = schoolYearMonths.filter(fm => !isPaid(s.id, fm.m, fm.y)).length;
-                      const isProblem = unpaidCount > 2;
-                      const isWarning = unpaidCount === 2;
-                      const rowBg = isProblem ? '#fff5f5' : isWarning ? '#fefce8' : undefined;
-                      return (
-                        <tr key={s.id} style={{ ...trStyle(rowIdx), ...(rowBg ? { background: rowBg } : {}) }}>
-                          <td style={{ ...TD_SHARED, whiteSpace: 'nowrap' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <div style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: isProblem ? '#ef4444' : isWarning ? '#f59e0b' : '#a7f3d0' }} />
-                              <div>
-                                <p style={{ fontWeight: 700, color: isProblem ? '#be123c' : '#0f172a', margin: 0, fontSize: 13 }}>{capitalizeName(s.name)}</p>
-                                <p style={{ fontSize: 11, color: '#94a3b8', margin: 0 }}>{s.id}</p>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={{ ...TH_SHARED, textAlign: 'left' }}>Học sinh</th>
+                  <th style={{ ...TH_SHARED, textAlign: 'center' }}>Lớp</th>
+                  <th style={{ ...TH_SHARED, textAlign: 'center', minWidth: 200 }}>Tình trạng đóng phí ({schoolYearMonths.length} tháng)</th>
+                  <th style={{ ...TH_SHARED, textAlign: 'center', background: '#fef2f2', color: '#be123c', minWidth: 52 }}>Nợ</th>
+                  <th style={{ ...TH_SHARED, textAlign: 'right', background: '#fef2f2', color: '#be123c', minWidth: 90 }}>Tổng nợ</th>
+                  <th style={{ ...TH_SHARED, textAlign: 'center' }}>Liên hệ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pagedFin.length === 0
+                  ? <tr><td colSpan={6} style={{ padding: '48px 16px', textAlign: 'center', color: '#94a3b8', fontStyle: 'italic' }}>Không có dữ liệu</td></tr>
+                  : pagedFin.map((s, rowIdx) => {
+                    const ph = String(s.parentPhone || '').replace(/\D/g, '');
+                    const zMsg = makeZaloMsg(s);
+                    const isInactive = s.status === 'inactive' || (s.endDate && s.endDate !== '---' && s.endDate !== '');
+                    const unpaidCount = schoolYearMonths.filter(fm => !isPaid(s.id, fm.m, fm.y)).length;
+                    const paidCount   = schoolYearMonths.length - unpaidCount;
+                    const paidPct     = Math.round(paidCount / schoolYearMonths.length * 100);
+                    const isProblem   = !isInactive && unpaidCount > 2;
+                    const isWarning   = !isInactive && unpaidCount === 2;
+                    const rowBg = isInactive ? '#f8fafc' : isProblem ? '#fff5f5' : isWarning ? '#fefce8' : undefined;
+                    return (
+                      <tr key={s.id} style={{ ...trStyle(rowIdx), ...(rowBg ? { background: rowBg } : {}), opacity: isInactive ? 0.6 : 1 }}>
+                        <td style={{ ...TD_SHARED, whiteSpace: 'nowrap' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: isInactive ? '#cbd5e1' : isProblem ? '#ef4444' : isWarning ? '#f59e0b' : '#a7f3d0' }} />
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                                <p style={{ fontWeight: 700, color: isInactive ? '#94a3b8' : isProblem ? '#be123c' : '#0f172a', margin: 0, fontSize: 13 }}>{capitalizeName(s.name)}</p>
+                                {isInactive && <span style={{ fontSize: 9, fontWeight: 700, background: '#e2e8f0', color: '#64748b', padding: '1px 5px', borderRadius: 4, textTransform: 'uppercase' }}>Nghỉ</span>}
                               </div>
+                              <p style={{ fontSize: 11, color: '#94a3b8', margin: 0 }}>{s.id}</p>
                             </div>
-                          </td>
-                          <td style={{ ...TD_SHARED, textAlign: 'center' }}><Badge color="indigo">{s.classId}</Badge></td>
-                          {schoolYearMonths.map(fm => {
-                            const paid = isPaid(s.id, fm.m, fm.y);
-                            const isCurCol = fm.m === curMo && fm.y === curYr;
-                            return (
-                              <td key={`${fm.m}-${fm.y}`} style={{ ...TD_SHARED, textAlign: 'center', padding: '9px 5px', background: isCurCol ? (paid ? '#ecfdf5' : '#fef2f2') : 'transparent', borderLeft: isCurCol ? '1px solid #c7d2fe' : undefined, borderRight: isCurCol ? '1px solid #c7d2fe' : undefined }}>
-                                {paid
-                                  ? <div style={{ width: 26, height: 26, borderRadius: '50%', background: 'linear-gradient(135deg,#10b981,#059669)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 6px rgba(5,150,105,0.3)' }}><Check size={11} color="white" strokeWidth={3} /></div>
-                                  : <div style={{ width: 26, height: 26, borderRadius: '50%', background: isCurCol ? '#fecaca' : '#f1f5f9', border: `1.5px solid ${isCurCol ? '#fca5a5' : '#e2e8f0'}`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><XIcon size={10} color={isCurCol ? '#ef4444' : '#cbd5e1'} strokeWidth={2.5} /></div>
-                                }
-                              </td>
-                            );
-                          })}
-                          <td style={{ ...TD_SHARED, textAlign: 'center' }}>
-                            <span style={{ fontSize: 12, fontWeight: 800, padding: '3px 8px', borderRadius: 6, background: isProblem ? '#fee2e2' : isWarning ? '#fef9c3' : '#f1f5f9', color: isProblem ? '#b91c1c' : isWarning ? '#92400e' : '#64748b' }}>
-                              {unpaidCount}T
-                            </span>
-                          </td>
-                          <td style={{ ...TD_SHARED, textAlign: 'right', fontWeight: 700, color: isProblem ? '#b91c1c' : '#64748b', whiteSpace: 'nowrap' }}>
-                            {unpaidCount > 0 ? fmtVND(unpaidCount * baseTuition) : '—'}
-                          </td>
-                          <td style={{ ...TD_SHARED, textAlign: 'center' }}>
-                            <div style={{ display: 'flex', justifyContent: 'center', gap: 5 }}>
-                              <button onClick={() => onViewFinance(s)} style={{ width: 30, height: 30, background: '#eef2ff', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Eye size={13} color="#6366f1" /></button>
-                              {ph.length >= 9 && !isPaid(s.id, fM, fY) && (
-                                <a href={`https://zalo.me/${ph}?text=${encodeURIComponent(zMsg)}`} target="_blank" rel="noopener noreferrer" style={{ width: 30, height: 30, background: '#eff6ff', border: '1px solid #bfdbfe', color: '#0068FF', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }} title="Nhắc Zalo"><ZaloIcon /></a>
-                              )}
+                          </div>
+                        </td>
+                        <td style={{ ...TD_SHARED, textAlign: 'center' }}><Badge color="indigo">{s.classId}</Badge></td>
+                        <td style={{ ...TD_SHARED, padding: '8px 14px' }}>
+                          {/* Thanh tiến độ + dots tháng */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{ flex: 1, height: 6, background: '#e2e8f0', borderRadius: 4, overflow: 'hidden' }}>
+                              <div style={{ height: '100%', width: `${paidPct}%`, background: isInactive ? '#94a3b8' : unpaidCount === 0 ? '#10b981' : unpaidCount <= 2 ? '#f59e0b' : '#ef4444', borderRadius: 4, transition: 'width 0.3s' }} />
                             </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  }
-                </tbody>
-              </table>
-            </div>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', whiteSpace: 'nowrap', minWidth: 32 }}>{paidCount}/{schoolYearMonths.length}</span>
+                          </div>
+                          {/* Dots mini cho từng tháng */}
+                          <div style={{ display: 'flex', gap: 3, marginTop: 5, flexWrap: 'wrap' }}>
+                            {schoolYearMonths.map(fm => {
+                              const paid = isPaid(s.id, fm.m, fm.y);
+                              const isCurM = fm.m === curMo && fm.y === curYr;
+                              return (
+                                <div key={`${fm.m}-${fm.y}`} title={`T${fm.m}/${fm.y}: ${paid ? 'Đã đóng' : 'Chưa đóng'}`}
+                                  style={{ width: 14, height: 14, borderRadius: 3, background: paid ? '#10b981' : isCurM ? '#fca5a5' : '#e2e8f0', border: isCurM ? '1.5px solid #ef4444' : '1px solid transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                  <span style={{ fontSize: 7, fontWeight: 700, color: paid ? 'white' : isCurM ? '#dc2626' : '#94a3b8', lineHeight: 1 }}>{fm.m}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </td>
+                        <td style={{ ...TD_SHARED, textAlign: 'center' }}>
+                          <span style={{ fontSize: 12, fontWeight: 800, padding: '3px 8px', borderRadius: 6, background: isProblem ? '#fee2e2' : isWarning ? '#fef9c3' : '#f1f5f9', color: isProblem ? '#b91c1c' : isWarning ? '#92400e' : '#64748b' }}>
+                            {unpaidCount}T
+                          </span>
+                        </td>
+                        <td style={{ ...TD_SHARED, textAlign: 'right', fontWeight: 700, color: isProblem ? '#b91c1c' : '#64748b', whiteSpace: 'nowrap' }}>
+                          {unpaidCount > 0 ? fmtVND(unpaidCount * baseTuition) : '—'}
+                        </td>
+                        <td style={{ ...TD_SHARED, textAlign: 'center' }}>
+                          <div style={{ display: 'flex', justifyContent: 'center', gap: 5 }}>
+                            <button onClick={() => onViewFinance(s)} style={{ width: 28, height: 28, background: '#eef2ff', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6 }}><Eye size={12} color="#6366f1" /></button>
+                            {ph.length >= 9 && (
+                              <a href={`https://zalo.me/${ph}?text=${encodeURIComponent(zMsg)}`} target="_blank" rel="noopener noreferrer" style={{ width: 28, height: 28, background: '#eff6ff', border: '1px solid #bfdbfe', color: '#0068FF', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', borderRadius: 6 }} title="Zalo PH"><ZaloIcon /></a>
+                            )}
+                            {s.facebookUrl && (
+                              <a href={s.facebookUrl.startsWith('http') ? s.facebookUrl : `https://m.me/${s.facebookUrl}`}
+                                target="_blank" rel="noopener noreferrer"
+                                style={{ width: 28, height: 28, background: '#f0f4ff', border: '1px solid #c7d2fe', color: '#2563eb', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', borderRadius: 6 }}
+                                title="Messenger PH"><MessengerIcon /></a>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                }
+              </tbody>
+            </table>
             <div style={{ borderTop: '1px solid #f1f5f9', background: '#fafafa' }}>
               <Pager page={pgF} total={filtFin.length} perPage={IPP} setPage={setPgF} showTotal />
             </div>

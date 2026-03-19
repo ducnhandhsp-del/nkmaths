@@ -11,7 +11,7 @@
  * Logic/state/filter/pagination: KHÔNG THAY ĐỔI
  */
 import React, { useState } from 'react';
-import { UserPlus, Eye, Edit3, Trash2, ArrowRight } from 'lucide-react';
+import { UserPlus, Eye, Edit3, Trash2, ArrowRight, MessageCircle } from 'lucide-react';
 import { IPP, capitalizeName, isStudentActive } from './helpers';
 import { ScrollHintTable, FAB } from './AppComponents';
 import { TABLE_WRAP, TH_SHARED, TD_SHARED, trStyle } from './AppComponents';
@@ -86,11 +86,21 @@ function StudentRow({
       <td style={TD}><Badge color={levelConf.color}>{s.academicLevel || '---'}</Badge></td>
       <td style={TD}><span style={{ color: '#475569', fontWeight: 500 }}>{s.parentPhone || '---'}</span></td>
       <td style={{ ...TD, textAlign: 'center' }}>
-        <TableActions actions={[
-          { icon: <Eye   size={13} />, label: `Xem ${s.name}`, intent: 'primary', onClick: () => onView(s)   },
-          { icon: <Edit3 size={13} />, label: `Sửa ${s.name}`, intent: 'warning', onClick: () => onEdit(s)   },
-          { icon: <Trash2 size={13}/>, label: `Xóa ${s.name}`, intent: 'danger',  onClick: () => onDelete(s) },
-        ]} />
+        <div style={{ display:'flex',alignItems:'center',justifyContent:'center',gap:4 }}>
+          {s.facebookUrl && (
+            <a href={s.facebookUrl.startsWith('http') ? s.facebookUrl : `https://m.me/${s.facebookUrl}`}
+              target="_blank" rel="noopener noreferrer"
+              title="Messenger PH"
+              style={{ width:28,height:28,background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:6,display:'inline-flex',alignItems:'center',justifyContent:'center',color:'#2563eb',textDecoration:'none',flexShrink:0 }}>
+              <MessageCircle size={13} />
+            </a>
+          )}
+          <TableActions actions={[
+            { icon: <Eye   size={13} />, label: `Xem ${s.name}`, intent: 'primary', onClick: () => onView(s)   },
+            { icon: <Edit3 size={13} />, label: `Sửa ${s.name}`, intent: 'warning', onClick: () => onEdit(s)   },
+            { icon: <Trash2 size={13}/>, label: `Xóa ${s.name}`, intent: 'danger',  onClick: () => onDelete(s) },
+          ]} />
+        </div>
       </td>
     </tr>
   );
