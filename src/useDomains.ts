@@ -334,14 +334,14 @@ export function useDomains(cfg: DomainConfig) {
       if (!form.content?.trim()) throw new Error('⚠️ Vui lòng nhập nội dung bài dạy!');
       const clean = sanitizeObject(form);
       await api({
-        action:      isEdit ? 'updateDiary' : 'saveDiary',
-        date:        formatDate(clean.date),
-        maLop:       clean.classId,
-        caDay:       clean.caDay || '',
-        teacherName: clean.teacherName,
-        attendance:  sanitizeAttendance(form.attendance),
-        content:     clean.content,
-        homework:    clean.homework || '---',
+        action:         isEdit ? 'updateDiary' : 'saveDiary',
+        date:           formatDate(clean.date),
+        classId:        clean.classId,        // FIX: maLop → classId (GAS đọc d.classId)
+        caDay:          clean.caDay || '',
+        teacherName:    clean.teacherName,
+        attendanceList: sanitizeAttendance(form.attendance), // FIX: attendance → attendanceList
+        content:        clean.content,
+        homework:       clean.homework || '---',
         ...(isEdit && {
           originalDate:     clean.originalDate,
           originalClassId:  clean.originalClassId,
