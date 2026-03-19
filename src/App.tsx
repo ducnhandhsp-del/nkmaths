@@ -78,6 +78,7 @@ export default function App() {
     loading, gsOk, loadData,
     setStudents, setPayments, setExpenses,
     setTeachers, setMaterials, setLeaveRequests,
+    silentRef, lastLoadTimeRef, isSavingRef,
   } = appData;
 
   /* ── Domain hooks (business logic + CRUD) ── */
@@ -87,11 +88,9 @@ export default function App() {
     setStudents, setPayments, setExpenses,
     setTeachers, setMaterials, setLeaveRequests,
     loadData,
-    /* FIX S1: truyền refs trực tiếp thay vì dùng __setSilent hack */
-    silentRef:       appData.silentRef,
-    lastLoadTimeRef: appData.lastLoadTimeRef,
-    /* FIX D5: useDomains set khi đang save để chặn auto-reload */
-    isSavingRef:     appData.isSavingRef,
+    silentRef,
+    lastLoadTimeRef,
+    isSavingRef,
   });
 
   /* ── Modal UI state ── */
@@ -127,7 +126,7 @@ export default function App() {
     setPreselectedDiaryCaDay(caDay || '');
     d.setEditDiary(null);
     setShowDiary(true);
-  }, [d]);
+  }, [d.setEditDiary]); // stable: useState setter không thay đổi
 
   const commands = useCommands({
     students, uClasses, goScreen,

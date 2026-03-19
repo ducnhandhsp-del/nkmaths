@@ -147,8 +147,8 @@ function txClasses(raw: any[], tl: string[]): any[] {
 }
 
 function txTeachers(raw: any[]): Teacher[] {
-  return raw.map((t: any) => ({
-    id:             String(t.id             || `GV${Date.now()}`),
+  return raw.map((t: any, i: number) => ({
+    id:             String(t.id             || `GV${Date.now()}-${i}`),
     name:           String(t.name           || ''),
     phone:          String(t.phone          || ''),
     email:          String(t.email          || ''),

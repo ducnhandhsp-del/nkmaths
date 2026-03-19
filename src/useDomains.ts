@@ -78,16 +78,16 @@ export function useDomains(cfg: DomainConfig) {
   const withSave = useCallback(async (fn: () => Promise<void>, successMsg?: string) => {
     if (savingRef.current) return;
     savingRef.current = true;
-    isSavingRef.current = true;   // FIX D5: báo cho useAppData biết đang save
     setSaving(true);
     try {
+      isSavingRef.current = true; // chặn auto-reload trong khi save
       await fn();
       if (successMsg) toast.success(successMsg);
     } catch (err: any) {
       toast.error('❌ ' + (err.message || 'Lỗi khi lưu'));
     } finally {
       savingRef.current = false;
-      isSavingRef.current = false; // FIX D5: cho phép auto-reload lại
+      isSavingRef.current = false;
       setSaving(false);
     }
   }, [isSavingRef]);
@@ -505,7 +505,7 @@ export function useDomains(cfg: DomainConfig) {
       (!qD   || l.classId.toLowerCase().includes(qD.toLowerCase()) || (l.content || '').toLowerCase().includes(qD.toLowerCase()))
     ).sort((a, b) => {
       const dd = parseDMY(b.date) - parseDMY(a.date);
-      return dd !== 0 ? dd : parseCaDayToHours(b.caDay) - parseCaDayToHours(a.caDay);
+      return dd !== 0 ? dd : parseCaDayToHours(a.caDay) - parseCaDayToHours(b.caDay);
     })
   , [tlogs, dCls, qD]);
 
