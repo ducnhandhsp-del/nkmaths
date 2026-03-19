@@ -119,9 +119,10 @@ function txLogs(raw: any[], tl: string[]): any[] {
       teacherNote:     String(l['Ghi chú GV']       || l.teacherNote || ''),
       teacherName:     resolveTeacher(l['Giáo viên'] || l.teacherName || '---', tl),
       caDay:           caVal,
-      present: atts.filter((a: any) => (a.trangThai || a['Trạng thái']) === 'Có mặt').length,
-      absent:  atts.filter((a: any) => (a.trangThai || a['Trạng thái']) === 'Vắng').length,
-      late:    atts.filter((a: any) => (a.trangThai || a['Trạng thái']) === 'Muộn').length,
+      // atts đã normalize sang key 'Trạng thái' — dùng trực tiếp, không cần fallback trangThai
+      present: atts.filter((a: any) => a['Trạng thái'] === 'Có mặt').length,
+      absent:  atts.filter((a: any) => a['Trạng thái'] === 'Vắng').length,
+      late:    atts.filter((a: any) => a['Trạng thái'] === 'Muộn').length,
       attendanceList: atts,
     };
   }).sort((a: any, b: any) => parseDMY(b.date) - parseDMY(a.date));

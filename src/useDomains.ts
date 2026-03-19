@@ -136,8 +136,12 @@ export function useDomains(cfg: DomainConfig) {
         parentPhone: form.parentPhone || '', studentPhone: form.studentPhone || '',
         address: form.address || '', academicLevel: form.academicLevel || '',
         goal: form.goal || '', supportNeeded: form.supportNeeded || '',
-        classId: form.classId || '', startDate: form.startDate || '',
-        endDate: form.endDate || '', status: form.status || 'active',
+        classId: form.classId || '',
+        // BUG4 FIX: formatDate để startDate nhất quán với dữ liệu từ GAS (DD/MM/YYYY)
+        // tránh parseDMY / isMonthBillable tính sai tháng bắt đầu
+        startDate: form.startDate ? formatDate(form.startDate) : '',
+        endDate: form.endDate ? formatDate(form.endDate) : '',
+        status: form.status || 'active',
         notes: form.notes || '', facebookUrl: form.facebookUrl || '',
       };
       if (editStudent) {
@@ -178,6 +182,7 @@ export function useDomains(cfg: DomainConfig) {
         grade: s.grade, school: s.school, teacher: s.teacher, parentName: s.parentName,
         parentPhone: s.parentPhone, studentPhone: s.studentPhone, address: s.address,
         academicLevel: s.academicLevel, goal: s.goal, supportNeeded: s.supportNeeded,
+        notes: s.notes || '', facebookUrl: s.facebookUrl || '',
         classId: s.classId, startDate: s.startDate,
         endDate: isInactive ? '' : endDateStr,
         status:  isInactive ? 'active' : 'inactive',
@@ -271,7 +276,11 @@ export function useDomains(cfg: DomainConfig) {
       const yy           = n.getFullYear().toString().slice(2);
       const mm           = (n.getMonth() + 1).toString().padStart(2,'0');
       const dd           = n.getDate().toString().padStart(2,'0');
-      const soCT         = form.docNum || `PT-${yy}${mm}${dd}-${maHS.toUpperCase()}-${Date.now().toString(36).slice(-4).toUpperCase()}`;
+      // BUG7 FIX: khi edit, soCT phải là docNum cũ để GAS tìm đúng row
+      // khi thêm mới, generate soCT mới
+      const soCT = editPayment
+        ? (editPayment.docNum || form.docNum)
+        : (form.docNum || `PT-${yy}${mm}${dd}-${maHS.toUpperCase()}-${Date.now().toString(36).slice(-4).toUpperCase()}`);
       const dateFormatted = formatDate(form.date);
       const description  = `Học phí tháng ${thangHP} năm ${namHP}`;
       const clean        = sanitizeObject({ ...form, maHS, soTien: Number(form.soTien), date: dateFormatted, description, thangHP, namHP });
@@ -307,7 +316,10 @@ export function useDomains(cfg: DomainConfig) {
       const yy = n.getFullYear().toString().slice(2);
       const mm = (n.getMonth() + 1).toString().padStart(2,'0');
       const dd = n.getDate().toString().padStart(2,'0');
-      const soCT = form.docNum || `PC-${yy}${mm}${dd}-${n.getTime().toString(36).slice(-4).toUpperCase()}`;
+      // BUG7 FIX: khi edit dùng docNum cũ để GAS tìm đúng row
+      const soCT = editExpense
+        ? (editExpense.docNum || form.docNum)
+        : (form.docNum || `PC-${yy}${mm}${dd}-${n.getTime().toString(36).slice(-4).toUpperCase()}`);
       const dateFormatted = formatDate(form.date);
 
       const optimistic = {
@@ -339,6 +351,12 @@ export function useDomains(cfg: DomainConfig) {
   const handleSaveDiary = useCallback(async (form: any) => {
     const isEdit = !!form.originalDate;
 
+    // BUG5 FIX: validate trước optimistic update — tránh entry giả xuất hiện rồi bị xóa
+    if (!form.content?.trim()) {
+      toast.error('⚠️ Vui lòng nhập nội dung bài dạy!');
+      return;
+    }
+
     /* ── Optimistic update: hiện entry ngay lập tức, không chờ GAS ── */
     const attList = sanitizeAttendance(form.attendance || []);
     const present = attList.filter((a: any) => (a.trangThai || a['Trạng thái']) === 'Có mặt').length;
@@ -368,7 +386,6 @@ export function useDomains(cfg: DomainConfig) {
     setEditDiary(null);
 
     return withSave(async () => {
-      if (!form.content?.trim()) throw new Error('⚠️ Vui lòng nhập nội dung bài dạy!');
       await api({
         action:         isEdit ? 'updateDiary' : 'saveDiary',
         date:           dateFormatted,
