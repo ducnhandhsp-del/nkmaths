@@ -6,11 +6,10 @@
  */
 import React, { useState, useMemo } from 'react';
 import { Library, Plus, ExternalLink, Trash2, Edit3, X, Save, BookMarked, FileText, Video, File, BookOpen, ClipboardList, ChevronDown, ChevronUp } from 'lucide-react';
-import { ModalWrap, Field } from './UIComponents';
 import { Button, IconButton, Input, Select, FilterChip } from './dsComponents';
 import { StatBlock as HStatCard, StatGrid as HStatGrid } from './AppComponents';
 import { FAB } from './AppComponents';
-import { TABLE_WRAP, TH_SHARED, TD_SHARED, trStyle } from './AppComponents';
+import { TABLE_WRAP, TH_SHARED, TD_SHARED } from './AppComponents';
 import type { Material } from './types';
 
 const TYPE_CFG: Partial<Record<Material['type'],{label:string;icon:any;iconColor:string;tagBg:string;tagColor:string}>> & Record<string,any> = {
@@ -78,7 +77,7 @@ function MaterialModal({ open, onClose, editing, onSave, isSaving }: {
         {/* Footer */}
         <div style={{ padding:'14px 24px',borderTop:'1px solid #f1f5f9',display:'flex',justifyContent:'flex-end',gap:10,flexShrink:0 }}>
           <Button variant="outline" intent="neutral" onClick={onClose}>Hủy</Button>
-          <Button intent="success" loading={isSaving} icon={<Save size={15}/>} onClick={()=>onSave({...f,id:editing?.id||`M${Date.now()}`,uploadedBy:'GV001',downloadCount:editing?.downloadCount||0,tags:f.tags||[]})}>
+          <Button intent="success" loading={isSaving} icon={<Save size={15}/>} onClick={()=>onSave({...f,id:editing?.id||`M${Date.now()}`,uploadedBy:editing?.uploadedBy||'',downloadCount:editing?.downloadCount||0,tags:f.tags||[]})}>
             {editing?'Cập nhật':'Thêm mới'}
           </Button>
         </div>
@@ -158,12 +157,13 @@ export default function MaterialsTab({ materials, uClasses, onSave, onDelete, is
   const [filterGrade,setFilterGrade]=useState('');
   const [filterClass,setFilterClass]=useState('');
 
-  /* Filter theo cả grade và classId */
-  const filteredMaterials = useMemo(()=>{
+  /* FIX M3: filter cả grade lẫn classId → header count + stat cards nhất quán với sections hiển thị */
+  const filteredMaterials = useMemo(() => {
     let list = materials;
     if (filterClass) list = list.filter(m => m.classId === filterClass);
+    if (filterGrade) list = list.filter(m => (m.grade || 'Tổng hợp') === filterGrade);
     return list;
-  }, [materials, filterClass]);
+  }, [materials, filterClass, filterGrade]);
 
   const byGrade=useMemo(()=>{
     const map:Record<string,Material[]>={};
@@ -172,8 +172,9 @@ export default function MaterialsTab({ materials, uClasses, onSave, onDelete, is
     return map;
   },[filteredMaterials]);
 
-  const totalDownloads=materials.reduce((s,m)=>s+(m.downloadCount||0),0);
-  const gradesToShow=filterGrade?[filterGrade]:GRADES;
+  const totalDownloads = materials.reduce((s, m) => s + (m.downloadCount || 0), 0);
+  /* FIX M3: gradesToShow không còn cần thiết vì filteredMaterials đã filter grade
+     → luôn show tất cả GRADES, byGrade[grade] rỗng với grade không match */
 
   /* Class filter options — chỉ hiện lớp có học liệu */
   const classOptions = useMemo(()=>[
@@ -229,8 +230,8 @@ export default function MaterialsTab({ materials, uClasses, onSave, onDelete, is
         </div>
       )}
 
-      {/* Grade sections */}
-      {filteredMaterials.length>0&&gradesToShow.map(grade=>(
+      {/* Grade sections — byGrade đã filter theo grade active */}
+      {filteredMaterials.length>0&&GRADES.map(grade=>(
         <GradeSection key={grade} grade={grade} materials={byGrade[grade]||[]} onEdit={m=>{setEditing(m);setShowModal(true);}} onDelete={onDelete}/>
       ))}
 

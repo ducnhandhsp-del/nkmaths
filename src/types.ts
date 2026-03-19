@@ -157,6 +157,19 @@ export interface Material {
   downloadCount?: number;
 }
 
+export interface Lead {
+  id:               string;
+  name:             string;
+  phone:            string;
+  email?:           string;
+  grade?:           string;
+  source:           'Facebook' | 'Zalo' | 'Giới thiệu' | 'Website' | 'Khác';
+  status:           'new' | 'contacted' | 'appointment' | 'registered' | 'lost';
+  notes?:           string;
+  appointmentDate?: string;
+  createdAt:        string;
+}
+
 export interface ClassRecord {
   'Mã Lớp':    string;
   'Tên Lớp'?:  string;

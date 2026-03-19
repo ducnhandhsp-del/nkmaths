@@ -6,7 +6,7 @@
  * ✅ StatBlock chuẩn chung
  */
 import React, { useMemo, useState } from 'react';
-import { Users, BookOpen, DollarSign, Library, Clock, UserPlus, CreditCard, TrendingUp, ArrowDown, ArrowUp, Minus, CalendarCheck } from 'lucide-react';
+import { Users, BookOpen, DollarSign, Library, CalendarCheck } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { fmtVND, formatDate, parseDMY, capitalizeName, isStudentActive } from './helpers';
 import { Grid2 } from './UIComponents';
@@ -252,7 +252,20 @@ export default function OverviewTab({
         return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
       });
   }, [students]);
-  const theoKhoi = useMemo(() => { const m: Record<string, number> = {}; students.forEach(s => { const k = s.grade || 'Khác'; m[k] = (m[k] || 0) + 1; }); return Object.entries(m).sort((a, b) => a[0].localeCompare(b[0])).map(([name, value]) => ({ name, value })); }, [students]);
+  const theoKhoi = useMemo(() => {
+    const m: Record<string, number> = {};
+    students.forEach(s => { const k = s.grade || 'Khác'; m[k] = (m[k] || 0) + 1; });
+    return Object.entries(m)
+      .sort((a, b) => {
+        const na = parseInt(a[0]), nb = parseInt(b[0]);
+        // Ưu tiên sort số (6,7,8,9,10,11,12) trước, string sau
+        if (!isNaN(na) && !isNaN(nb)) return na - nb;
+        if (!isNaN(na)) return -1;
+        if (!isNaN(nb)) return 1;
+        return a[0].localeCompare(b[0]);
+      })
+      .map(([name, value]) => ({ name, value }));
+  }, [students]);
 
   const teachingActs = useMemo(() => {
     const acts: any[] = [];
@@ -363,7 +376,16 @@ export default function OverviewTab({
         </div>
       </Grid2>
 
-      {/* 5. Mini charts */}
+      {/* 5. Biểu đồ doanh thu 6 tháng — full width */}
+      <RevenueChart
+        payments={payments}
+        expenses={expenses}
+        students={students}
+        isPaid={isPaid}
+        onGoFinance={() => goScreen('finance')}
+      />
+
+      {/* 6. Mini charts */}
       <Grid2 gap={14}>
         <div style={{ ...TABLE_WRAP, padding: 16 }}>
           <p style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 12px' }}>Học lực môn Toán</p>

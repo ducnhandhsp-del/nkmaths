@@ -1,318 +1,287 @@
 /**
  * useAppData.ts — Data Hook
- * Lớp Toán NK · v28.0
+ * Lớp Toán NK · v29.0
  *
- * Tách toàn bộ fetch → transform → cache logic ra khỏi App.tsx.
- * App.tsx trước đây chứa 150+ dòng loadData inline.
- *
- * Trả về: { students, uClasses, payments, expenses, tlogs,
- *            teachers, leaveRequests, materials, summary,
- *            loading, gsOk, loadData }
+ * PHASE 1 FIXES:
+ *  [S1] Xoá __setSilent hack — silentRef được return trực tiếp
+ *  [S2] Transform functions chuyển ra module level (pure functions) →
+ *       loadData chỉ còn phụ thuộc [scriptUrl], không re-create khi teacherList thay đổi
+ *  [S3] Không còn race condition vì silentRef là cùng 1 instance Ref xuyên suốt
+ *  [L2] Dùng field-existence check thay vì length > 0 để có thể xóa sạch teachers/materials
+ *  [L3] summary chuyển thành useMemo → tự cập nhật ngay sau optimistic payment/expense
+ *  [D2] ltn-cache gộp teachers + materials → 1 nguồn cache thống nhất
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import toast from 'react-hot-toast';
 
-import type { Student, Payment, Expense, TeachingLog, Teacher, LeaveRequest, Material, SummaryData } from './types';
-import { fetchWithTimeout, formatDate, parseDMY, resolveTeacher, loadLocal } from './helpers';
+import type { Student, Payment, Expense, Teacher, LeaveRequest, Material } from './types';
+import { fetchWithTimeout, parseDMY, resolveTeacher, loadLocal } from './helpers';
 import { buildChartData } from './measures';
 import { RULES } from './rules';
 
-interface UseAppDataOptions {
-  scriptUrl:   string;
-  teacherList: string[];
+/* ═══════════════════════════════════════════════════════════════════
+   MODULE-LEVEL PURE TRANSFORM FUNCTIONS
+   FIX S2: không còn là hook callbacks → không còn là dependency của loadData
+   teacherList truyền vào qua tham số, không qua closure
+═══════════════════════════════════════════════════════════════════ */
+
+function txStudents(raw: any[], tl: string[]): Student[] {
+  return raw.map(s => ({
+    id:            String(s['Mã HS']      || s.id            || ''),
+    name:          String(s['Họ và tên học sinh'] || s.name  || '---'),
+    dob:           String(s['Ngày tháng năm sinh'] || s.dob  || ''),
+    branch:        String(s['Cơ sở học tập']  || s.branch    || ''),
+    grade:         String(s['Khối lớp hiện tại'] || s.grade  || ''),
+    school:        String(s['Trường đang học'] || s.school    || ''),
+    teacher:       resolveTeacher(s['Giáo viên trực tiếp giảng dạy'] || s.teacher || '', tl),
+    parentName:    String(s['Họ và tên phụ huynh']  || s.parentName   || ''),
+    parentPhone:   String(s['Số điện thoại phụ huynh (Zalo)'] || s.parentPhone || ''),
+    studentPhone:  String(s['Số điện thoại học sinh'] || s.studentPhone || ''),
+    address:       String(s['Địa chỉ thường trú'] || s.address || ''),
+    academicLevel: String(s['Học lực môn Toán hiện tại'] || s.academicLevel || ''),
+    goal:          String(s['Mục tiêu điểm số học kỳ tới'] || s.goal || ''),
+    supportNeeded: String(s['Kiến thức em cần hỗ trợ thêm'] || s.supportNeeded || ''),
+    classId:       String(s['Mã Lớp'] || s.classId    || ''),
+    startDate:     String(s['Ngày bắt đầu'] || s.startDate || ''),
+    endDate:       String(s['Ngày kết thúc'] || s.endDate   || ''),
+    status:        String(s['Trạng thái']   || s.status     || 'active'),
+    notes:         String(s.notes       || ''),
+    facebookUrl:   String(s.facebookUrl || ''),
+  }));
 }
 
-interface AppData {
-  students:      Student[];
-  uClasses:      any[];
-  payments:      Payment[];
-  expenses:      Expense[];
-  tlogs:         any[];
-  teachers:      Teacher[];
-  leaveRequests: LeaveRequest[];
-  materials:     Material[];
-  summary:       SummaryData | null;
-  loading:       boolean;
-  gsOk:          boolean | null;
-  loadData:      () => Promise<void>;
+function txPayments(raw: any[], hs: Student[]): Payment[] {
+  return raw.map((p, i) => {
+    const rawDate    = String(p['Ngày CT'] || p.date || '').replace(/\//g, '').replace(/\s.*/,'');
+    const maHS       = String(p['Mã HS'] || p.studentId || 'X').trim();
+    const fallbackId = `PT-${rawDate || '0'}-${maHS}-${i}`;
+    const d          = p['Số hiệu CT'] || p.docNum || fallbackId;
+    return {
+      id:          String(d),
+      date:        String(p['Ngày CT'] || p.date || ''),
+      docNum:      String(d),
+      studentId:   maHS,
+      studentName: String(p.studentName || hs.find(s => s.id === maHS)?.name || '?'),
+      payer:       String(p['Người thanh toán'] || p.payer  || '---'),
+      method:      String(p['Hình thức']        || p.method || '---'),
+      description: String(p['Diễn giải']        || p.description || ''),
+      amount:      Number(p['Số tiền']          || p.amount) || 0,
+      note:        String(p['Ghi chú']          || p.note   || ''),
+      thangHP:     Number(p.thangHP) || 0,
+      namHP:       Number(p.namHP)   || 0,
+    };
+  });
 }
 
-export function useAppData({ scriptUrl, teacherList }: UseAppDataOptions): AppData {
+function txExpenses(raw: any[]): any[] {
+  return raw.map((e, i) => {
+    const rawDate    = String(e['Ngày CT'] || e.date || '').replace(/\//g, '').replace(/\s.*/,'');
+    const desc       = String(e['Nội dung chi'] || e.description || '').slice(0, 6).replace(/\s/g, '');
+    const fallbackId = `PC-${rawDate || '0'}-${desc || 'X'}-${i}`;
+    const d          = e['Số hiệu CT'] || e.docNum || fallbackId;
+    return {
+      id:          String(d),
+      date:        String(e['Ngày CT'] || e.date || ''),
+      docNum:      String(d),
+      description: String(e['Nội dung chi'] || e.description || ''),
+      category:    String(e['Hạng mục']     || e.category    || ''),
+      amount:      Number(e['Số tiền']      || e.amount) || 0,
+      spender:     String(e['Người chi']    || e.spender || ''),
+    };
+  });
+}
+
+function txLogs(raw: any[], tl: string[]): any[] {
+  return raw.map(l => {
+    const dt    = l['Ngày'] || l.date || '';
+    const ci    = l['Mã Lớp'] || l.classId || '';
+    const caVal = String(l['Ca dạy'] || l.caDay || '');
+
+    /* attendanceList đã được GAS nhúng sẵn trong mỗi log record */
+    const atts = (l.attendanceList || []).map((a: any) => ({
+      maHS:         String(a.maHS || a.MaHS || a['Mã HS'] || ''),
+      'Mã HS':      String(a.maHS || a.MaHS || a['Mã HS'] || ''),
+      tenHS:        String(a.tenHS || ''),
+      'Trạng thái': String(a.trangThai || a.TrangThai || a['Trạng thái'] || 'Có mặt'),
+      'Ghi chú':    String(a.ghiChu || a.GhiChu || a['Ghi chú'] || ''),
+    }));
+
+    return {
+      rawDate:         String(l.rawDate || dt),
+      date:            String(dt),
+      originalDate:    String(l.originalDate    || dt),
+      originalClassId: String(l.originalClassId || ci),
+      originalCaDay:   String(l.originalCaDay   || caVal),
+      classId:         String(ci),
+      content:         String(l['Nội dung bài dạy'] || l.content    || '---'),
+      homework:        String(l['Bài tập về nhà']   || l.homework   || '---'),
+      teacherNote:     String(l['Ghi chú GV']       || l.teacherNote || ''),
+      teacherName:     resolveTeacher(l['Giáo viên'] || l.teacherName || '---', tl),
+      caDay:           caVal,
+      present: atts.filter((a: any) => (a.trangThai || a['Trạng thái']) === 'Có mặt').length,
+      absent:  atts.filter((a: any) => (a.trangThai || a['Trạng thái']) === 'Vắng').length,
+      late:    atts.filter((a: any) => (a.trangThai || a['Trạng thái']) === 'Muộn').length,
+      attendanceList: atts,
+    };
+  }).sort((a: any, b: any) => parseDMY(b.date) - parseDMY(a.date));
+}
+
+function txClasses(raw: any[], tl: string[]): any[] {
+  const map = new Map<string, any>();
+  raw.forEach((c: any) => {
+    const maLop = c.MaLop || c['Ma Lop'] || c['Mã Lớp'] || '';
+    if (!maLop || map.has(maLop)) return;
+    map.set(maLop, {
+      'Mã Lớp':    maLop,
+      'Tên Lớp':   c.TenLop  || c['Tên Lớp']  || '',
+      'Khối':      c.Khoi    || c['Khối']      || '',
+      'Giáo viên': resolveTeacher(c.GiaoVien || c['Giáo viên'] || '', tl),
+      'Cơ sở':     c.CoSo    || c['Cơ sở']    || '',
+      'Buổi 1':    c.Buoi1   || c['Buổi 1']   || '',
+      'Buổi 2':    c.Buoi2   || c['Buổi 2']   || '',
+      'Buổi 3':    c.Buoi3   || c['Buổi 3']   || '',
+    });
+  });
+  return Array.from(map.values());
+}
+
+function txTeachers(raw: any[]): Teacher[] {
+  return raw.map((t: any) => ({
+    id:             String(t.id             || `GV${Date.now()}`),
+    name:           String(t.name           || ''),
+    phone:          String(t.phone          || ''),
+    email:          String(t.email          || ''),
+    gender:         t.gender                || 'male',
+    specialization: String(t.specialization || 'Toán'),
+    qualification:  String(t.qualification  || ''),
+    experience:     Number(t.experience)    || 0,
+    baseSalary:     Number(t.baseSalary)    || 0,
+    hourlyRate:     Number(t.hourlyRate)    || 0,
+    allowance:      Number(t.allowance)     || 0,
+    status:         String(t.status         || 'active'),
+    notes:          String(t.notes          || ''),
+    createdAt:      String(t.createdAt      || ''),
+    classes: Array.isArray(t.classes)
+      ? t.classes
+      : (t.classes ? String(t.classes).split(',').map((c: string) => c.trim()).filter(Boolean) : []),
+  }));
+}
+
+function txMaterials(raw: any[]): Material[] {
+  return raw.map((m: any) => ({
+    ...m,
+    tags: Array.isArray(m.tags)
+      ? m.tags
+      : (m.tags ? String(m.tags).split(',').map((t: string) => t.trim()).filter(Boolean) : []),
+  }));
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   HOOK
+═══════════════════════════════════════════════════════════════════ */
+
+export function useAppData({ scriptUrl, teacherList }: { scriptUrl: string; teacherList: string[] }) {
   const [students,      setStudents]      = useState<Student[]>([]);
   const [uClasses,      setUClasses]      = useState<any[]>([]);
   const [payments,      setPayments]      = useState<Payment[]>([]);
-  const [expenses,      setExpenses]      = useState<Expense[]>([]);
+  const [expenses,      setExpenses]      = useState<any[]>([]);
   const [tlogs,         setTlogs]         = useState<any[]>([]);
-  /* ── 3 domain này load từ localStorage ngay khi init ── */
-  const [teachers,      setTeachers]      = useState<Teacher[]>(()      => loadLocal<Teacher[]>('ltn-teachers', []));
+  const [teachers,      setTeachers]      = useState<Teacher[]>(() => loadLocal<Teacher[]>('ltn-teachers', []));
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(() => loadLocal<LeaveRequest[]>('ltn-leaves', []));
-  const [materials,     setMaterials]     = useState<Material[]>(()     => loadLocal<Material[]>('ltn-materials', []));
-  const [summary,       setSummary]       = useState<SummaryData | null>(null);
+  const [materials,     setMaterials]     = useState<Material[]>(() => loadLocal<Material[]>('ltn-materials', []));
   const [loading,       setLoading]       = useState(true);
   const [gsOk,          setGsOk]          = useState<boolean | null>(null);
 
-  const loadingRef = useRef(false);
-  const silentRef  = useRef(false);
+  /* FIX L3: summary là useMemo — tự cập nhật ngay khi payments/expenses thay đổi (kể cả optimistic) */
+  const summary = useMemo(() => ({
+    totalRevenue: payments.reduce((s, p) => s + p.amount, 0),
+    totalExpense: expenses.reduce((s, e: any) => s + e.amount, 0),
+    chart:        buildChartData(payments, expenses),
+  }), [payments, expenses]);
 
-  /* ── Transform raw JSON → typed objects ── */
-  const transformStudents = useCallback((raw: any[]): Student[] =>
-    raw.map(s => ({
-      id:            String(s['Mã HS'] || ''),
-      name:          String(s['Họ và tên học sinh'] || '---'),
-      dob:           String(s['Ngày tháng năm sinh'] || ''),
-      branch:        String(s['Cơ sở học tập'] || ''),
-      grade:         String(s['Khối lớp hiện tại'] || ''),
-      school:        String(s['Trường đang học'] || ''),
-      teacher:       resolveTeacher(s['Giáo viên trực tiếp giảng dạy'], teacherList),
-      parentName:    String(s['Họ và tên phụ huynh'] || ''),
-      parentPhone:   String(s['Số điện thoại phụ huynh (Zalo)'] || ''),
-      studentPhone:  String(s['Số điện thoại học sinh'] || ''),
-      address:       String(s['Địa chỉ thường trú'] || ''),
-      academicLevel: String(s['Học lực môn Toán hiện tại'] || ''),
-      goal:          String(s['Mục tiêu điểm số học kỳ tới'] || ''),
-      supportNeeded: String(s['Kiến thức em cần hỗ trợ thêm'] || ''),
-      classId:       String(s['Mã Lớp'] || ''),
-      startDate:     String(s['Ngày bắt đầu'] || ''),
-      endDate:       String(s['Ngày kết thúc'] || ''),
-      status:        String(s['Trạng thái'] || ''),
-    }))
-  , [teacherList]);
+  const loadingRef      = useRef(false);
+  /* FIX S1+S3: silentRef là Ref object — return trực tiếp để useDomains set mà không cần hack */
+  const silentRef       = useRef(false);
+  /* FIX D4: return để useDomains reset cooldown sau manual save */
+  const lastLoadTimeRef = useRef(0);
+  /* FIX D5: useDomains set ref này trong withSave — auto-reload check trước khi chạy */
+  const isSavingRef     = useRef(false);
 
-  const transformPayments = useCallback((raw: any[], hs: Student[]): Payment[] =>
-    raw.map((p, i) => {
-      const rawDate    = String(p['Ngày CT'] || '').replace(/\//g, '').replace(/\s.*/,'');
-      const maHS       = String(p['Mã HS'] || 'X').trim();
-      const fallbackId = `PT-${rawDate || '0'}-${maHS}-${i}`;
-      const d          = p['Số hiệu CT'] || fallbackId;
-      return {
-        id:          String(d),
-        date:        String(p['Ngày CT'] || ''),
-        docNum:      String(d),
-        studentId:   String(p['Mã HS'] || ''),
-        studentName: hs.find(s => s.id === String(p['Mã HS'] || ''))?.name || '?',
-        payer:       String(p['Người thanh toán'] || '---'),
-        method:      String(p['Hình thức'] || '---'),
-        description: String(p['Diễn giải'] || ''),
-        amount:      Number(p['Số tiền']) || 0,
-        note:        String(p['Ghi chú'] || ''),
-      };
-    })
-  , []);
+  /* FIX S2: teacherListRef → loadData đọc teacherList qua ref, không qua closure */
+  const teacherListRef = useRef(teacherList);
+  useEffect(() => { teacherListRef.current = teacherList; }, [teacherList]);
 
-  const transformExpenses = useCallback((raw: any[]): Expense[] =>
-    raw.map((e, i) => {
-      const rawDate    = String(e['Ngày CT'] || '').replace(/\//g, '').replace(/\s.*/,'');
-      const desc       = String(e['Nội dung chi'] || '').slice(0, 6).replace(/\s/g, '');
-      const fallbackId = `PC-${rawDate || '0'}-${desc || 'X'}-${i}`;
-      const d          = e['Số hiệu CT'] || fallbackId;
-      return {
-        id:          String(d),
-        date:        String(e['Ngày CT'] || ''),
-        docNum:      String(d),
-        description: String(e['Nội dung chi'] || ''),
-        category:    String(e['Hạng mục'] || ''),
-        amount:      Number(e['Số tiền']) || 0,
-        spender:     String(e['Người chi'] || ''),
-      };
-    })
-  , []);
-
-  const transformLogs = useCallback((raw: any[], attendanceLogs: any[]): any[] =>
-    raw.map(l => {
-      const dt    = l['Ngày'];
-      const ci    = l['Mã Lớp'];
-      const caVal = String(l['Ca dạy'] || '');
-      const dtTs  = parseDMY(dt);
-      const atts  = attendanceLogs.filter(a => {
-        if (parseDMY(a['Ngày']) !== dtTs)   return false;
-        if (a['Mã Lớp'] !== ci)             return false;
-        if (caVal && a['Ca dạy'] && a['Ca dạy'] !== caVal) return false;
-        return true;
-      });
-      return {
-        rawDate:          String(dt || ''),
-        date:             String(dt || ''),
-        originalDate:     String(dt || ''),
-        originalClassId:  String(ci || ''),
-        originalCaDay:    String(l['Ca dạy'] || ''),
-        classId:          String(ci || ''),
-        content:          String(l['Nội dung bài dạy'] || '---'),
-        homework:         String(l['Bài tập về nhà'] || '---'),
-        teacherNote:      String(l['Ghi chú GV'] || ''),
-        teacherName:      String(l['Giáo viên'] || '---'),
-        caDay:            String(l['Ca dạy'] || ''),
-        present: atts.filter((a: any) => a['Trạng thái'] === 'Có mặt').length,
-        absent:  atts.filter((a: any) => a['Trạng thái'] === 'Vắng').length,
-        late:    atts.filter((a: any) => a['Trạng thái'] === 'Muộn').length,
-        attendanceList: atts,
-      };
-    }).sort((a: any, b: any) => parseDMY(b.date) - parseDMY(a.date))
-  , []);
-
-  /* ── Core fetch + apply cache on error ── */
+  /* ── Core fetch ── */
+  /* FIX S2: dependency chỉ còn [scriptUrl] — teacherList thay đổi KHÔNG re-create loadData */
   const loadData = useCallback(async () => {
     if (loadingRef.current) return;
     loadingRef.current = true;
     if (!silentRef.current) setLoading(true);
 
+    const tl = teacherListRef.current; // đọc teacherList hiện tại qua ref (luôn up-to-date)
+
     try {
       const res = await fetchWithTimeout(scriptUrl, {
-        method: 'POST',
+        method:   'POST',
         redirect: 'follow',
-        timeout: RULES.network.fetchTimeout,
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({ action: 'getData' }),
+        timeout:  RULES.network.fetchTimeout,
+        headers:  { 'Content-Type': 'text/plain' },
+        body:     JSON.stringify({ action: 'getData' }),
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || 'GAS error');
 
       const raw = data;
+      const rawStudents  = raw.hs  || raw.students    || [];
+      const rawPayments  = raw.py  || raw.payments     || [];
+      const rawExpenses  = raw.ex  || raw.expenses     || [];
+      const rawLogs      = raw.logs || raw.teachingLogs || [];
+      const rawClasses   = raw.uCls || raw.classes     || [];
+      const rawTeachers  = raw.tv  || raw.teachers     || [];
+      const rawMaterials = raw.hl  || raw.materials    || [];
 
-      // GAS v29 trả về: { hs, uCls, py, ex, logs, tv, hl, summary }
-      // Fallback sang key cũ nếu có
-      const rawStudents  = raw.hs       || raw.students      || [];
-      const rawPayments  = raw.py       || raw.payments       || [];
-      const rawExpenses  = raw.ex       || raw.expenses       || [];
-      const rawLogs      = raw.logs     || raw.teachingLogs   || [];
-      const rawClasses   = raw.uCls     || raw.classes        || [];
-      const rawTeachers  = raw.tv       || raw.teachers       || [];
-      const rawMaterials = raw.hl       || raw.materials      || [];
+      const hs   = txStudents(rawStudents, tl);
+      const py   = txPayments(rawPayments, hs);
+      const ex   = txExpenses(rawExpenses);
+      const logs = txLogs(rawLogs, tl);
+      const cls  = txClasses(rawClasses, tl);
 
-      // GAS v29 đã transform sẵn → dùng trực tiếp nếu có field 'id'
-      // nếu là raw sheet (field tiếng Việt) → dùng transform cũ
-      const hs = rawStudents.length > 0 && rawStudents[0].id
-        ? rawStudents.map((s: any) => ({
-            id:            String(s.id            || ''),
-            name:          String(s.name          || '---'),
-            dob:           String(s.dob           || ''),
-            branch:        String(s.branch        || ''),
-            grade:         String(s.grade         || ''),
-            school:        String(s.school        || ''),
-            teacher:       resolveTeacher(s.teacher, teacherList),
-            parentName:    String(s.parentName    || ''),
-            parentPhone:   String(s.parentPhone   || ''),
-            studentPhone:  String(s.studentPhone  || ''),
-            address:       String(s.address       || ''),
-            academicLevel: String(s.academicLevel || ''),
-            goal:          String(s.goal          || ''),
-            supportNeeded: String(s.supportNeeded || ''),
-            classId:       String(s.classId       || ''),
-            startDate:     String(s.startDate     || ''),
-            endDate:       String(s.endDate       || ''),
-            status:        String(s.status        || 'active'),
-            notes:         String(s.notes         || ''),
-            facebookUrl:   String(s.facebookUrl   || ''),
-          }))
-        : transformStudents(rawStudents);
-
-      const py = rawPayments.length > 0 && rawPayments[0].docNum
-        ? rawPayments.map((p: any) => ({
-            id:          String(p.docNum      || ''),
-            date:        String(p.date        || ''),
-            docNum:      String(p.docNum      || ''),
-            studentId:   String(p.studentId   || ''),
-            studentName: String(p.studentName || hs.find((s: any) => s.id === p.studentId)?.name || '?'),
-            payer:       String(p.payer       || '---'),
-            method:      String(p.method      || '---'),
-            description: String(p.description || ''),
-            amount:      Number(p.amount)     || 0,
-            note:        String(p.note        || ''),
-            thangHP:     Number(p.thangHP)    || 0,
-            namHP:       Number(p.namHP)      || 0,
-          }))
-        : transformPayments(rawPayments, hs);
-
-      const ex = rawExpenses.length > 0 && rawExpenses[0].docNum
-        ? rawExpenses.map((e: any) => ({
-            id:          String(e.docNum      || ''),
-            date:        String(e.date        || ''),
-            docNum:      String(e.docNum      || ''),
-            description: String(e.description || ''),
-            category:    String(e.category    || ''),
-            amount:      Number(e.amount)     || 0,
-            spender:     String(e.spender     || ''),
-          }))
-        : transformExpenses(rawExpenses);
-
-      const logs = rawLogs.length > 0 && rawLogs[0].classId
-        ? rawLogs.map((l: any) => ({
-            rawDate:         String(l.rawDate         || l.date || ''),
-            date:            String(l.date            || ''),
-            originalDate:    String(l.originalDate    || l.date || ''),
-            originalClassId: String(l.originalClassId || l.classId || ''),
-            originalCaDay:   String(l.originalCaDay   || l.caDay || ''),
-            classId:         String(l.classId         || ''),
-            content:         String(l.content         || '---'),
-            homework:        String(l.homework        || '---'),
-            teacherNote:     String(l.teacherNote     || ''),
-            teacherName:     resolveTeacher(l.teacherName, teacherList),
-            caDay:           String(l.caDay           || ''),
-            present:         Number(l.present)        || 0,
-            absent:          Number(l.absent)         || 0,
-            late:            Number(l.late)           || 0,
-            attendanceList:  (l.attendanceList || []).map((a: any) => ({
-              maHS:          String(a.maHS        || a.MaHS    || a['Mã HS']    || ''),
-              'Mã HS':       String(a.maHS        || a.MaHS    || a['Mã HS']    || ''),
-              tenHS:         String(a.tenHS       || ''),
-              'Trạng thái':  String(a.trangThai   || a.TrangThai || a['Trạng thái'] || 'Có mặt'),
-              'Ghi chú':     String(a.ghiChu      || a.GhiChu   || a['Ghi chú']   || ''),
-            })),
-          })).sort((a: any, b: any) => parseDMY(b.date) - parseDMY(a.date))
-        : transformLogs(rawLogs, []);
-
-      const clsMap = new Map<string, any>();
-      rawClasses.forEach((c: any) => {
-        // GAS v29 dùng key MaLop, app cũ dùng 'Mã Lớp'
-        const maLop = c.MaLop || c['Ma Lop'] || c['Mã Lớp'] || '';
-        if (!maLop || clsMap.has(maLop)) return;
-        clsMap.set(maLop, {
-          'Mã Lớp':    maLop,
-          'Tên Lớp':   c.TenLop  || c['Tên Lớp']  || '',
-          'Khối':      c.Khoi    || c['Khối']      || '',
-          'Giáo viên': resolveTeacher(c.GiaoVien || c['Giáo viên'] || '', teacherList),
-          'Cơ sở':     c.CoSo    || c['Cơ sở']    || '',
-          'Buổi 1':    c.Buoi1   || c['Buổi 1']   || '',
-          'Buổi 2':    c.Buoi2   || c['Buổi 2']   || '',
-          'Buổi 3':    c.Buoi3   || c['Buổi 3']   || '',
-        });
-      });
-
-      const newTeachers  = rawTeachers.map((t: any) => ({ ...t, classes: t.classes || [] }));
-      const newMaterials2 = rawMaterials.map((m: any) => ({ ...m, tags: Array.isArray(m.tags) ? m.tags : (m.tags ? String(m.tags).split(',').map((t: string) => t.trim()).filter(Boolean) : []) }));
-
-      const newLeaves     = (raw.leaveRequests || []).map((r: any) => ({ ...r }));
+      const newTeachers  = txTeachers(rawTeachers);
+      const newMaterials = txMaterials(rawMaterials);
+      const newLeaves    = (raw.leaveRequests || []).map((r: any) => ({ ...r }));
 
       setStudents(hs);
       setPayments(py);
       setExpenses(ex);
-      setUClasses(Array.from(clsMap.values()));
+      setUClasses(cls);
       setTlogs(logs);
 
-      if (newTeachers.length > 0) {
+      /* FIX L2: field-existence check → đồng bộ được xóa sạch khi GAS trả mảng rỗng thực sự */
+      if ('tv' in raw || 'teachers' in raw) {
         setTeachers(newTeachers);
-        try { localStorage.setItem('ltn-teachers', JSON.stringify(newTeachers)); } catch {}
       }
-      if (newLeaves.length > 0) {
+      if ('leaveRequests' in raw) {
         setLeaveRequests(newLeaves);
-        try { localStorage.setItem('ltn-leaves', JSON.stringify(newLeaves)); } catch {}
       }
-      if (newMaterials2.length > 0) {
-        setMaterials(newMaterials2);
-        try { localStorage.setItem('ltn-materials', JSON.stringify(newMaterials2)); } catch {}
+      if ('hl' in raw || 'materials' in raw) {
+        setMaterials(newMaterials);
       }
-      setSummary({
-        totalRevenue: py.reduce((s, p) => s + p.amount, 0),
-        totalExpense: ex.reduce((s, e) => s + e.amount, 0),
-        chart:        buildChartData(py, ex),
-      });
+
       setGsOk(true);
 
+      /* FIX D2: cache gộp tất cả → 1 nguồn thống nhất */
       try {
         localStorage.setItem('ltn-cache', JSON.stringify({
-          hs, py, ex, uCls: Array.from(clsMap.values()), logs,
+          hs, py, ex, uCls: cls, logs,
+          teachers:  newTeachers,
+          materials: newMaterials,
         }));
+        /* Backward compat: vẫn giữ key riêng */
+        if (newTeachers.length  > 0) localStorage.setItem('ltn-teachers',  JSON.stringify(newTeachers));
+        if (newMaterials.length > 0) localStorage.setItem('ltn-materials', JSON.stringify(newMaterials));
+        if (newLeaves.length    > 0) localStorage.setItem('ltn-leaves',    JSON.stringify(newLeaves));
       } catch {}
 
     } catch (err: any) {
@@ -322,20 +291,18 @@ export function useAppData({ scriptUrl, teacherList }: UseAppDataOptions): AppDa
           ? '⏱️ Kết nối quá lâu. Đang dùng cache.'
           : '⚠️ Lỗi tải dữ liệu. Đang dùng cache.'
       );
+      /* FIX D2: restore cả teachers/materials từ unified cache */
       try {
         const c = localStorage.getItem('ltn-cache');
         if (c) {
-          const { hs, py, ex, uCls, logs } = JSON.parse(c);
-          setStudents(hs || []);
-          setPayments(py || []);
-          setExpenses(ex || []);
-          setUClasses(uCls || []);
-          setTlogs(logs || []);
-          setSummary({
-            totalRevenue: (py || []).reduce((s: number, p: any) => s + p.amount, 0),
-            totalExpense: (ex || []).reduce((s: number, e: any) => s + e.amount, 0),
-            chart: [],
-          });
+          const cached = JSON.parse(c);
+          setStudents(cached.hs       || []);
+          setPayments(cached.py       || []);
+          setExpenses(cached.ex       || []);
+          setUClasses(cached.uCls     || []);
+          setTlogs(cached.logs        || []);
+          if (cached.teachers)  setTeachers(cached.teachers);
+          if (cached.materials) setMaterials(cached.materials);
         }
       } catch {}
     } finally {
@@ -343,15 +310,16 @@ export function useAppData({ scriptUrl, teacherList }: UseAppDataOptions): AppDa
       loadingRef.current = false;
       silentRef.current  = false;
     }
-  }, [scriptUrl, teacherList, transformStudents, transformPayments, transformExpenses, transformLogs]);
+  }, [scriptUrl]); // FIX S2: chỉ phụ thuộc scriptUrl
 
   /* ── Initial load ── */
   useEffect(() => { loadData(); }, [loadData]);
 
-  /* ── Auto reload: online event + visibility + interval ── */
-  const lastLoadTimeRef = useRef(0);
+  /* ── Auto reload: online + visibility + interval ── */
   useEffect(() => {
     const reload = () => {
+      /* FIX D5: không auto-reload khi đang save để tránh state bị replace giữa chừng */
+      if (isSavingRef.current) return;
       if (Date.now() - lastLoadTimeRef.current > RULES.network.silentReloadCooldown) {
         silentRef.current = true;
         loadData();
@@ -359,6 +327,7 @@ export function useAppData({ scriptUrl, teacherList }: UseAppDataOptions): AppDa
       }
     };
     const handleOnline = () => {
+      if (isSavingRef.current) return; // FIX D5
       silentRef.current = true;
       loadData();
       lastLoadTimeRef.current = Date.now();
@@ -378,15 +347,16 @@ export function useAppData({ scriptUrl, teacherList }: UseAppDataOptions): AppDa
     };
   }, [loadData]);
 
-  /* ── Expose silentRef setter cho domain hooks ── */
-  (loadData as any).__setSilent = () => { silentRef.current = true; };
-
   return {
     students, uClasses, payments, expenses, tlogs,
     teachers, leaveRequests, materials, summary,
     loading, gsOk, loadData,
-    /* setters — cho useDomains optimistic updates */
     setStudents, setPayments, setExpenses,
     setTeachers, setMaterials, setLeaveRequests,
+    /* FIX S1+S3+D4: refs return trực tiếp */
+    silentRef,
+    lastLoadTimeRef,
+    /* FIX D5: useDomains write vào đây trong withSave */
+    isSavingRef,
   };
 }

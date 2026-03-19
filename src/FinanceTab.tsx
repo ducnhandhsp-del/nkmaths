@@ -1,13 +1,22 @@
 /**
- * FinanceTab.tsx — v27.1
+ * FinanceTab.tsx — v28.2
  * ✅ Xoá khối thống kê ở Sổ cái và Chi tiêu
  * ✅ Giữ StatBlock tóm tắt chỉ ở header chung + tab Công nợ
  * ✅ AppTable (header màu xanh đậm, góc vuông)
  * ✅ Công nợ đặt ĐẦU TIÊN
+ * ✅ [v28.1] Tính nợ chỉ từ tháng học sinh bắt đầu học (startDate-aware)
+ * ✅ [v28.1] Tháng sau endDate không tính là nợ
+ * ✅ [v28.1] Sổ cái: phân trang thay vì cắt cứng 30 bản ghi
+ * ✅ [v28.2] Fix: Zalo URL bỏ ?text= (Zalo không hỗ trợ pre-fill qua URL)
+ * ✅ [v28.2] Fix: CSV export theo đúng filter đang hiển thị
+ * ✅ [v28.2] Fix: activeStudents dùng isStudentActive nhất quán
+ * ✅ [v28.2] Fix: xoá khai báo [fM, fY] không dùng (dead code)
+ * ✅ [v28.2] Chi tiêu: phân trang tương tự Sổ cái
+ * ✅ [v28.2] Zalo: thêm nút copy message vào clipboard
  */
-import React, { useMemo, useState } from 'react';
-import { DollarSign, TrendingDown, Eye, Edit3, Trash2, Plus, Search } from 'lucide-react';
-import { fmtVND, formatDate, capitalizeName, exportCSV } from './helpers';
+import React, { useMemo, useState, useCallback } from 'react';
+import { DollarSign, TrendingDown, Eye, Edit3, Trash2, Plus, Copy, Check } from 'lucide-react';
+import { fmtVND, formatDate, capitalizeName, exportCSV, parseDMY, isStudentActive } from './helpers';
 import { Badge, Pager, FilterTabs } from './dsComponents';
 import { FAB } from './AppComponents';
 import { StatBlock, StatGrid, TABLE_WRAP, TH_SHARED, TD_SHARED, trStyle, fmtM } from './AppComponents';
@@ -47,6 +56,36 @@ interface Props {
 }
 
 const IPP = 10;
+const LEDGER_IPP = 20; // phân trang sổ cái
+const EXPENSE_IPP = 20; // phân trang chi tiêu
+
+/**
+ * isMonthBillable — tháng `fm` có phải tháng học sinh phải đóng phí không?
+ * - Trước startDate → chưa học → không tính nợ
+ * - Sau endDate (nếu có) → đã nghỉ → không tính nợ
+ */
+function isMonthBillable(s: Student, fm: { m: number; y: number }): boolean {
+  const monthStart = new Date(fm.y, fm.m - 1, 1).getTime();
+
+  // Kiểm tra startDate
+  const startTs = parseDMY(s.startDate || '');
+  if (startTs) {
+    const d = new Date(startTs);
+    const enrollStart = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+    if (monthStart < enrollStart) return false;
+  }
+
+  // Kiểm tra endDate
+  const endTs = parseDMY(s.endDate || '');
+  if (endTs && s.endDate !== '---' && s.endDate !== '') {
+    const d = new Date(endTs);
+    const leaveMonth = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+    // Tháng nghỉ học trở đi không cần đóng nữa
+    if (monthStart >= leaveMonth) return false;
+  }
+
+  return true;
+}
 
 export default function FinanceTab({
   summary, payments, expenses, students, uClasses, tlogs,
@@ -58,10 +97,45 @@ export default function FinanceTab({
   const totalRevenue = summary?.totalRevenue ?? 0;
   const totalExpense = summary?.totalExpense ?? 0;
   const pagedFin = filtFin.slice((pgF - 1) * IPP, pgF * IPP);
-  const [fM, fY] = (fMo || '01/2026').split('/').map(Number);
+  // FIX: bỏ khai báo [fM, fY] — biến không dùng trong component (logic filter ở useDomains)
   const makeZaloMsg = (s: Student) => zaloTpl.replace('[Thang]', String(curMo)).replace('[Ten]', s.name).replace('[SoTien]', fmtVND(baseTuition));
   const fmtDesc = (desc: string) => (desc||'').replace(/[Hh]ọc phí\s+tháng\s+0?(\d{1,2})\s+năm\s+(\d{4})/i, 'HP T$1/$2');
-  const paidNow = useMemo(() => students.filter(s => isPaid(s.id, curMo, curYr)).length, [students, isPaid, curMo, curYr]);
+
+  // FIX: dùng isStudentActive từ helpers, nhất quán toàn app
+  const activeStudents = useMemo(() => students.filter(isStudentActive), [students]);
+  const paidNow = useMemo(() => activeStudents.filter(s => isPaid(s.id, curMo, curYr)).length, [activeStudents, isPaid, curMo, curYr]);
+
+  // Phân trang sổ cái
+  const [pgLedger, setPgLedger] = useState(1);
+  const pagedLedger = useMemo(() => {
+    const sorted = payments.slice().reverse();
+    return sorted.slice((pgLedger - 1) * LEDGER_IPP, pgLedger * LEDGER_IPP);
+  }, [payments, pgLedger]);
+
+  // Phân trang chi tiêu
+  const [pgExpense, setPgExpense] = useState(1);
+  const pagedExpense = useMemo(() => {
+    const sorted = expenses.slice().reverse();
+    return sorted.slice((pgExpense - 1) * EXPENSE_IPP, pgExpense * EXPENSE_IPP);
+  }, [expenses, pgExpense]);
+
+  // Copy message to clipboard
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const copyMsg = useCallback((id: string, msg: string) => {
+    navigator.clipboard?.writeText(msg).then(() => {
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    }).catch(() => {
+      // Fallback khi clipboard API không có (HTTP / WebView)
+      const ta = document.createElement('textarea');
+      ta.value = msg; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    });
+  }, []);
 
   const schoolYearMonths = useMemo(() => {
     const parts = (schoolYear || '2025-2026').split('-').map(Number);
@@ -116,7 +190,7 @@ export default function FinanceTab({
             <StatBlock icon={DollarSign} value={fmtM(totalRevenue)} label="Tổng thu"    sub="toàn niên khóa"  gradient="linear-gradient(135deg,#10b981,#059669)" />
             <StatBlock icon={TrendingDown} value={fmtM(totalExpense)} label="Tổng chi"  sub="toàn niên khóa"  gradient="linear-gradient(135deg,#f43f5e,#e11d48)" />
             <StatBlock icon={DollarSign} value={fmtM(totalRevenue-totalExpense)} label="Lợi nhuận" sub={(totalRevenue-totalExpense)>=0?'Dương':'Âm'} gradient={(totalRevenue-totalExpense)>=0?'linear-gradient(135deg,#6366f1,#4f46e5)':'linear-gradient(135deg,#f97316,#ea580c)'} />
-            <StatBlock icon={DollarSign} value={`${paidNow}/${students.length}`} label={`Đóng phí T${curMo}`} sub="học sinh đã đóng" gradient="linear-gradient(135deg,#0ea5e9,#2563eb)" />
+            <StatBlock icon={DollarSign} value={`${paidNow}/${activeStudents.length}`} label={`Đóng phí T${curMo}`} sub="học sinh đang học đã đóng" gradient="linear-gradient(135deg,#0ea5e9,#2563eb)" />
           </StatGrid>
           <p style={{ fontSize:11, color:'#94a3b8', margin:'-4px 0 0', fontStyle:'italic' }}>
             ※ Tổng thu/chi tính toàn bộ {payments.length} phiếu thu · {expenses.length} phiếu chi từ đầu niên khóa. Xem theo tháng cụ thể tại tab <strong style={{ color:'#6366f1' }}>Báo cáo → Doanh thu</strong>.
@@ -131,12 +205,13 @@ export default function FinanceTab({
             <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Niên khóa:</span>
             <span style={{ fontSize: 11, fontWeight: 700, color: '#6366f1', background: '#eef2ff', border: '1px solid #c7d2fe', padding: '2px 10px' }}>{schoolYear}</span>
             <button onClick={() => exportCSV(`cong-no-t${curMo}-${curYr}`,
-              ['Mã HS', 'Họ tên', 'Lớp', 'SĐT phụ huynh', 'Số tháng nợ', 'Tổng nợ (đ)'],
-              filtFin.filter(s => { const u = schoolYearMonths.filter(fm => !isPaid(s.id, fm.m, fm.y)).length; return u > 0; })
-                .map(s => {
-                  const u = schoolYearMonths.filter(fm => !isPaid(s.id, fm.m, fm.y)).length;
-                  return [s.id, s.name, s.classId, s.parentPhone || '', u, u * baseTuition];
-                })
+              ['Mã HS', 'Họ tên', 'Lớp', 'SĐT phụ huynh', 'Tháng bắt đầu', 'Số tháng nợ (niên khóa)', 'Tổng nợ (đ)'],
+              // FIX: xuất đúng danh sách đang hiển thị (filtFin), không re-filter lại theo logic khác
+              filtFin.map(s => {
+                const billable = schoolYearMonths.filter(fm => isMonthBillable(s, fm));
+                const u = billable.filter(fm => !isPaid(s.id, fm.m, fm.y)).length;
+                return [s.id, s.name, s.classId, s.parentPhone || '', s.startDate || '', u, u * baseTuition];
+              })
             )} style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, padding: '5px 11px', background: '#059669', border: 'none', color: 'white', fontWeight: 700, fontSize: 11, cursor: 'pointer' }}>
               📥 Xuất CSV
             </button>
@@ -158,11 +233,13 @@ export default function FinanceTab({
                   ? <tr><td colSpan={6} style={{ padding: '48px 16px', textAlign: 'center', color: '#94a3b8', fontStyle: 'italic' }}>Không có dữ liệu</td></tr>
                   : pagedFin.map((s, rowIdx) => {
                     const ph = String(s.parentPhone || '').replace(/\D/g, '');
-                    const zMsg = makeZaloMsg(s);
                     const isInactive = s.status === 'inactive' || (s.endDate && s.endDate !== '---' && s.endDate !== '');
-                    const unpaidCount = schoolYearMonths.filter(fm => !isPaid(s.id, fm.m, fm.y)).length;
-                    const paidCount   = schoolYearMonths.length - unpaidCount;
-                    const paidPct     = Math.round(paidCount / schoolYearMonths.length * 100);
+
+                    // Chỉ tính tháng mà học sinh thực sự phải đóng
+                    const billableMonths = schoolYearMonths.filter(fm => isMonthBillable(s, fm));
+                    const unpaidCount = billableMonths.filter(fm => !isPaid(s.id, fm.m, fm.y)).length;
+                    const paidCount   = billableMonths.filter(fm =>  isPaid(s.id, fm.m, fm.y)).length;
+                    const paidPct     = billableMonths.length > 0 ? Math.round(paidCount / billableMonths.length * 100) : 100;
                     const isProblem   = !isInactive && unpaidCount > 2;
                     const isWarning   = !isInactive && unpaidCount === 2;
                     const rowBg = isInactive ? '#f8fafc' : isProblem ? '#fff5f5' : isWarning ? '#fefce8' : undefined;
@@ -187,17 +264,43 @@ export default function FinanceTab({
                             <div style={{ flex: 1, height: 6, background: '#e2e8f0', borderRadius: 4, overflow: 'hidden' }}>
                               <div style={{ height: '100%', width: `${paidPct}%`, background: isInactive ? '#94a3b8' : unpaidCount === 0 ? '#10b981' : unpaidCount <= 2 ? '#f59e0b' : '#ef4444', borderRadius: 4, transition: 'width 0.3s' }} />
                             </div>
-                            <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', whiteSpace: 'nowrap', minWidth: 32 }}>{paidCount}/{schoolYearMonths.length}</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', whiteSpace: 'nowrap', minWidth: 32 }}>{paidCount}/{billableMonths.length}</span>
                           </div>
-                          {/* Dots mini cho từng tháng */}
+                          {/* Dots mini cho từng tháng — 3 trạng thái: đã đóng / chưa đóng / chưa học */}
                           <div style={{ display: 'flex', gap: 3, marginTop: 5, flexWrap: 'wrap' }}>
                             {schoolYearMonths.map(fm => {
+                              const billable = isMonthBillable(s, fm);
                               const paid = isPaid(s.id, fm.m, fm.y);
                               const isCurM = fm.m === curMo && fm.y === curYr;
+
+                              // Màu dot theo trạng thái
+                              let dotBg = '#e2e8f0';       // mặc định: chưa học (xám nhạt)
+                              let dotColor = '#cbd5e1';
+                              let dotBorder = '1px solid transparent';
+                              let dotTitle = `T${fm.m}/${fm.y}: Chưa học`;
+
+                              if (!billable) {
+                                // Chưa bắt đầu hoặc đã nghỉ — xám sọc
+                                dotBg = '#f1f5f9';
+                                dotColor = '#e2e8f0';
+                                dotTitle = `T${fm.m}/${fm.y}: Chưa học`;
+                              } else if (paid) {
+                                dotBg = '#10b981';
+                                dotColor = 'white';
+                                dotBorder = '1px solid transparent';
+                                dotTitle = `T${fm.m}/${fm.y}: Đã đóng`;
+                              } else {
+                                // Billable nhưng chưa đóng
+                                dotBg = isCurM ? '#fca5a5' : '#fde68a';
+                                dotColor = isCurM ? '#dc2626' : '#92400e';
+                                dotBorder = isCurM ? '1.5px solid #ef4444' : '1px solid #fcd34d';
+                                dotTitle = `T${fm.m}/${fm.y}: Chưa đóng`;
+                              }
+
                               return (
-                                <div key={`${fm.m}-${fm.y}`} title={`T${fm.m}/${fm.y}: ${paid ? 'Đã đóng' : 'Chưa đóng'}`}
-                                  style={{ width: 14, height: 14, borderRadius: 3, background: paid ? '#10b981' : isCurM ? '#fca5a5' : '#e2e8f0', border: isCurM ? '1.5px solid #ef4444' : '1px solid transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                  <span style={{ fontSize: 7, fontWeight: 700, color: paid ? 'white' : isCurM ? '#dc2626' : '#94a3b8', lineHeight: 1 }}>{fm.m}</span>
+                                <div key={`${fm.m}-${fm.y}`} title={dotTitle}
+                                  style={{ width: 14, height: 14, borderRadius: 3, background: dotBg, border: dotBorder, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: billable ? 1 : 0.4 }}>
+                                  <span style={{ fontSize: 7, fontWeight: 700, color: dotColor, lineHeight: 1 }}>{fm.m}</span>
                                 </div>
                               );
                             })}
@@ -214,9 +317,17 @@ export default function FinanceTab({
                         <td style={{ ...TD_SHARED, textAlign: 'center' }}>
                           <div style={{ display: 'flex', justifyContent: 'center', gap: 5 }}>
                             <button onClick={() => onViewFinance(s)} style={{ width: 28, height: 28, background: '#eef2ff', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6 }}><Eye size={12} color="#6366f1" /></button>
-                            {ph.length >= 9 && (
-                              <a href={`https://zalo.me/${ph}?text=${encodeURIComponent(zMsg)}`} target="_blank" rel="noopener noreferrer" style={{ width: 28, height: 28, background: '#eff6ff', border: '1px solid #bfdbfe', color: '#0068FF', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', borderRadius: 6 }} title="Zalo PH"><ZaloIcon /></a>
-                            )}
+                            {ph.length >= 9 && (<>
+                              {/* FIX: Zalo không hỗ trợ pre-fill qua URL — bỏ ?text=
+                                  Thay bằng nút copy message riêng */}
+                              <button
+                                onClick={() => copyMsg(s.id, makeZaloMsg(s))}
+                                title="Copy nội dung nhắc phí"
+                                style={{ width: 28, height: 28, background: copiedId === s.id ? '#ecfdf5' : '#f0fdf4', border: `1px solid ${copiedId === s.id ? '#a7f3d0' : '#bbf7d0'}`, color: copiedId === s.id ? '#059669' : '#16a34a', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', borderRadius: 6, cursor: 'pointer' }}>
+                                {copiedId === s.id ? <Check size={11} /> : <Copy size={11} />}
+                              </button>
+                              <a href={`https://zalo.me/${ph}`} target="_blank" rel="noopener noreferrer" style={{ width: 28, height: 28, background: '#eff6ff', border: '1px solid #bfdbfe', color: '#0068FF', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', borderRadius: 6 }} title="Mở Zalo PH (copy nội dung trước)"><ZaloIcon /></a>
+                            </>)}
                             {s.facebookUrl && (
                               <a href={s.facebookUrl.startsWith('http') ? s.facebookUrl : `https://m.me/${s.facebookUrl}`}
                                 target="_blank" rel="noopener noreferrer"
@@ -265,7 +376,7 @@ export default function FinanceTab({
               <tbody>
                 {payments.length === 0
                   ? <tr><td colSpan={6} style={{ padding: '40px 16px', textAlign: 'center', color: '#94a3b8', fontStyle: 'italic' }}>Chưa có phiếu thu</td></tr>
-                  : payments.slice().reverse().slice(0, 30).map((p, i) => (
+                  : pagedLedger.map((p, i) => (
                     <tr key={i} onMouseEnter={() => setHovPay(i)} onMouseLeave={() => setHovPay(null)} style={trStyle(i, hovPay === i)}>
                       <td style={{ ...TD_SHARED, fontSize: 12, color: '#475569' }}>{formatDate(p.date)}</td>
                       <td style={TD_SHARED}>
@@ -299,7 +410,7 @@ export default function FinanceTab({
           <div className="fin-mobile">
             {payments.length === 0
               ? <p style={{ textAlign: 'center', color: '#94a3b8', fontStyle: 'italic', padding: '32px 16px', fontSize: 13 }}>Chưa có phiếu thu</p>
-              : payments.slice().reverse().slice(0, 30).map((p, i) => (
+              : pagedLedger.map((p, i) => (
                 <div key={i} style={{ padding: '11px 14px', borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? 'white' : '#f9fafc' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -320,10 +431,12 @@ export default function FinanceTab({
               ))
             }
           </div>
+          {/* Phân trang sổ cái */}
+          <div style={{ borderTop: '1px solid #f1f5f9', background: '#fafafa' }}>
+            <Pager page={pgLedger} total={payments.length} perPage={LEDGER_IPP} setPage={setPgLedger} showTotal />
+          </div>
         </div>
       )}
-
-      {/* ══ CHI TIÊU — NO stat blocks ══ */}
       {finSub === 'expense' && (
         <div style={TABLE_WRAP}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '1px solid #f1f5f9' }}>
@@ -350,8 +463,8 @@ export default function FinanceTab({
               <tbody>
                 {expenses.length === 0
                   ? <tr><td colSpan={6} style={{ padding: '40px 16px', textAlign: 'center', color: '#94a3b8', fontStyle: 'italic' }}>Chưa có phiếu chi</td></tr>
-                  : expenses.slice().reverse().map((e, i) => (
-                    <tr key={i} onMouseEnter={() => setHovExp(i)} onMouseLeave={() => setHovExp(null)} style={trStyle(i, hovExp === i)}>
+                  : pagedExpense.map((e, i) => (
+                    <tr key={`${e.docNum}-${i}`} onMouseEnter={() => setHovExp(i)} onMouseLeave={() => setHovExp(null)} style={trStyle(i, hovExp === i)}>
                       <td style={{ ...TD_SHARED, fontSize: 12, color: '#475569' }}>{formatDate(e.date)}</td>
                       <td style={TD_SHARED}>{e.description}</td>
                       <td style={TD_SHARED}><Badge color="amber">{e.category}</Badge></td>
@@ -374,8 +487,8 @@ export default function FinanceTab({
           <div className="fin-exp-mobile">
             {expenses.length === 0
               ? <p style={{ textAlign: 'center', color: '#94a3b8', fontStyle: 'italic', padding: '32px 16px', fontSize: 13 }}>Chưa có phiếu chi</p>
-              : expenses.slice().reverse().map((e, i) => (
-                <div key={i} style={{ padding: '11px 14px', borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? 'white' : '#f9fafc' }}>
+              : pagedExpense.map((e, i) => (
+                <div key={`${e.docNum}-mb-${i}`} style={{ padding: '11px 14px', borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? 'white' : '#f9fafc' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', margin: 0 }}>{e.description}</p>
@@ -391,6 +504,10 @@ export default function FinanceTab({
                 </div>
               ))
             }
+          </div>
+          {/* Phân trang chi tiêu */}
+          <div style={{ borderTop: '1px solid #f1f5f9', background: '#fafafa' }}>
+            <Pager page={pgExpense} total={expenses.length} perPage={EXPENSE_IPP} setPage={setPgExpense} showTotal />
           </div>
         </div>
       )}

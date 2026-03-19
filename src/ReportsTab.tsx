@@ -1,12 +1,14 @@
 /**
- * ReportsTab.tsx — v27.1
+ * ReportsTab.tsx — v28.1
  * ✅ StatBlock (horizontal) cho KPIs theo tab
- * ✅ AppTable cho tất cả bảng
+ * ✅ [v28.1] Fix: dùng isStudentActive thay vì check status đơn lẻ
+ * ✅ [v28.1] Fix: parseMoYr fallback dùng parseDMY thay vì new Date()
+ * ✅ [v28.1] Học phí: bảng thống kê tháng học theo buổi (12 buổi/tháng) và theo tuần (4 tuần/tháng)
  */
 import React, { useState, useMemo } from 'react';
 import { BarChart3, TrendingUp, TrendingDown, Users, BookOpen, DollarSign, Printer, School, ChevronLeft, ChevronRight } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { fmtVND, parseDMY, exportCSV } from './helpers';
+import { fmtVND, parseDMY, exportCSV, isStudentActive } from './helpers';
 import { Badge, FilterTabs } from './dsComponents';
 import { StatBlock, StatGrid, TABLE_WRAP, TH_SHARED, TD_SHARED, trStyle, fmtM } from './AppComponents';
 import type { Student, Payment, Expense, SummaryData } from './types';
@@ -25,8 +27,20 @@ function parseMoYr(raw: string): { m: number; y: number } | null {
   const s = raw.includes(' - ') ? raw.split(' - ')[1] : raw;
   if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return { m: parseInt(s.split('/')[1]), y: parseInt(s.split('/')[2]) };
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return { m: parseInt(s.slice(5,7)), y: parseInt(s.slice(0,4)) };
-  try { const d = new Date(raw); if (!isNaN(d.getTime())) return { m: d.getMonth()+1, y: d.getFullYear() }; } catch {}
+  // BUG FIX: dùng parseDMY (timezone-safe) thay vì new Date(raw) UTC
+  const ts = parseDMY(raw);
+  if (ts) { const d = new Date(ts); return { m: d.getMonth()+1, y: d.getFullYear() }; }
   return null;
+}
+
+/** Tính ISO week key: "YYYY-WNN" để đếm số tuần học riêng biệt */
+function isoWeekKey(ts: number): string {
+  const d = new Date(ts);
+  // Thứ Hai đầu tuần theo ISO 8601
+  const day = d.getDay() === 0 ? 7 : d.getDay(); // 1=Mon..7=Sun
+  const mon = new Date(d);
+  mon.setDate(d.getDate() - day + 1);
+  return `${mon.getFullYear()}-${String(mon.getMonth()+1).padStart(2,'0')}-${String(mon.getDate()).padStart(2,'0')}`;
 }
 
 export default function ReportsTab({ students, payments, expenses, tlogs, uClasses, summary, curMo, curYr, isPaid }: Props) {
@@ -39,12 +53,14 @@ export default function ReportsTab({ students, payments, expenses, tlogs, uClass
 
   const moPayments = useMemo(() => payments.filter(p => { const r = parseMoYr(p.date||''); return r?.m===filterMo && r?.y===filterYr; }), [payments,filterMo,filterYr]);
   const moExpenses = useMemo(() => expenses.filter(e => { const r = parseMoYr(e.date||''); return r?.m===filterMo && r?.y===filterYr; }), [expenses,filterMo,filterYr]);
-  const moTlogs   = useMemo(() => tlogs.filter(l => { const ts = parseDMY(l.date||''); const d = new Date(ts); return d.getMonth()+1===filterMo && d.getFullYear()===filterYr; }), [tlogs,filterMo,filterYr]);
+  const moTlogs   = useMemo(() => tlogs.filter(l => { const ts = parseDMY(l.date||''); if (!ts) return false; const d = new Date(ts); return d.getMonth()+1===filterMo && d.getFullYear()===filterYr; }), [tlogs,filterMo,filterYr]);
 
   const moRevenue = moPayments.reduce((s, p) => s+p.amount, 0);
   const moExpense = moExpenses.reduce((s, e) => s+e.amount, 0);
-  const active    = students.filter(s => s.status !== 'inactive').length;
-  const paidCount = students.filter(s => isPaid(s.id, filterMo, filterYr) && s.status !== 'inactive').length;
+  // FIX: dùng isStudentActive thay vì chỉ check status
+  const activeStudents = useMemo(() => students.filter(isStudentActive), [students]);
+  const active = activeStudents.length;
+  const paidCount = useMemo(() => activeStudents.filter(s => isPaid(s.id, filterMo, filterYr)).length, [activeStudents, isPaid, filterMo, filterYr]);
 
   const revenueByClass = useMemo(() => {
     const map: Record<string, {revenue:number;count:number;teacher:string}> = {};
@@ -55,11 +71,12 @@ export default function ReportsTab({ students, payments, expenses, tlogs, uClass
 
   const teacherRevenue = useMemo(() => {
     const map: Record<string, {revenue:number;students:number;paid:number;sessions:number;classes:Set<string>}> = {};
-    students.forEach(s => { const t = s.teacher||'Chưa xác định'; if (!map[t]) map[t]={revenue:0,students:0,paid:0,sessions:0,classes:new Set()}; map[t].students++; if (isPaid(s.id,filterMo,filterYr)) map[t].paid++; if (s.classId) map[t].classes.add(s.classId); });
+    // FIX: chỉ tính HS active
+    activeStudents.forEach(s => { const t = s.teacher||'Chưa xác định'; if (!map[t]) map[t]={revenue:0,students:0,paid:0,sessions:0,classes:new Set()}; map[t].students++; if (isPaid(s.id,filterMo,filterYr)) map[t].paid++; if (s.classId) map[t].classes.add(s.classId); });
     moPayments.forEach(p => { const st = students.find(s => s.id===p.studentId); const t = st?.teacher||'Chưa xác định'; if (!map[t]) map[t]={revenue:0,students:0,paid:0,sessions:0,classes:new Set()}; map[t].revenue+=p.amount; });
     moTlogs.forEach(l => { const cls = uClasses.find(c => c['Mã Lớp']===l.classId); const t = cls?.['Giáo viên']||'Chưa xác định'; if (!map[t]) map[t]={revenue:0,students:0,paid:0,sessions:0,classes:new Set()}; map[t].sessions++; });
     return Object.entries(map).map(([fullName,v]) => ({fullName,...v,classList:[...v.classes].join(', '),avgPerSession:v.sessions>0?Math.round(v.revenue/v.sessions):0}));
-  }, [students,moPayments,moTlogs,isPaid,filterMo,filterYr,uClasses]);
+  }, [activeStudents,students,moPayments,moTlogs,isPaid,filterMo,filterYr,uClasses]);
 
   const attendanceStats = useMemo(() => {
     const map: Record<string, {present:number;absent:number;late:number}> = {};
@@ -85,13 +102,70 @@ export default function ReportsTab({ students, payments, expenses, tlogs, uClass
         return ai - bi;
       });
   }, [students]);
-  const feeByClass   = useMemo(() => uClasses.map(c => { const cls=students.filter(s=>s.classId===c['Mã Lớp']&&s.status!=='inactive'); const paid=cls.filter(s=>isPaid(s.id,filterMo,filterYr)).length; return{cls:c['Mã Lớp'],total:cls.length,paid,unpaid:cls.length-paid,pct:cls.length>0?Math.round(paid/cls.length*100):0}; }).filter(r=>r.total>0).sort((a,b)=>b.pct-a.pct), [uClasses,students,isPaid,filterMo,filterYr]);
+
+  // FIX: dùng isStudentActive cho feeByClass
+  const feeByClass = useMemo(() => uClasses.map(c => {
+    const cls = students.filter(s => s.classId===c['Mã Lớp'] && isStudentActive(s));
+    const paid = cls.filter(s => isPaid(s.id,filterMo,filterYr)).length;
+    return { cls:c['Mã Lớp'], total:cls.length, paid, unpaid:cls.length-paid, pct:cls.length>0?Math.round(paid/cls.length*100):0 };
+  }).filter(r=>r.total>0).sort((a,b)=>b.pct-a.pct), [uClasses,students,isPaid,filterMo,filterYr]);
+
+  /**
+   * sessionFeeStats — Thống kê số tháng học tương đương theo 2 cách:
+   *   A. 12 buổi có mặt = 1 tháng (dựa vào attendanceList)
+   *   B. 4 tuần học = 1 tháng (đếm tuần riêng biệt có ít nhất 1 buổi)
+   * Dùng TOÀN BỘ tlogs (lịch sử tích lũy), không lọc theo tháng đang xem.
+   */
+  const sessionFeeStats = useMemo(() => {
+    const now = new Date();
+    return activeStudents.map(s => {
+      let sessions = 0;
+      const weekSet = new Set<string>();
+
+      tlogs.forEach(log => {
+        // Không lọc theo classId vì HS có thể đã chuyển lớp —
+        // tìm theo ID học sinh trong toàn bộ attendanceList
+        const att = (log.attendanceList || []).find((a: any) =>
+          (a.maHS || a['Mã HS'] || a.MaHS) === s.id
+        );
+        if (!att) return;
+        const status = att.trangThai || att['Trạng thái'] || att.TrangThai || '';
+        if (status === 'Có mặt' || status === 'Muộn') {
+          sessions++;
+          const ts = parseDMY(log.date || '');
+          if (ts) weekSet.add(isoWeekKey(ts));
+        }
+      });
+
+      const weeks = weekSet.size;
+      const monthsBySession = Math.round((sessions / 12) * 10) / 10; // 1 chữ số thập phân
+      const monthsByWeek    = Math.round((weeks   / 4)  * 10) / 10;
+
+      // Đếm tháng đã đóng từ startDate đến nay
+      let paidMonths = 0;
+      const startTs = parseDMY(s.startDate || '');
+      if (startTs) {
+        const sd = new Date(startTs);
+        let y = sd.getFullYear(), m = sd.getMonth() + 1;
+        while (y < now.getFullYear() || (y === now.getFullYear() && m <= now.getMonth() + 1)) {
+          if (isPaid(s.id, m, y)) paidMonths++;
+          m++; if (m > 12) { m = 1; y++; }
+        }
+      }
+
+      // Chênh lệch: tháng đã đóng - tháng tương đương theo buổi
+      const diffSession = Math.round((paidMonths - monthsBySession) * 10) / 10;
+      const diffWeek    = Math.round((paidMonths - monthsByWeek)    * 10) / 10;
+
+      return { id: s.id, name: s.name, classId: s.classId, sessions, weeks, monthsBySession, monthsByWeek, paidMonths, diffSession, diffWeek };
+    }).sort((a, b) => a.classId.localeCompare(b.classId) || a.name.localeCompare(b.name));
+  }, [activeStudents, tlogs, isPaid]);
 
   const kpiConfig = {
     revenue:    [
       {icon:TrendingUp,  value:fmtM(moRevenue),          label:`Tổng thu T${filterMo}`,    sub:`${moPayments.length} phiếu`,   gradient:'linear-gradient(135deg,#10b981,#059669)'},
       {icon:TrendingDown,value:fmtM(moExpense),          label:`Tổng chi T${filterMo}`,    sub:`${moExpenses.length} phiếu`,   gradient:'linear-gradient(135deg,#f43f5e,#e11d48)'},
-      {icon:DollarSign,  value:fmtM(moRevenue-moExpense),   label:'Lợi nhuận tháng',        sub:moRevenue>=moExpense?'Dương':'Âm',gradient:(moRevenue-moExpense)>=0?'linear-gradient(135deg,#6366f1,#4f46e5)':'linear-gradient(135deg,#f97316,#ea580c)'},
+      {icon:DollarSign,  value:fmtM(moRevenue-moExpense),label:'Lợi nhuận tháng',          sub:moRevenue>=moExpense?'Dương':'Âm',gradient:(moRevenue-moExpense)>=0?'linear-gradient(135deg,#6366f1,#4f46e5)':'linear-gradient(135deg,#f97316,#ea580c)'},
       {icon:BookOpen,    value:moTlogs.length,            label:'Buổi dạy tháng',           sub:`${uClasses.length} lớp`,       gradient:'linear-gradient(135deg,#0ea5e9,#2563eb)'},
     ],
     attendance: [
@@ -109,9 +183,9 @@ export default function ReportsTab({ students, payments, expenses, tlogs, uClass
     ],
     fee:        [
       {icon:BarChart3,   value:`${paidCount}/${active}`,  label:`Đóng phí T${filterMo}`,    sub:`${active>0?Math.round(paidCount/active*100):0}%`, gradient:'linear-gradient(135deg,#6366f1,#7c3aed)'},
-      {icon:TrendingUp,  value:paidCount,                 label:'Đã đóng',                  sub:'học sinh',                     gradient:'linear-gradient(135deg,#10b981,#059669)'},
-      {icon:TrendingDown,value:active-paidCount,          label:'Chưa đóng',                sub:'học sinh',                     gradient:'linear-gradient(135deg,#f43f5e,#e11d48)'},
-      {icon:DollarSign,  value:fmtM(moRevenue),            label:'Doanh thu tháng',          sub:'từ học phí',                   gradient:'linear-gradient(135deg,#f59e0b,#d97706)'},
+      {icon:TrendingUp,  value:paidCount,                 label:'Đã đóng',                  sub:'học sinh đang học',            gradient:'linear-gradient(135deg,#10b981,#059669)'},
+      {icon:TrendingDown,value:active-paidCount,          label:'Chưa đóng',                sub:'học sinh đang học',            gradient:'linear-gradient(135deg,#f43f5e,#e11d48)'},
+      {icon:DollarSign,  value:fmtM(moRevenue),           label:'Doanh thu tháng',          sub:'từ học phí',                   gradient:'linear-gradient(135deg,#f59e0b,#d97706)'},
     ],
   };
 
@@ -119,6 +193,7 @@ export default function ReportsTab({ students, payments, expenses, tlogs, uClass
   const [hovT, setHovT] = useState<number|null>(null);
   const [hovA, setHovA] = useState<number|null>(null);
   const [hovF, setHovF] = useState<number|null>(null);
+  const [hovSF, setHovSF] = useState<number|null>(null);
 
   const handleExport = () => {
     const mo = `t${filterMo}-${filterYr}`;
@@ -138,9 +213,9 @@ export default function ReportsTab({ students, payments, expenses, tlogs, uClass
         students.map(s => [s.id, s.name, s.classId, s.grade || '', s.academicLevel || 'Chưa xác định'])
       );
     } else if (reportType === 'fee') {
-      exportCSV(`hoc-phi-${mo}`,
-        ['Lớp', 'Sĩ số', 'Đã đóng', 'Chưa đóng', 'Tỷ lệ (%)'],
-        feeByClass.map(r => [r.cls, r.total, r.paid, r.unpaid, r.pct])
+      exportCSV(`hoc-phi-buoi-hoc`,
+        ['Mã HS', 'Họ tên', 'Lớp', 'Buổi đã học', 'Tháng (12 buổi)', 'Tuần đã học', 'Tháng (4 tuần)', 'Tháng đã đóng', 'Chênh lệch (buổi)', 'Chênh lệch (tuần)'],
+        sessionFeeStats.map(r => [r.id, r.name, r.classId, r.sessions, r.monthsBySession, r.weeks, r.monthsByWeek, r.paidMonths, r.diffSession, r.diffWeek])
       );
     }
   };
@@ -232,7 +307,6 @@ export default function ReportsTab({ students, payments, expenses, tlogs, uClass
       {/* Attendance */}
       {reportType === 'attendance' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {/* Biểu đồ cột chuyên cần theo lớp */}
           {attendanceStats.length > 0 && (
             <div style={{ ...TABLE_WRAP, padding: 16 }}>
               <p style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 14px' }}>
@@ -243,18 +317,12 @@ export default function ReportsTab({ students, payments, expenses, tlogs, uClass
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
                   <XAxis type="number" domain={[0, 100]} tickFormatter={v => `${v}%`} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
                   <YAxis type="category" dataKey="cls" tick={{ fontSize: 11, fill: '#64748b', fontWeight: 600 }} width={48} axisLine={false} tickLine={false} />
-                  <Tooltip
-                    formatter={(val: any, name: string) => [`${val}%`, 'Tỷ lệ CC']}
-                    contentStyle={{ borderRadius: 6, border: 'none', fontSize: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}
-                  />
+                  <Tooltip formatter={(val: any) => [`${val}%`, 'Tỷ lệ CC']} contentStyle={{ borderRadius: 6, border: 'none', fontSize: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }} />
                   <Bar dataKey="pct" name="Tỷ lệ CC" radius={[0, 4, 4, 0]} maxBarSize={22}>
-                    {attendanceStats.map((r, i) => (
-                      <Cell key={i} fill={r.pct >= 90 ? '#10b981' : r.pct >= 75 ? '#f59e0b' : '#ef4444'} />
-                    ))}
+                    {attendanceStats.map((r, i) => <Cell key={i} fill={r.pct >= 90 ? '#10b981' : r.pct >= 75 ? '#f59e0b' : '#ef4444'} />)}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
-              {/* Legend */}
               <div style={{ display: 'flex', gap: 14, marginTop: 10, justifyContent: 'center' }}>
                 {[{ color: '#10b981', label: '≥90% Tốt' }, { color: '#f59e0b', label: '75–89% TB' }, { color: '#ef4444', label: '<75% Thấp' }].map(l => (
                   <span key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#64748b' }}>
@@ -264,8 +332,6 @@ export default function ReportsTab({ students, payments, expenses, tlogs, uClass
               </div>
             </div>
           )}
-
-          {/* Bảng chi tiết */}
           <div style={TABLE_WRAP}>
             <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 340 }}>
@@ -319,28 +385,131 @@ export default function ReportsTab({ students, payments, expenses, tlogs, uClass
 
       {/* Fee */}
       {reportType === 'fee' && (
-        <div style={TABLE_WRAP}>
-          <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 300 }}>
-            <thead><tr><th style={TH_SHARED}>Lớp</th><th style={{ ...TH_SHARED, textAlign:'center' }}>Sĩ số</th><th style={{ ...TH_SHARED, textAlign:'center' }}>Đã đóng</th><th style={{ ...TH_SHARED, textAlign:'center' }}>Chưa đóng</th><th style={TH_SHARED}>Tỷ lệ</th></tr></thead>
-            <tbody>
-              {feeByClass.length === 0 ? <tr><td colSpan={5} style={{ padding: '36px 16px', textAlign: 'center', color: '#94a3b8', fontStyle: 'italic' }}>Chưa có dữ liệu</td></tr>
-                : feeByClass.map((r, i) => (
-                <tr key={r.cls} onMouseEnter={() => setHovF(i)} onMouseLeave={() => setHovF(null)} style={trStyle(i, hovF===i)}>
-                  <td style={TD_SHARED}><Badge color="indigo">{r.cls}</Badge></td>
-                  <td style={{ ...TD_SHARED, textAlign: 'center', fontWeight: 600 }}>{r.total}</td>
-                  <td style={{ ...TD_SHARED, textAlign: 'center', fontWeight: 700, color: '#059669' }}>{r.paid}</td>
-                  <td style={{ ...TD_SHARED, textAlign: 'center', fontWeight: 700, color: '#e11d48' }}>{r.unpaid}</td>
-                  <td style={TD_SHARED}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', background: r.pct>=80?'#ecfdf5':r.pct>=50?'#fff7ed':'#fff1f2', color: r.pct>=80?'#059669':r.pct>=50?'#d97706':'#e11d48' }}>{r.pct}%</span>
-                      <div style={{ flex: 1, height: 5, background: '#f1f5f9', minWidth: 60 }}><div style={{ height: '100%', width: `${r.pct}%`, background: r.pct>=80?'#10b981':r.pct>=50?'#f97316':'#ef4444' }} /></div>
-                    </div>
-                  </td>
-                </tr>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+          {/* Bảng đóng phí theo lớp tháng đang xem */}
+          <div style={TABLE_WRAP}>
+            <div style={{ padding: '9px 14px', borderBottom: '1px solid #f1f5f9' }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Đóng phí theo lớp · T{filterMo}/{filterYr}</p>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 300 }}>
+                <thead><tr>
+                  <th style={TH_SHARED}>Lớp</th>
+                  <th style={{ ...TH_SHARED, textAlign:'center' }}>Sĩ số</th>
+                  <th style={{ ...TH_SHARED, textAlign:'center' }}>Đã đóng</th>
+                  <th style={{ ...TH_SHARED, textAlign:'center' }}>Chưa đóng</th>
+                  <th style={TH_SHARED}>Tỷ lệ</th>
+                </tr></thead>
+                <tbody>
+                  {feeByClass.length === 0 ? <tr><td colSpan={5} style={{ padding: '36px 16px', textAlign: 'center', color: '#94a3b8', fontStyle: 'italic' }}>Chưa có dữ liệu</td></tr>
+                    : feeByClass.map((r, i) => (
+                    <tr key={r.cls} onMouseEnter={() => setHovF(i)} onMouseLeave={() => setHovF(null)} style={trStyle(i, hovF===i)}>
+                      <td style={TD_SHARED}><Badge color="indigo">{r.cls}</Badge></td>
+                      <td style={{ ...TD_SHARED, textAlign: 'center', fontWeight: 600 }}>{r.total}</td>
+                      <td style={{ ...TD_SHARED, textAlign: 'center', fontWeight: 700, color: '#059669' }}>{r.paid}</td>
+                      <td style={{ ...TD_SHARED, textAlign: 'center', fontWeight: 700, color: '#e11d48' }}>{r.unpaid}</td>
+                      <td style={TD_SHARED}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', background: r.pct>=80?'#ecfdf5':r.pct>=50?'#fff7ed':'#fff1f2', color: r.pct>=80?'#059669':r.pct>=50?'#d97706':'#e11d48' }}>{r.pct}%</span>
+                          <div style={{ flex: 1, height: 5, background: '#f1f5f9', minWidth: 60 }}><div style={{ height: '100%', width: `${r.pct}%`, background: r.pct>=80?'#10b981':r.pct>=50?'#f97316':'#ef4444' }} /></div>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* ══ BẢNG THÁNG HỌC TƯƠNG ĐƯƠNG — tích lũy toàn thời gian ══ */}
+          <div style={TABLE_WRAP}>
+            <div style={{ padding: '9px 14px', borderBottom: '1px solid #f1f5f9' }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 2px' }}>
+                Tháng học tương đương · Tích lũy toàn bộ
+              </p>
+              <p style={{ fontSize: 11, color: '#94a3b8', margin: 0, fontStyle: 'italic' }}>
+                Cách A: 12 buổi có mặt = 1 tháng &nbsp;·&nbsp; Cách B: 4 tuần học = 1 tháng &nbsp;·&nbsp; Chênh: Tháng đã đóng − Tháng tương đương
+              </p>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
+                <thead>
+                  <tr>
+                    <th style={TH_SHARED}>Học sinh</th>
+                    <th style={{ ...TH_SHARED, textAlign:'center' }}>Lớp</th>
+                    {/* Cách A */}
+                    <th style={{ ...TH_SHARED, textAlign:'center', background:'#eff6ff', color:'#2563eb' }}>Buổi có mặt</th>
+                    <th style={{ ...TH_SHARED, textAlign:'center', background:'#eff6ff', color:'#2563eb' }}>Tháng (A)</th>
+                    {/* Cách B */}
+                    <th style={{ ...TH_SHARED, textAlign:'center', background:'#f5f3ff', color:'#7c3aed' }}>Tuần học</th>
+                    <th style={{ ...TH_SHARED, textAlign:'center', background:'#f5f3ff', color:'#7c3aed' }}>Tháng (B)</th>
+                    {/* Thực tế */}
+                    <th style={{ ...TH_SHARED, textAlign:'center', background:'#ecfdf5', color:'#059669' }}>Đã đóng</th>
+                    <th style={{ ...TH_SHARED, textAlign:'center', background:'#ecfdf5', color:'#059669' }}>Chênh (A)</th>
+                    <th style={{ ...TH_SHARED, textAlign:'center', background:'#ecfdf5', color:'#059669' }}>Chênh (B)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sessionFeeStats.length === 0
+                    ? <tr><td colSpan={9} style={{ padding: '36px 16px', textAlign: 'center', color: '#94a3b8', fontStyle: 'italic' }}>Chưa có dữ liệu điểm danh</td></tr>
+                    : sessionFeeStats.map((r, i) => {
+                      const diffAColor = r.diffSession >= 0 ? '#059669' : '#e11d48';
+                      const diffBColor = r.diffWeek    >= 0 ? '#059669' : '#e11d48';
+                      const diffABg    = r.diffSession >= 0 ? '#ecfdf5' : '#fff1f2';
+                      const diffBBg    = r.diffWeek    >= 0 ? '#ecfdf5' : '#fff1f2';
+                      return (
+                        <tr key={r.id} onMouseEnter={() => setHovSF(i)} onMouseLeave={() => setHovSF(null)} style={trStyle(i, hovSF===i)}>
+                          <td style={TD_SHARED}>
+                            <p style={{ fontWeight: 700, color: '#0f172a', margin: 0, fontSize: 13 }}>{r.name}</p>
+                            <p style={{ fontSize: 11, color: '#94a3b8', margin: 0 }}>{r.id}</p>
+                          </td>
+                          <td style={{ ...TD_SHARED, textAlign: 'center' }}><Badge color="indigo">{r.classId}</Badge></td>
+                          {/* Cách A */}
+                          <td style={{ ...TD_SHARED, textAlign: 'center', fontWeight: 700, color: '#2563eb' }}>{r.sessions}</td>
+                          <td style={{ ...TD_SHARED, textAlign: 'center' }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 5, background: '#eff6ff', color: '#2563eb' }}>
+                              {r.monthsBySession.toFixed(1)}
+                            </span>
+                          </td>
+                          {/* Cách B */}
+                          <td style={{ ...TD_SHARED, textAlign: 'center', fontWeight: 700, color: '#7c3aed' }}>{r.weeks}</td>
+                          <td style={{ ...TD_SHARED, textAlign: 'center' }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 5, background: '#f5f3ff', color: '#7c3aed' }}>
+                              {r.monthsByWeek.toFixed(1)}
+                            </span>
+                          </td>
+                          {/* Thực tế + chênh */}
+                          <td style={{ ...TD_SHARED, textAlign: 'center', fontWeight: 800, color: '#059669' }}>{r.paidMonths}</td>
+                          <td style={{ ...TD_SHARED, textAlign: 'center' }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 5, background: diffABg, color: diffAColor }}>
+                              {r.diffSession >= 0 ? '+' : ''}{r.diffSession.toFixed(1)}
+                            </span>
+                          </td>
+                          <td style={{ ...TD_SHARED, textAlign: 'center' }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 5, background: diffBBg, color: diffBColor }}>
+                              {r.diffWeek >= 0 ? '+' : ''}{r.diffWeek.toFixed(1)}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  }
+                </tbody>
+              </table>
+            </div>
+            {/* Legend */}
+            <div style={{ padding: '8px 14px', borderTop: '1px solid #f1f5f9', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+              {[
+                { bg: '#ecfdf5', color: '#059669', label: 'Chênh ≥ 0: Đã đóng đủ hoặc dư' },
+                { bg: '#fff1f2', color: '#e11d48', label: 'Chênh < 0: Thiếu tháng học phí' },
+              ].map(l => (
+                <span key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#64748b' }}>
+                  <span style={{ width: 10, height: 10, borderRadius: 3, background: l.bg, border: `1px solid ${l.color}33`, display: 'inline-block' }} />
+                  <span style={{ color: l.color, fontWeight: 700 }}>{l.label}</span>
+                </span>
               ))}
-            </tbody>
-          </table>
+            </div>
           </div>
         </div>
       )}

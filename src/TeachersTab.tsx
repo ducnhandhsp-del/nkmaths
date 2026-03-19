@@ -7,18 +7,12 @@
  * - Full-screen detail panel
  */
 import React, { useState, useEffect } from 'react';
-import { Users, Award, School, Phone, Mail, X, Edit3, Eye, Plus, Save, DollarSign } from 'lucide-react';
+import { Users, Award, School, Phone, Mail, X, Edit3, Eye, Plus, Save } from 'lucide-react';
 import { fmtVND } from './helpers';
-import { ModalWrap, Field } from './UIComponents';
 import { Button, IconButton, Input, Select, SearchBar, TableActions } from './dsComponents';
 import { StatBlock, StatGrid, TABLE_WRAP, TH_SHARED, TD_SHARED, trStyle } from './AppComponents';
 import { FAB } from './AppComponents';
 import type { Teacher } from './types';
-
-const DEMO_TEACHERS: Teacher[] = [
-  { id:'T001', name:'Lê Đức Nhân',     phone:'0383634949', email:'nhan@loptoannk.com', gender:'male',   specialization:'Toán', qualification:'Thạc sĩ', experience:8, baseSalary:8000000, hourlyRate:200000, allowance:500000, status:'active', classes:[], createdAt:'2020-01-01T00:00:00Z', notes:'Giáo viên chủ chốt, chuyên Toán 9-12' },
-  { id:'T002', name:'Nguyễn Thị Kiên', phone:'0912345678', email:'kien@loptoannk.com', gender:'female', specialization:'Toán', qualification:'Cử nhân', experience:4, baseSalary:6000000, hourlyRate:150000, allowance:300000, status:'active', classes:[], createdAt:'2022-06-01T00:00:00Z', notes:'Lớp cơ bản' },
-];
 
 const STATUS_MAP: Record<Teacher['status'],{label:string;bg:string;color:string}> = {
   active:  { label:'Đang dạy',  bg:'#ecfdf5', color:'#059669' },
@@ -83,22 +77,20 @@ function TeacherModal({ open, onClose, editing, onSave, isSaving }: {
 
 interface Props { teachers:Teacher[]; uClasses:any[]; tlogs:any[]; onSave:(f:any)=>void; isSaving:boolean; }
 
-export default function TeachersTab({ teachers:propTeachers, uClasses, tlogs, onSave, isSaving }: Props) {
-  // Không dùng DEMO_TEACHERS nữa — hiện trạng thái empty state thật thay vì dữ liệu giả
-  const teachers = propTeachers;
+export default function TeachersTab({ teachers, uClasses, tlogs, onSave, isSaving }: Props) {
   const [showModal,setShowModal] = useState(false);
   const [editing,setEditing] = useState<Teacher|null>(null);
   const [detail,setDetail] = useState<Teacher|null>(null);
   const [search,setSearch] = useState('');
   const [hovRow,setHovRow] = useState<string|null>(null);
 
-  // Tự cập nhật detail panel khi teachers thay đổi (sau optimistic update)
+  /* FIX G4: thêm detail vào deps để không đọc stale closure */
   useEffect(() => {
     if (detail) {
       const updated = teachers.find(t => t.id === detail.id);
       if (updated) setDetail(updated);
     }
-  }, [teachers]);
+  }, [teachers, detail?.id]);
 
   const filtered = teachers.filter(t => !search || t.name.toLowerCase().includes(search.toLowerCase()));
   const active   = teachers.filter(t => t.status==='active').length;

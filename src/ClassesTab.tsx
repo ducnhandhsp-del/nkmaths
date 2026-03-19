@@ -2,16 +2,16 @@
  * ClassesTab.tsx — v28.0
  * Toggle Bảng/Thẻ, mobile 3 cột + Chi tiết, modal chi tiết lớp
  */
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Edit3, Clock, Plus, LayoutList, LayoutGrid, X, Users, MapPin, User } from 'lucide-react';
 import { resolveTeacher } from './helpers';
 import { FAB, TABLE_WRAP, TH_SHARED, TD_SHARED, trStyle } from './AppComponents';
 import { Badge, SearchBar, Select, IconButton, Button } from './dsComponents';
-import type { Student, ClassRecord, TeachingLog } from './types';
+import type { Student, ClassRecord } from './types';
 
 interface Props {
-  uClasses: ClassRecord[]; students: Student[]; tlogs: TeachingLog[];
-  curMo: number; curYr: number; paidNow: number; paidPct: number;
+  uClasses: ClassRecord[]; students: Student[];
+  curMo: number; curYr: number;
   qCls: string; setQCls: (v: string) => void;
   fClsTeacher: string; setFClsTeacher: (v: string) => void;
   isPaid: (sid: string, mo: number, yr: number) => boolean;
@@ -149,29 +149,50 @@ function ClassDetailModal({ cls, curMo, curYr, students, isPaid, onClose, onEdit
   );
 }
 
-export default function ClassesTab({ uClasses,students,tlogs,curMo,curYr,qCls,setQCls,fClsTeacher,setFClsTeacher,isPaid,onEditClass,onAddClass,uniqueBranches }: Props) {
+export default function ClassesTab({ uClasses,students,curMo,curYr,qCls,setQCls,fClsTeacher,setFClsTeacher,isPaid,onEditClass,onAddClass,uniqueBranches }: Props) {
   const [fBranch, setFBranch] = useState('');
   const [viewMode, setViewMode] = useState<'table'|'grid'>('table');
   const [detailCls, setDetailCls] = useState<any>(null);
 
-  const clsStats = uClasses.map(c => {
+  // FIX C4: memoize getSchedule helper (stable reference)
+  const getSchedule = React.useCallback((c: any) => {
+    const p = [c['Buổi 1'], c['Buổi 2'], c['Buổi 3']].filter(Boolean);
+    return p.length > 0 ? p.join(' | ') : (c['Ca học'] || '---');
+  }, []);
+
+  // FIX C4: memoize clsStats — O(students × classes) computation
+  const clsStats = React.useMemo(() => uClasses.map(c => {
     const cls = students.filter(s => s.classId === c['Mã Lớp']);
-    const paidCount = cls.filter(s => isPaid(s.id,curMo,curYr)).length;
-    const pct = cls.length > 0 ? Math.round(paidCount/cls.length*100) : 0;
-    return { ...c, studentCount:cls.length, paidCount, pct };
-  }).sort((a,b) => (a['Mã Lớp']||'').localeCompare(b['Mã Lớp']||''));
+    const paidCount = cls.filter(s => isPaid(s.id, curMo, curYr)).length;
+    const pct = cls.length > 0 ? Math.round(paidCount / cls.length * 100) : 0;
+    return { ...c, studentCount: cls.length, paidCount, pct };
+  }).sort((a, b) => (a['Mã Lớp'] || '').localeCompare(b['Mã Lớp'] || '')),
+  [uClasses, students, isPaid, curMo, curYr]);
 
-  const filtCls = clsStats.filter(c => {
+  // FIX C4: memoize teacher list (uses resolveTeacher per class)
+  const teachers = React.useMemo(() =>
+    [...new Set(uClasses.map(c => resolveTeacher(c['Giáo viên'] || '')).filter(Boolean))],
+  [uClasses]);
+
+  // FIX C3 Bug: filter compares resolveTeacher(raw) against fClsTeacher (already resolved)
+  const filtCls = React.useMemo(() => {
     const q = qCls.toLowerCase();
-    return (!q||(c['Mã Lớp']||'').toLowerCase().includes(q)||(c['Tên Lớp']||'').toLowerCase().includes(q))
-      && (!fClsTeacher||(c['Giáo viên']||'').includes(fClsTeacher))
-      && (!fBranch||(c['Cơ sở']||'').includes(fBranch));
-  });
+    return clsStats.filter(c => {
+      const resolvedTeacher = resolveTeacher(c['Giáo viên'] || '');
+      return (!q || (c['Mã Lớp'] || '').toLowerCase().includes(q) || (c['Tên Lớp'] || '').toLowerCase().includes(q))
+        && (!fClsTeacher || resolvedTeacher === fClsTeacher)
+        && (!fBranch || (c['Cơ sở'] || '').includes(fBranch));
+    });
+  }, [clsStats, qCls, fClsTeacher, fBranch]);
 
-  const teachers = [...new Set(uClasses.map(c => resolveTeacher(c['Giáo viên']||'')).filter(Boolean))];
-  const getSchedule = (c: any) => { const p=[c['Buổi 1'],c['Buổi 2'],c['Buổi 3']].filter(Boolean); return p.length>0?p.join(' | '):(c['Ca học']||'---'); };
-  const teacherOptions = [{value:'',label:'Tất cả GV'},...teachers.map(t=>({value:t,label:t}))];
-  const branchOptions  = [{value:'',label:'Tất cả cơ sở'},...uniqueBranches.map(b=>({value:b,label:b}))];
+  // FIX C4: memoize select options
+  const teacherOptions = React.useMemo(() =>
+    [{ value: '', label: 'Tất cả GV' }, ...teachers.map(t => ({ value: t, label: t }))],
+  [teachers]);
+  const branchOptions = React.useMemo(() =>
+    [{ value: '', label: 'Tất cả cơ sở' }, ...uniqueBranches.map(b => ({ value: b, label: b }))],
+  [uniqueBranches]);
+
   const TH = TH_SHARED, TD = TD_SHARED;
 
   const emptyState = (

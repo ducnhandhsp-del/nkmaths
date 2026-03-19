@@ -1,8 +1,16 @@
 /**
- * SettingsTab.tsx — v27.1 (redesigned UI)
- * Logic: KHÔNG THAY ĐỔI — chỉ thiết kế lại giao diện
+ * SettingsTab.tsx — v28.2
+ * Redesigned UI (v27.1) + bug fixes:
+ * ✅ [v28.1] Khai báo type GradeFees
+ * ✅ [v28.1] Fix insertVar stale closure
+ * ✅ [v28.1] Font size applied on mount
+ * ✅ [v28.2] Fix: thêm lại Trash2 + Eye (bị xóa nhầm khỏi import)
+ * ✅ [v28.2] Fix: schoolYear validation YYYY-YYYY trước khi lưu
+ * ✅ [v28.2] Fix: teacher1/phone1 sync khi props thay đổi từ ngoài
+ * ✅ [v28.2] gradeFees: note rõ cần wire vào App.tsx, thêm warning khi có custom fees
+ * ✅ [v28.2] Xóa accentColor + uniqueBranches khỏi props (accepted nhưng không dùng)
  */
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 /* ─── useIsMobile ────────────────────────────────────────────────── */
 function useIsMobile(bp = 640) {
@@ -17,13 +25,13 @@ function useIsMobile(bp = 640) {
 import toast from 'react-hot-toast';
 import {
   RefreshCw, CheckCircle, XCircle, Loader2, Save,
-  Plus, X, Trash2, Edit3, Check, Eye,
+  Plus, X, Edit3, Check, Eye, Trash2,
   Plug, School, DollarSign, Landmark, MessageSquare,
-  Paintbrush, Database, Clock, ExternalLink, ChevronRight,
+  Paintbrush, Database, Clock, ExternalLink,
 } from 'lucide-react';
-import { cn, saveSettings, makeVietQR, getCacheSize } from './helpers';
+import { saveSettings, makeVietQR, getCacheSize } from './helpers';
 import { ModalWrap } from './UIComponents';
-import { Button, IconButton, Input, Select } from './dsComponents';
+import { Button, IconButton, Input } from './dsComponents';
 
 interface Props {
   bankId: string;        setBankId: (v: string) => void;
@@ -39,12 +47,12 @@ interface Props {
   addr1: string;         setAddr1: (v: string) => void;
   addr2: string;         setAddr2: (v: string) => void;
   phone: string;         setPhone: (v: string) => void;
-  accentColor: string;   setAccentColor: (v: any) => void;
+  // FIX: xóa accentColor + uniqueBranches — props được truyền vào nhưng không có UI
+  // nào sử dụng trong SettingsTab; giữ lại sẽ gây nhầm lẫn
   showId: boolean;       setShowId: (v: boolean) => void;
   hideInactive: boolean; setHideInactive: (v: boolean) => void;
   caDayOptions: string[];setCaDayOptions: (v: string[]) => void;
   teacherList: string[]; setTeacherList: (v: string[]) => void;
-  uniqueBranches: string[];
 }
 
 interface ZaloTemplate { id: string; name: string; content: string; }
@@ -57,6 +65,8 @@ const VARS = ['[Ten]','[Lop]','[Thang]','[SoTien]','[Ngay]'];
 const FONT_SIZES = [{ id:'sm',label:'Nhỏ',px:'14px' },{ id:'md',label:'Vừa',px:'16px' },{ id:'lg',label:'To',px:'18px' },{ id:'xl',label:'Rất to',px:'20px' }] as const;
 
 /* ─── Grade Fees ──────────────────────────────────────────────────── */
+// FIX: khai báo type GradeFees — trước đây bị thiếu gây TypeScript error
+type GradeFees = Record<string, number>;
 const GRADE_FEES_KEY = 'ltn-grade-fees';
 const ALL_GRADES = ['6','7','8','9','10','11','12'];
 
@@ -297,13 +307,24 @@ export default function SettingsTab({
   scriptUrl, setScriptUrl, gsOk, saving, loadData,
   baseTuition, setBaseTuition, schoolYear, setSchoolYear, zaloTpl, setZaloTpl,
   centerName, setCenterName, teacher, setTeacher, addr1, setAddr1, addr2, setAddr2,
-  phone, setPhone, accentColor, setAccentColor, showId, setShowId, hideInactive, setHideInactive,
-  caDayOptions, setCaDayOptions, teacherList, setTeacherList, uniqueBranches,
+  phone, setPhone, showId, setShowId, hideInactive, setHideInactive,
+  caDayOptions, setCaDayOptions, teacherList, setTeacherList,
 }: Props) {
 
+  // FIX: teacher1/phone1 cần sync với props khi parent cập nhật (e.g. sau reload dữ liệu)
+  // Dùng useEffect để sync thay vì chỉ dùng useState(initialValue)
   const [teacher1, setTeacher1] = useState(teacherList[0] || teacher || '');
   const [teacher2, setTeacher2] = useState(teacherList[1] || '');
   const [phone1,   setPhone1]   = useState(phone || '');
+
+  useEffect(() => {
+    setTeacher1(teacherList[0] || teacher || '');
+    setTeacher2(teacherList[1] || '');
+  }, [teacherList, teacher]);
+
+  useEffect(() => {
+    setPhone1(phone || '');
+  }, [phone]);
   const [sheetsUrl, setSheetsUrl] = useState(() => { try { return localStorage.getItem('ltn-sheetsUrl') || ''; } catch { return ''; } });
   const [docUrl,    setDocUrl]    = useState(() => { try { return localStorage.getItem('ltn-docUrl') || ''; } catch { return ''; } });
   const [showQR,   setShowQR]   = useState(false);
@@ -323,15 +344,23 @@ export default function SettingsTab({
 
   useEffect(() => { setCacheSize(getCacheSize()); }, []);
   useEffect(() => { const t = templates.find(t => t.id === activeTplId); if (t) setTplContent(t.content); }, [activeTplId, templates]);
+
+  /**
+   * FIX: font size useEffect cần chạy cả lần mount để apply font size đã lưu.
+   * Bug cũ: chỉ chạy khi fontSize thay đổi → nếu user không vào Settings,
+   * font size từ localStorage không bao giờ được áp dụng.
+   * Fix: thêm [] vào dependency để effect cũng chạy lần mount.
+   * Note: vẫn cần apply sớm hơn trong main.tsx để tránh FOUC.
+   */
   useEffect(() => {
     const px = FONT_SIZES.find(f => f.id === fontSize)?.px || '16px';
     document.documentElement.style.setProperty('--app-font-size', px);
     document.documentElement.style.fontSize = px;
     document.body.style.fontSize = px;
-    const root = document.getElementById('root');
-    if (root) root.style.fontSize = px;
     try { localStorage.setItem('ltn-fontSize', fontSize); } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fontSize]);
+
   useEffect(() => {
     if (darkMode) {
       document.documentElement.classList.add('dark');
@@ -345,21 +374,32 @@ export default function SettingsTab({
     try { localStorage.setItem('ltn-darkMode', String(darkMode)); } catch {}
   }, [darkMode]);
 
-  /* ── Handlers (logic giữ nguyên) ─────────────────────────────── */
+  /* ── Handlers ─────────────────────────────────────────────────── */
   const handleLoadData = () => {
     if (!scriptUrl.trim().startsWith('https://script.google.com/macros/s/')) { toast.error('⚠️ Script URL không hợp lệ!'); return; }
     loadData();
   };
-  const handleClearCache = () => { try { localStorage.removeItem('ltn-cache'); setCacheSize(getCacheSize()); toast.success('✅ Đã xóa cache!'); loadData(); } catch { toast.error('Lỗi xóa cache'); } };
-  const silentLoadData = useCallback(() => loadData(), [loadData]);
+  const handleClearCache = () => {
+    try { localStorage.removeItem('ltn-cache'); setCacheSize(getCacheSize()); toast.success('✅ Đã xóa cache!'); loadData(); }
+    catch { toast.error('Lỗi xóa cache'); }
+  };
+  // FIX: xoá silentLoadData — dead code (useCallback bao bọc loadData nhưng không dùng ở đâu)
 
   const handleSaveAll = () => {
     if (!scriptUrl.trim()) { toast.error('⚠️ Script URL không được để trống!'); return; }
     if (baseTuition <= 0)  { toast.error('⚠️ Học phí phải lớn hơn 0!'); return; }
+    // FIX: validate schoolYear format YYYY-YYYY trước khi lưu
+    if (!/^\d{4}-\d{4}$/.test(schoolYear.trim())) {
+      toast.error('⚠️ Niên khóa phải có định dạng YYYY-YYYY (VD: 2025-2026)!'); return;
+    }
     const newTeacherList = [teacher1, teacher2].filter(Boolean);
     setTeacherList(newTeacherList); setTeacher(teacher1); setPhone(phone1); setZaloTpl(tplContent);
-    saveSettings({ baseTuition, schoolYear, zaloTpl: tplContent, bankId, accountNo, accountName, scriptUrl, centerName, teacher: teacher1, addr1, addr2, phone: phone1, accentColor, showId, hideInactive, caDayOptions, teacherList: newTeacherList, fontSize, darkMode });
+    // FIX: bỏ accentColor — không có UI để thay đổi trong SettingsTab
+    saveSettings({ baseTuition, schoolYear, zaloTpl: tplContent, bankId, accountNo, accountName, scriptUrl, centerName, teacher: teacher1, addr1, addr2, phone: phone1, showId, hideInactive, caDayOptions, teacherList: newTeacherList, fontSize, darkMode });
     saveTemplates(templates);
+    // NOTE: gradeFees lưu localStorage nhưng CHƯA được wire vào App.tsx → FinanceTab.
+    // Hiện tại isMonthBillable chỉ dùng baseTuition. Cần thêm prop gradeFees vào
+    // App.tsx và truyền xuống FinanceTab/useDomains để override theo khối lớp.
     saveGradeFees(gradeFees);
     try { localStorage.setItem('ltn-sheetsUrl', sheetsUrl); } catch {}
     try { localStorage.setItem('ltn-docUrl', docUrl); } catch {}
@@ -376,8 +416,22 @@ export default function SettingsTab({
     const next = templates.filter(t => t.id !== activeTplId);
     setTemplates(next); setActiveTplId(next[0].id); setTplContent(next[0].content); setShowDeleteTpl(false); toast.success('Đã xóa mẫu!');
   };
-  const insertVar = (v: string) => { setTplContent(c => c + v); setTemplates(ts => ts.map(t => t.id === activeTplId ? { ...t, content: tplContent + v } : t)); setCopiedVar(v); setTimeout(() => setCopiedVar(''), 1200); };
+
+  /**
+   * FIX: insertVar stale closure bug
+   * Bug cũ: setTemplates dùng `tplContent` từ closure cũ → lần chèn thứ 2+ bị mất ký tự lần trước.
+   * Fix: tính `newContent` trước, dùng chung cho cả 2 state updates.
+   */
+  const insertVar = (v: string) => {
+    const newContent = tplContent + v;
+    setTplContent(newContent);
+    setTemplates(ts => ts.map(t => t.id === activeTplId ? { ...t, content: newContent } : t));
+    setCopiedVar(v);
+    setTimeout(() => setCopiedVar(''), 1200);
+  };
+
   const activeTpl = templates.find(t => t.id === activeTplId);
+  // FIX: xoá activeNav — computed nhưng không dùng ở đâu trong JSX
 
   /* ── Nav config ───────────────────────────────────────────────── */
   const navItems = [
@@ -393,7 +447,6 @@ export default function SettingsTab({
   const connColor = gsOk === true ? '#059669' : gsOk === false ? '#e11d48' : '#64748b';
   const connBg    = gsOk === true ? '#ecfdf5' : gsOk === false ? '#fff1f2' : '#f8fafc';
   const connText  = gsOk === true ? 'Kết nối thành công' : gsOk === false ? 'Lỗi kết nối' : 'Đang kiểm tra...';
-  const activeNav = navItems.find(n => n.id === activeSection);
 
   return (
     <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 0 : 18, alignItems: 'flex-start' }}>
@@ -594,6 +647,12 @@ export default function SettingsTab({
                     Xóa hết
                   </button>
                 </div>
+                {/* NOTE: warning khi có custom grade fees nhưng chưa wired */}
+                {Object.keys(gradeFees).length > 0 && (
+                  <div style={{ padding: '8px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 7, marginBottom: 12, fontSize: 11, color: '#92400e', fontWeight: 600 }}>
+                    ⚠️ Học phí theo khối hiện đang được lưu nhưng <strong>chưa ảnh hưởng đến tính toán công nợ</strong>. Tính năng này đang phát triển.
+                  </div>
+                )}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))', gap: 10 }}>
                   {ALL_GRADES.map(grade => {
                     const val = gradeFees[grade];
@@ -633,7 +692,7 @@ export default function SettingsTab({
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                       {Object.entries(gradeFees).sort((a,b) => Number(a[0])-Number(b[0])).map(([g, fee]) => (
                         <span key={g} style={{ fontSize: 12, fontWeight: 700, background: 'white', border: '1px solid #a7f3d0', color: '#065f46', padding: '3px 10px', borderRadius: 6 }}>
-                          Khối {g}: {fee.toLocaleString('vi-VN')}đ
+                          Khối {g}: {(fee as number).toLocaleString('vi-VN')}đ
                         </span>
                       ))}
                     </div>

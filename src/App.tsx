@@ -12,7 +12,7 @@
  * Aggregations   → aggregations.ts
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 
 import { loadSettings, parseDMY, SCRIPT_URL_DEFAULT, FEE_DEFAULT, CA_DAY_DEFAULT, TEACHER_LIST_DEFAULT } from './helpers';
 import { RULES } from './rules';
@@ -87,6 +87,11 @@ export default function App() {
     setStudents, setPayments, setExpenses,
     setTeachers, setMaterials, setLeaveRequests,
     loadData,
+    /* FIX S1: truyền refs trực tiếp thay vì dùng __setSilent hack */
+    silentRef:       appData.silentRef,
+    lastLoadTimeRef: appData.lastLoadTimeRef,
+    /* FIX D5: useDomains set khi đang save để chặn auto-reload */
+    isSavingRef:     appData.isSavingRef,
   });
 
   /* ── Modal UI state ── */
@@ -133,15 +138,32 @@ export default function App() {
   });
 
   /* ── Prev-month deltas ── */
-  const prevStudentCount = students.filter(s => {
+  // prevStudentCount = số HS active đầu tháng này (để delta = active now - active last month)
+  const prevStudentCount = useMemo(() => {
     const thisMonthStart = new Date(d.curYr, d.curMo - 1, 1).getTime();
-    const ts = parseDMY(s.startDate || '');
-    return ts > 0 && ts < thisMonthStart;
-  }).length;
-  const prevTlogCount = tlogs.filter(l => {
-    const dt = new Date(parseDMY(l.date || ''));
-    return dt.getMonth() + 1 === d.prevMo && dt.getFullYear() === d.prevYr;
-  }).length;
+    return students.filter(s => {
+      const startTs = parseDMY(s.startDate || '');
+      if (!startTs || startTs >= thisMonthStart) return false; // bắt đầu tháng này → không tính
+      // Còn active đầu tháng = chưa nghỉ hoặc nghỉ từ tháng này trở đi
+      const endTs = parseDMY(s.endDate || '');
+      return !endTs || endTs >= thisMonthStart;
+    }).length;
+  }, [students, d.curYr, d.curMo]);
+
+  // prevTlogCount: encode để delta = tháng này - tháng trước
+  // OverviewTab tính: delta = tlogs.length - prevTlogCount
+  // → prevTlogCount = tlogs.length - (thisMonth - lastMonth)
+  const prevTlogCount = useMemo(() => {
+    const thisM = tlogs.filter(l => {
+      const dt = new Date(parseDMY(l.date || ''));
+      return dt.getMonth() + 1 === d.curMo && dt.getFullYear() === d.curYr;
+    }).length;
+    const lastM = tlogs.filter(l => {
+      const dt = new Date(parseDMY(l.date || ''));
+      return dt.getMonth() + 1 === d.prevMo && dt.getFullYear() === d.prevYr;
+    }).length;
+    return tlogs.length - thisM + lastM;
+  }, [tlogs, d.curMo, d.curYr, d.prevMo, d.prevYr]);
 
   if (loading) return <LoadingScreen />;
 
@@ -198,8 +220,8 @@ export default function App() {
             {screen === 'classes' && (
               <ErrorBoundary fallbackLabel="Lớp học">
                 <ClassesTab
-                  uClasses={uClasses} students={students} tlogs={tlogs}
-                  curMo={d.curMo} curYr={d.curYr} paidNow={d.paidNow} paidPct={d.paidPct}
+                  uClasses={uClasses} students={students}
+                  curMo={d.curMo} curYr={d.curYr}
                   qCls={d.qCls} setQCls={d.setQCls} fClsTeacher={d.fClsTeacher} setFClsTeacher={d.setFClsTeacher}
                   isPaid={d.isPaid}
                   onEditClass={c => { d.setEditClass(c); setShowClass(true); }}
@@ -214,13 +236,12 @@ export default function App() {
                 <StudentsTab
                   filtS={d.filtS} pgS={d.pgS} setPgS={d.setPgS} students={students}
                   qS={d.qS} setQS={d.setQS} fCls={d.fCls} setFCls={d.setFCls} uClasses={uClasses}
+                  hideInactive={d.hideInactive} setHideInactive={d.setHideInactive}
                   onViewStudent={s => setVStudent(s)}
                   onEditStudent={s => { d.setEditStudent(s); setShowStudent(true); }}
                   onDeleteStudent={t => setDelTarget(t)}
                   onAddStudent={() => { d.setEditStudent(null); setShowStudent(true); }}
                   onBulkTransfer={ss => { d.setBulkStudents(ss); setShowBulkXfer(true); }}
-                  curMo={d.curMo} curYr={d.curYr} isPaid={d.isPaid}
-                  zaloTpl={zaloTpl} baseTuition={baseTuition}
                 />
               </ErrorBoundary>
             )}
@@ -284,12 +305,11 @@ export default function App() {
                   addr1={addr1}             setAddr1={setAddr1}
                   addr2={addr2}             setAddr2={setAddr2}
                   phone={phone}             setPhone={setPhone}
-                  accentColor={accentColor} setAccentColor={setAccentColor}
                   showId={showId}           setShowId={setShowId}
                   hideInactive={d.hideInactive} setHideInactive={d.setHideInactive}
                   caDayOptions={caDayOptions}   setCaDayOptions={setCaDayOptions}
                   teacherList={teacherList}     setTeacherList={setTeacherList}
-                  uniqueBranches={d.uniqueBranches} saving={d.saving} loadData={loadData}
+                  saving={d.saving} loadData={loadData}
                 />
               </ErrorBoundary>
             )}

@@ -1,15 +1,17 @@
 /**
  * useDomains.ts — Domain Hooks (Skill Layer)
- * Lớp Toán NK · v28.0
+ * Lớp Toán NK · v29.0
  *
- * Tách toàn bộ CRUD handlers + derived state ra khỏi App.tsx.
- * Mỗi domain là một hook độc lập, testable, tái dùng được.
- *
- * App.tsx trước đây chứa ~200 dòng handlers.
- * Sau khi tách: App.tsx chỉ gọi hooks và render layout.
+ * PHASE 1 FIXES:
+ *  [S1] Nhận silentRef trực tiếp từ useAppData — không còn __setSilent hack
+ *  [S3] Race condition biến mất — silentRef là cùng 1 Ref instance
+ *  [L1] Optimistic delete cho student / payment / expense
+ *  [L4] curMo/curYr reactive: check mỗi phút, đúng khi app dùng qua đêm
+ *  [D3] Pagination reset sau khi filtS/filtD/filtFin thay đổi độ dài
+ *  [D4] lastLoadTimeRef reset về 0 sau manual save → force reload ngay khi tab active
  */
 
-import { useState, useMemo, useCallback, useRef, type Dispatch, type SetStateAction } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect, type Dispatch, type SetStateAction, type MutableRefObject } from 'react';
 import toast from 'react-hot-toast';
 
 import type { Student, Payment, Expense, Teacher, LeaveRequest, Material, DeleteTarget } from './types';
@@ -19,10 +21,6 @@ import {
 } from './helpers';
 import { buildPaidMap, isPaidFn, getActiveStudents, calcPaidPct, countPaidStudents } from './measures';
 import { RULES } from './rules';
-
-/* ─────────────────────────────────────────────
-   TYPES
-───────────────────────────────────────────── */
 
 interface DomainConfig {
   scriptUrl:   string;
@@ -39,12 +37,13 @@ interface DomainConfig {
   setTeachers:      Dispatch<SetStateAction<Teacher[]>>;
   setMaterials:     Dispatch<SetStateAction<Material[]>>;
   setLeaveRequests: Dispatch<SetStateAction<LeaveRequest[]>>;
-  loadData:    () => Promise<void>;
+  loadData:         () => Promise<void>;
+  /* FIX S1: refs từ useAppData — không còn cần __setSilent */
+  silentRef:        MutableRefObject<boolean>;
+  lastLoadTimeRef:  MutableRefObject<number>;
+  /* FIX D5: useDomains write vào đây trong withSave để chặn auto-reload */
+  isSavingRef:      MutableRefObject<boolean>;
 }
-
-/* ─────────────────────────────────────────────
-   HOOK CHÍNH: useDomains
-───────────────────────────────────────────── */
 
 export function useDomains(cfg: DomainConfig) {
   const {
@@ -52,13 +51,14 @@ export function useDomains(cfg: DomainConfig) {
     teachers, materials,
     setStudents, setPayments, setExpenses, setTeachers, setMaterials, setLeaveRequests,
     loadData,
+    silentRef, lastLoadTimeRef, isSavingRef,
   } = cfg;
 
-  const [saving,    setSaving]    = useState(false);
+  const [saving,      setSaving]      = useState(false);
   const [editStudent, setEditStudent] = useState<Student | null>(null);
   const [editClass,   setEditClass]   = useState<any>(null);
   const [editPayment, setEditPayment] = useState<Payment | null>(null);
-  const [editExpense, setEditExpense] = useState<Expense | null>(null);
+  const [editExpense, setEditExpense] = useState<any | null>(null);
   const [editDiary,   setEditDiary]   = useState<any>(null);
 
   const savingRef = useRef(false);
@@ -74,10 +74,11 @@ export function useDomains(cfg: DomainConfig) {
     })
   , [scriptUrl]);
 
-  /* ── withSave: error handling tập trung, đảm bảo saving luôn reset ── */
+  /* ── withSave ── */
   const withSave = useCallback(async (fn: () => Promise<void>, successMsg?: string) => {
     if (savingRef.current) return;
     savingRef.current = true;
+    isSavingRef.current = true;   // FIX D5: báo cho useAppData biết đang save
     setSaving(true);
     try {
       await fn();
@@ -86,20 +87,22 @@ export function useDomains(cfg: DomainConfig) {
       toast.error('❌ ' + (err.message || 'Lỗi khi lưu'));
     } finally {
       savingRef.current = false;
+      isSavingRef.current = false; // FIX D5: cho phép auto-reload lại
       setSaving(false);
     }
-  }, []);
+  }, [isSavingRef]);
 
-  /* ── mkTs: timestamp string ── */
+  /* FIX S1: setSilent set trực tiếp vào silentRef — không còn hack qua __setSilent
+     FIX D4: reset lastLoadTimeRef về 0 → visibility event sẽ force reload ngay */
+  const setSilent = useCallback(() => {
+    silentRef.current = true;
+    lastLoadTimeRef.current = 0;
+  }, [silentRef, lastLoadTimeRef]);
+
   const mkTs = (d: string) => {
     const n = new Date();
     return `${n.getHours().toString().padStart(2,'0')}:${n.getMinutes().toString().padStart(2,'0')} - ${formatDate(d)}`;
   };
-
-  /* ── setSilent để reload không flash loading ── */
-  const setSilent = useCallback(() => {
-    (loadData as any).__setSilent?.();
-  }, [loadData]);
 
   /* ════════════════════════════════════════════
      STUDENTS DOMAIN
@@ -113,7 +116,6 @@ export function useDomains(cfg: DomainConfig) {
         throw new Error(`⚠️ Mã HS "${normalizedId}" đã tồn tại!`);
       form = { ...form, id: normalizedId };
 
-      // Optimistic update: đóng modal & cập nhật UI ngay lập tức
       const optimistic: Student = {
         id: normalizedId, name: form.name?.trim() || '',
         dob: form.dob || '', branch: form.branch || '',
@@ -133,7 +135,6 @@ export function useDomains(cfg: DomainConfig) {
       }
       setEditStudent(null);
 
-      // Gửi lên GAS (không block UI)
       await api({
         action: editStudent ? 'updateHS' : 'saveHS',
         ...sanitizeObject({ ...form, startDate: form.startDate ? formatDate(form.startDate) : '' }),
@@ -155,6 +156,11 @@ export function useDomains(cfg: DomainConfig) {
           endDateStr = `${today.getDate().toString().padStart(2,'0')}/${(today.getMonth()+1).toString().padStart(2,'0')}/${today.getFullYear()}`;
         }
       }
+      /* Optimistic toggle */
+      setStudents(prev => prev.map(st => st.id === s.id
+        ? { ...st, status: isInactive ? 'active' : 'inactive', endDate: isInactive ? '' : endDateStr }
+        : st
+      ));
       await api({
         action: 'updateHS', id: s.id, name: s.name, dob: s.dob, branch: s.branch,
         grade: s.grade, school: s.school, teacher: s.teacher, parentName: s.parentName,
@@ -166,10 +172,11 @@ export function useDomains(cfg: DomainConfig) {
       });
       setSilent(); loadData();
     }, isInactive ? '✅ Đã kích hoạt lại!' : '✅ Đã đánh dấu nghỉ học!');
-  }, [withSave, api, setSilent, loadData]);
+  }, [withSave, api, setStudents, setSilent, loadData]);
 
   const handleSaveFacebook = useCallback(async (s: Student, facebookUrl: string) =>
     withSave(async () => {
+      setStudents(prev => prev.map(st => st.id === s.id ? { ...st, facebookUrl } : st));
       await api({
         action: 'updateHS', id: s.id, name: s.name, dob: s.dob, branch: s.branch,
         grade: s.grade, school: s.school, teacher: s.teacher, parentName: s.parentName,
@@ -180,10 +187,11 @@ export function useDomains(cfg: DomainConfig) {
       });
       setSilent(); loadData();
     }, '✅ Đã lưu Facebook URL!')
-  , [withSave, api, setSilent, loadData]);
+  , [withSave, api, setStudents, setSilent, loadData]);
 
   const handleSaveNote = useCallback(async (s: Student, notes: string) =>
     withSave(async () => {
+      setStudents(prev => prev.map(st => st.id === s.id ? { ...st, notes } : st));
       await api({
         action: 'updateHS', id: s.id, name: s.name, dob: s.dob, branch: s.branch,
         grade: s.grade, school: s.school, teacher: s.teacher, parentName: s.parentName,
@@ -193,7 +201,7 @@ export function useDomains(cfg: DomainConfig) {
       });
       setSilent(); loadData();
     }, '✅ Đã lưu nhận xét!')
-  , [withSave, api, setSilent, loadData]);
+  , [withSave, api, setStudents, setSilent, loadData]);
 
   /* ════════════════════════════════════════════
      CLASSES DOMAIN
@@ -207,19 +215,23 @@ export function useDomains(cfg: DomainConfig) {
     }, editClass ? '✅ Đã cập nhật lớp!' : '✅ Đã thêm lớp mới!')
   , [withSave, editClass, api, setSilent, loadData]);
 
-  /* Bulk transfer nhiều học sinh */
   const [bulkStudents, setBulkStudents] = useState<Student[]>([]);
 
   const handleConfirmBulkTransfer = useCallback(async (newClassId: string, transferDate: string) =>
     withSave(async () => {
       const [ty, tm, td] = transferDate.split('-');
+      const dateStr = `${td}/${tm}/${ty}`;
+      /* Optimistic bulk update */
+      setStudents(prev => prev.map(s =>
+        bulkStudents.some(b => b.id === s.id) ? { ...s, classId: newClassId } : s
+      ));
       await Promise.all(bulkStudents.map(s =>
-        api({ action: 'updateHS', ...s, classId: newClassId, fromClassId: s.classId, transferDate: `${td}/${tm}/${ty}` })
+        api({ action: 'updateHS', ...s, classId: newClassId, fromClassId: s.classId, transferDate: dateStr })
       ));
       setBulkStudents([]);
       setSilent(); loadData();
     }, `✅ Đã chuyển ${bulkStudents.length} học sinh!`)
-  , [withSave, bulkStudents, api, setSilent, loadData]);
+  , [withSave, bulkStudents, api, setStudents, setSilent, loadData]);
 
   /* ════════════════════════════════════════════
      FINANCE DOMAIN
@@ -246,13 +258,11 @@ export function useDomains(cfg: DomainConfig) {
       const description  = `Học phí tháng ${thangHP} năm ${namHP}`;
       const clean        = sanitizeObject({ ...form, maHS, soTien: Number(form.soTien), date: dateFormatted, description, thangHP, namHP });
 
-      // Optimistic update: đóng modal & hiện invoice ngay, không chờ GAS
       const previewPayment: Payment = {
         id: soCT, docNum: soCT, date: dateFormatted,
         studentId: maHS,
         studentName: students.find(s => s.id === maHS)?.name || maHS,
-        payer:  form.nguoiNop || '',
-        method: form.method   || 'Chuyển khoản',
+        payer: form.nguoiNop || '', method: form.method || 'Chuyển khoản',
         description, amount: Number(form.soTien), note: form.note || '',
         thangHP, namHP,
       } as any;
@@ -264,7 +274,6 @@ export function useDomains(cfg: DomainConfig) {
       }
       setVInvoice(previewPayment);
 
-      // Gửi lên GAS (không block UI)
       await api({ action: editPayment ? 'updatePayment' : 'savePayment', timeStamp: t, soCT, ...clean });
       setSilent(); loadData();
     }, editPayment ? '✅ Đã cập nhật phiếu thu!' : '✅ Đã ghi phiếu thu!')
@@ -274,7 +283,7 @@ export function useDomains(cfg: DomainConfig) {
     withSave(async () => {
       if (!form.description?.trim()) throw new Error('⚠️ Vui lòng nhập lý do!');
       if (!form.amount || Number(form.amount) <= 0) throw new Error('⚠️ Số tiền không hợp lệ!');
-      if (!form.date)                throw new Error('⚠️ Vui lòng chọn ngày chi!');
+      if (!form.date) throw new Error('⚠️ Vui lòng chọn ngày chi!');
       const t  = mkTs(form.date);
       const n  = new Date();
       const yy = n.getFullYear().toString().slice(2);
@@ -283,8 +292,7 @@ export function useDomains(cfg: DomainConfig) {
       const soCT = form.docNum || `PC-${yy}${mm}${dd}-${n.getTime().toString(36).slice(-4).toUpperCase()}`;
       const dateFormatted = formatDate(form.date);
 
-      // Optimistic update: đóng modal & cập nhật danh sách ngay
-      const optimistic: Expense = {
+      const optimistic = {
         id: soCT, docNum: soCT, date: dateFormatted,
         description: form.description?.trim() || '',
         category: form.category || '',
@@ -295,10 +303,9 @@ export function useDomains(cfg: DomainConfig) {
       if (!editExpense) {
         setExpenses(prev => [optimistic, ...prev]);
       } else {
-        setExpenses(prev => prev.map(e => e.id === editExpense.id ? optimistic : e));
+        setExpenses(prev => prev.map((e: any) => e.id === editExpense.id ? optimistic : e));
       }
 
-      // Gửi lên GAS (không block UI)
       await api({
         action: editExpense ? 'updateExpense' : 'saveExpense',
         timeStamp: t, soCT,
@@ -315,11 +322,10 @@ export function useDomains(cfg: DomainConfig) {
     const isEdit = !!form.originalDate;
     return withSave(async () => {
       if (!form.content?.trim()) throw new Error('⚠️ Vui lòng nhập nội dung bài dạy!');
-      const clean        = sanitizeObject(form);
-      const dateForGAS   = formatDate(clean.date);
+      const clean = sanitizeObject(form);
       await api({
         action:      isEdit ? 'updateDaily' : 'saveDaily',
-        date:        dateForGAS,
+        date:        formatDate(clean.date),
         maLop:       clean.classId,
         caDay:       clean.caDay || '',
         teacherName: clean.teacherName,
@@ -343,16 +349,17 @@ export function useDomains(cfg: DomainConfig) {
   const handleDelete = useCallback(async (delTarget: DeleteTarget) => {
     if (!delTarget) return;
 
-    /* Teacher: gọi GAS deleteTeacher */
     if (delTarget.type === 'teacher') {
+      /* Optimistic cho teacher */
+      setTeachers(prev => prev.filter(t => t.id !== delTarget.id));
       await withSave(async () => {
         await api({ action: 'deleteTeacher', id: delTarget.id });
         setSilent(); loadData();
       }, '✅ Đã xóa giáo viên!');
       return;
     }
-    /* Material: gọi GAS deleteMaterial */
     if (delTarget.type === 'material') {
+      setMaterials(prev => prev.filter(m => m.id !== delTarget.id));
       await withSave(async () => {
         await api({ action: 'deleteMaterial', id: delTarget.id });
         setSilent(); loadData();
@@ -360,20 +367,29 @@ export function useDomains(cfg: DomainConfig) {
       return;
     }
 
+    /* FIX L1: Optimistic delete cho student / payment / expense */
+    if (delTarget.type === 'student') {
+      setStudents(prev => prev.filter(s => s.id !== delTarget.id));
+    } else if (delTarget.type === 'payment') {
+      setPayments(prev => prev.filter(p => p.id !== delTarget.id));
+    } else if (delTarget.type === 'expense') {
+      setExpenses(prev => prev.filter((e: any) => e.id !== delTarget.id));
+    }
+
     const actionMap: Record<string, string> = {
       student: 'deleteHS', payment: 'deletePayment', expense: 'deleteExpense',
     };
     await withSave(async () => {
       await api({
-        action:   actionMap[delTarget.type],
+        action: actionMap[delTarget.type],
         [delTarget.type === 'student' ? 'id' : 'docNum']: delTarget.id,
       });
       setSilent(); loadData();
     }, '✅ Đã xóa thành công!');
-  }, [withSave, api, setSilent, loadData, setTeachers, setMaterials]);
+  }, [withSave, api, setStudents, setPayments, setExpenses, setTeachers, setMaterials, setSilent, loadData]);
 
   /* ════════════════════════════════════════════
-     TEACHERS DOMAIN — đồng bộ GAS sheet GiaoVien
+     TEACHERS DOMAIN
   ════════════════════════════════════════════ */
   const handleSaveTeacher = useCallback(async (form: any) => {
     const isEdit = !!(form.id?.trim()) && teachers.some(t => t.id === form.id.trim());
@@ -385,20 +401,18 @@ export function useDomains(cfg: DomainConfig) {
       createdAt: form.createdAt || new Date().toISOString(),
     };
     await withSave(async () => {
-      // Optimistic update: cập nhật danh sách GV ngay
       if (isEdit) {
         setTeachers(prev => prev.map(t => t.id === payload.id ? { ...t, ...payload } : t));
       } else {
         setTeachers(prev => [payload, ...prev]);
       }
-      // Gửi lên GAS (không block UI)
       await api({ action: isEdit ? 'updateTeacher' : 'saveTeacher', ...payload });
       setSilent(); loadData();
     }, '✅ Đã lưu giáo viên!');
   }, [teachers, withSave, api, setTeachers, setSilent, loadData]);
 
   /* ════════════════════════════════════════════
-     MATERIALS DOMAIN — đồng bộ GAS sheet HocLieu
+     MATERIALS DOMAIN
   ════════════════════════════════════════════ */
   const handleSaveMaterial = useCallback(async (form: any) => {
     const isEdit = !!(form.id) && materials.some(m => m.id === form.id);
@@ -406,34 +420,20 @@ export function useDomains(cfg: DomainConfig) {
     const tagsArr: string[] = Array.isArray(form.tags)
       ? form.tags
       : (form.tags ? String(form.tags).split(',').map((t: string) => t.trim()).filter(Boolean) : []);
-    const payload = {
-      ...form,
-      id:         optimisticId,
-      tags:       tagsArr.join(','),
-      uploadDate: form.uploadDate || new Date().toISOString(),
-    };
-    const optimistic: Material = {
-      ...form,
-      id:           optimisticId,
-      tags:         tagsArr,
-      uploadedAt:   form.uploadedAt || new Date().toISOString(),
-      uploadedBy:   form.uploadedBy || '',
-    };
+    const payload    = { ...form, id: optimisticId, tags: tagsArr.join(','), uploadDate: form.uploadDate || new Date().toISOString() };
+    const optimistic = { ...form, id: optimisticId, tags: tagsArr, uploadedAt: form.uploadedAt || new Date().toISOString(), uploadedBy: form.uploadedBy || '' };
     await withSave(async () => {
-      // Optimistic update: cập nhật danh sách học liệu ngay
       if (isEdit) {
         setMaterials(prev => prev.map(m => m.id === optimisticId ? { ...m, ...optimistic } : m));
       } else {
         setMaterials(prev => [optimistic, ...prev]);
       }
-      // Gửi lên GAS (không block UI)
       await api({ action: isEdit ? 'updateMaterial' : 'saveMaterial', ...payload });
       setSilent(); loadData();
     }, '✅ Đã lưu học liệu!');
   }, [materials, withSave, api, setMaterials, setSilent, loadData]);
 
   const handleDeleteMaterial = useCallback(async (id: string) => {
-    // Optimistic: xóa khỏi UI trước
     setMaterials(prev => prev.filter(m => m.id !== id));
     await withSave(async () => {
       await api({ action: 'deleteMaterial', id });
@@ -441,36 +441,47 @@ export function useDomains(cfg: DomainConfig) {
     }, '✅ Đã xóa học liệu!');
   }, [withSave, api, setMaterials, setSilent, loadData]);
 
-  /* leaveRequests đã bỏ tính năng */
   const handleApproveLeave = useCallback((_id: string) => {}, []);
   const handleRejectLeave  = useCallback((_id: string) => {}, []);
 
   /* ════════════════════════════════════════════
-     DERIVED STATE — tính từ data, không phải UI state
+     DERIVED STATE
   ════════════════════════════════════════════ */
-  const curMo = new Date().getMonth() + 1;
-  const curYr = new Date().getFullYear();
+
+  /* FIX L4: curMo/curYr reactive — check mỗi phút, tự cập nhật khi sang tháng mới */
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const iv = setInterval(() => {
+      setNow(prev => {
+        const n = new Date();
+        return n.getMonth() !== prev.getMonth() || n.getFullYear() !== prev.getFullYear() ? n : prev;
+      });
+    }, 60_000);
+    return () => clearInterval(iv);
+  }, []);
+  const curMo = now.getMonth() + 1;
+  const curYr = now.getFullYear();
 
   const paidMap = useMemo(() => buildPaidMap(payments, curYr), [payments, curYr]);
   const isPaid  = useMemo(() => isPaidFn(paidMap), [paidMap]);
 
-  const activeStudents  = useMemo(() => getActiveStudents(students),                             [students]);
-  const paidNow         = useMemo(() => countPaidStudents(activeStudents, isPaid, curMo, curYr), [activeStudents, isPaid, curMo, curYr]);
-  const paidPct         = useMemo(() => calcPaidPct(paidNow, activeStudents.length),             [paidNow, activeStudents.length]);
+  const activeStudents = useMemo(() => getActiveStudents(students), [students]);
+  const paidNow        = useMemo(() => countPaidStudents(activeStudents, isPaid, curMo, curYr), [activeStudents, isPaid, curMo, curYr]);
+  const paidPct        = useMemo(() => calcPaidPct(paidNow, activeStudents.length), [paidNow, activeStudents.length]);
 
-  const prevMo          = curMo === 1 ? 12 : curMo - 1;
-  const prevYr          = curMo === 1 ? curYr - 1 : curYr;
-  const prevPaidNow     = useMemo(() => countPaidStudents(activeStudents, isPaid, prevMo, prevYr), [activeStudents, isPaid, prevMo, prevYr]);
+  const prevMo      = curMo === 1 ? 12 : curMo - 1;
+  const prevYr      = curMo === 1 ? curYr - 1 : curYr;
+  const prevPaidNow = useMemo(() => countPaidStudents(activeStudents, isPaid, prevMo, prevYr), [activeStudents, isPaid, prevMo, prevYr]);
 
-  const uniqueBranches  = useMemo(() =>
+  const uniqueBranches = useMemo(() =>
     [...new Set(students.map(s => (s.branch||'').replace(/\s*\(.*?\)/g,'').trim()).filter(Boolean))].sort()
   , [students]);
 
-  /* filtS — học sinh sau khi filter */
-  const [qS,          setQS]    = useState('');
-  const [fCls,        setFCls]  = useState('');
+  /* ── Filters ── */
+  const [qS, setQS]           = useState('');
+  const [fCls, setFCls]       = useState('');
   const [hideInactive, setHideInactive] = useState(false);
-  const [pgS,         setPgS]   = useState(1);
+  const [pgS, setPgS]         = useState(1);
 
   const filtS = useMemo(() => students.filter(s =>
     (!hideInactive || isStudentActive(s)) &&
@@ -478,10 +489,15 @@ export function useDomains(cfg: DomainConfig) {
     (!fCls || s.classId === fCls)
   ), [students, qS, fCls, hideInactive]);
 
-  /* filtD — nhật ký sau filter */
-  const [qD,  setQD]  = useState('');
+  /* FIX D3: reset pagination khi kết quả lọc thay đổi số lượng */
+  const prevFiltSLen = useRef(filtS.length);
+  useEffect(() => {
+    if (filtS.length !== prevFiltSLen.current) { setPgS(1); prevFiltSLen.current = filtS.length; }
+  }, [filtS.length]);
+
+  const [qD, setQD]   = useState('');
   const [dCls, setDCls] = useState('');
-  const [pgD,  setPgD]  = useState(1);
+  const [pgD, setPgD]  = useState(1);
 
   const filtD = useMemo(() =>
     [...tlogs].filter(l =>
@@ -489,19 +505,39 @@ export function useDomains(cfg: DomainConfig) {
       (!qD   || l.classId.toLowerCase().includes(qD.toLowerCase()) || (l.content || '').toLowerCase().includes(qD.toLowerCase()))
     ).sort((a, b) => {
       const dd = parseDMY(b.date) - parseDMY(a.date);
-      return dd !== 0 ? dd : parseCaDayToHours(a.caDay) - parseCaDayToHours(b.caDay);
+      return dd !== 0 ? dd : parseCaDayToHours(b.caDay) - parseCaDayToHours(a.caDay);
     })
   , [tlogs, dCls, qD]);
 
-  /* filtFin — học sinh filter cho tab tài chính */
-  const [qF,   setQF]   = useState('');
-  const [fMo,  setFMo]  = useState(`${(new Date().getMonth()+1).toString().padStart(2,'0')}/${new Date().getFullYear()}`);
+  const prevFiltDLen = useRef(filtD.length);
+  useEffect(() => {
+    if (filtD.length !== prevFiltDLen.current) { setPgD(1); prevFiltDLen.current = filtD.length; }
+  }, [filtD.length]);
+
+  const [qF, setQF]   = useState('');
+  const [fMo, setFMo] = useState(`${(new Date().getMonth()+1).toString().padStart(2,'0')}/${new Date().getFullYear()}`);
   const [fTch, setFTch] = useState('');
-  const [fFC,  setFFC]  = useState('');
-  const [fSt,  setFSt]  = useState('unpaid');
-  const [pgF,  setPgF]  = useState(1);
+  const [fFC, setFFC] = useState('');
+  const [fSt, setFSt] = useState('unpaid');
+  const [pgF, setPgF] = useState(1);
 
   const [fM, fY] = (fMo || '01/2026').split('/').map(Number);
+
+  const isMonthBillableForStudent = useCallback((s: Student, fm: { m: number; y: number }): boolean => {
+    const monthStart = new Date(fm.y, fm.m - 1, 1).getTime();
+    const startTs = parseDMY(s.startDate || '');
+    if (startTs) {
+      const enrollStart = new Date(new Date(startTs).getFullYear(), new Date(startTs).getMonth(), 1).getTime();
+      if (monthStart < enrollStart) return false;
+    }
+    const endTs = parseDMY(s.endDate || '');
+    if (endTs && s.endDate !== '---' && s.endDate !== '') {
+      const leaveMonth = new Date(new Date(endTs).getFullYear(), new Date(endTs).getMonth(), 1).getTime();
+      if (monthStart >= leaveMonth) return false;
+    }
+    return true;
+  }, []);
+
   const filtFin = useMemo(() => {
     const q = qF.toLowerCase().trim();
     const filtered = students.filter(s => {
@@ -509,78 +545,57 @@ export function useDomains(cfg: DomainConfig) {
       if (q    && !s.name.toLowerCase().includes(q) && !s.id.toLowerCase().includes(q)) return false;
       if (fTch && !s.teacher.includes(fTch)) return false;
       if (fFC  && s.classId !== fFC) return false;
-      if (fSt === 'paid')   return  isPaid(s.id, fM, fY);
-      if (fSt === 'unpaid') return !isPaid(s.id, fM, fY);
+      if (fSt === 'paid') return isPaid(s.id, fM, fY);
+      if (fSt === 'unpaid') {
+        if (!isMonthBillableForStudent(s, { m: fM, y: fY })) return false;
+        return !isPaid(s.id, fM, fY);
+      }
       return true;
     });
     if (fSt === 'unpaid') {
-      const now = new Date();
-      const debtMonths: { m: number; y: number }[] = Array.from({ length: 12 }, (_, i) => {
-        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const n = new Date();
+      const debtMonths = Array.from({ length: 12 }, (_, i) => {
+        const d = new Date(n.getFullYear(), n.getMonth() - i, 1);
         return { m: d.getMonth() + 1, y: d.getFullYear() };
       });
       return [...filtered].sort((a, b) => {
-        const aDebt = debtMonths.filter(fm => !isPaid(a.id, fm.m, fm.y)).length;
-        const bDebt = debtMonths.filter(fm => !isPaid(b.id, fm.m, fm.y)).length;
+        const aDebt = debtMonths.filter(fm => isMonthBillableForStudent(a, fm) && !isPaid(a.id, fm.m, fm.y)).length;
+        const bDebt = debtMonths.filter(fm => isMonthBillableForStudent(b, fm) && !isPaid(b.id, fm.m, fm.y)).length;
         return bDebt - aDebt;
       });
     }
     return filtered;
-  }, [students, qF, fTch, fFC, fSt, fM, fY, isPaid, hideInactive]);
+  }, [students, qF, fTch, fFC, fSt, fM, fY, isPaid, hideInactive, isMonthBillableForStudent]);
 
-  /* classes filter */
-  const [qCls, setQCls]           = useState('');
+  const prevFiltFinLen = useRef(filtFin.length);
+  useEffect(() => {
+    if (filtFin.length !== prevFiltFinLen.current) { setPgF(1); prevFiltFinLen.current = filtFin.length; }
+  }, [filtFin.length]);
+
+  const [qCls, setQCls]               = useState('');
   const [fClsTeacher, setFClsTeacher] = useState('');
 
   return {
-    /* saving state */
     saving,
-
-    /* edit states */
     editStudent, setEditStudent,
     editClass,   setEditClass,
     editPayment, setEditPayment,
     editExpense, setEditExpense,
     editDiary,   setEditDiary,
-
-    /* handlers */
-    handleSaveStudent,
-    handleSaveClass,
-    handleSaveFee,
-    handleSaveExpense,
-    handleSaveDiary,
-    handleDelete,
-    handleToggleStudentStatus,
-    handleSaveNote,
-    handleSaveFacebook,
-    handleSaveTeacher,
-    handleSaveMaterial,
-    handleDeleteMaterial,
-    handleApproveLeave,
-    handleRejectLeave,
-
-    /* bulk transfer */
-    bulkStudents, setBulkStudents,
-    handleConfirmBulkTransfer,
-
-    /* invoice preview */
+    handleSaveStudent, handleSaveClass, handleSaveFee, handleSaveExpense,
+    handleSaveDiary, handleDelete, handleToggleStudentStatus,
+    handleSaveNote, handleSaveFacebook,
+    handleSaveTeacher, handleSaveMaterial, handleDeleteMaterial,
+    handleApproveLeave, handleRejectLeave,
+    bulkStudents, setBulkStudents, handleConfirmBulkTransfer,
     vInvoice, setVInvoice,
-
-    /* derived metrics */
     curMo, curYr, prevMo, prevYr,
     isPaid, paidNow, paidPct, prevPaidNow,
     activeStudents, uniqueBranches,
-
-    /* filter state — students */
     qS, setQS, fCls, setFCls, hideInactive, setHideInactive, pgS, setPgS, filtS,
-
-    /* filter state — diary */
     qD, setQD, dCls, setDCls, pgD, setPgD, filtD,
-
-    /* filter state — finance */
     qF, setQF, fMo, setFMo, fTch, setFTch, fFC, setFFC, fSt, setFSt, pgF, setPgF, filtFin,
-
-    /* filter state — classes */
     qCls, setQCls, fClsTeacher, setFClsTeacher,
+    isMonthBillableForStudent,
   };
 }
