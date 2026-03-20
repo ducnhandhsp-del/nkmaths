@@ -14,7 +14,7 @@ import { UserPlus, Eye, Edit3, Trash2, ArrowRight, MessageCircle } from 'lucide-
 import { IPP, capitalizeName, isStudentActive } from './helpers';
 import { ScrollHintTable, FAB } from './AppComponents';
 import { TABLE_WRAP, TH_SHARED, TD_SHARED, trStyle } from './AppComponents';
-import { Badge, Pager, SearchBar, Button, TableActions, Select } from './dsComponents';
+import { Badge, Pager, SearchBar, Button, TableActions, Select, FilterChip } from './dsComponents';
 import type { Student, DeleteTarget } from './types';
 
 interface Props {
@@ -94,7 +94,7 @@ export default function StudentsTab({
         <div style={{ flexShrink: 0 }}>
           <h2 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>Học sinh</h2>
           <p style={{ fontSize: 12, color: '#64748b', margin: '2px 0 0' }}>
-            {filtS.length}/{students.length} học sinh
+            {filtS.length}/{students.length} · {students.filter(isStudentActive).length} đang học · {students.filter(s => !isStudentActive(s)).length} đã nghỉ
           </p>
         </div>
 
@@ -108,15 +108,20 @@ export default function StudentsTab({
         )}
 
         {/* FIX T2: setHideInactive từ props — không còn local state */}
-        <Button
-          variant={hideInactive ? 'solid' : 'outline'}
-          intent={hideInactive ? 'primary' : 'neutral'}
-          size="sm"
-          onClick={() => { setHideInactive(!hideInactive); setPgS(1); }}
-          aria-pressed={hideInactive}
-        >
-          {hideInactive ? '● Đang học' : '○ Tất cả'}
-        </Button>
+        <FilterChip
+          label="Đang học"
+          count={students.filter(isStudentActive).length}
+          active={hideInactive}
+          onClick={() => { setHideInactive(true); setPgS(1); }}
+          color="indigo"
+        />
+        <FilterChip
+          label="Đã nghỉ"
+          count={students.filter(s => !isStudentActive(s)).length}
+          active={!hideInactive}
+          onClick={() => { setHideInactive(false); setPgS(1); }}
+          color="slate"
+        />
 
         <SearchBar value={qS} onChange={v => { setQS(v); setPgS(1); }} placeholder="Tìm tên, mã HS..." width={180} />
         <Select value={fCls} onChange={v => { setFCls(v); setPgS(1); }} options={classOptions} />

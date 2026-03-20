@@ -13,7 +13,7 @@ export const SCRIPT_URL_DEFAULT =
   'https://script.google.com/macros/s/AKfycbzMJsz_cw3VzRqU__nzOYSQqkCWrt-drhzzNU79svnCvVPpXC2-_xUhJTMAqWdIMz1e/exec';
 
 export const FEE_DEFAULT    = 600_000;
-export const IPP            = 10;
+export const IPP            = 25;
 export const FETCH_TIMEOUT  = 30000;
 
 export const CA_DAY_OPTIONS  = ['7h30', '9h', '13h30', '15h30', '17h30', '19h30'] as const;

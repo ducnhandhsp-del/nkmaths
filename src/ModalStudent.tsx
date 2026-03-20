@@ -170,7 +170,11 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
   }));
   const totalSessions=present+absent+late, attendPct=totalSessions>0?Math.round(present/totalSessions*100):null;
   // Tất cả giao dịch, sort mới nhất lên đầu
-  const allPayments=(payments||[]).filter(p=>p.studentId===s.id).sort((a,b)=>b.date.localeCompare(a.date));
+  const allPayments=(payments||[]).filter(p=>p.studentId===s.id).sort((a,b)=>{
+      // B3 FIX: DD/MM/YYYY lexicographic sort is wrong; use timestamp compare
+      const ts = (d: string) => { if (/^\d{2}\/\d{2}\/\d{4}$/.test(d)) { const [dd,mm,yyyy]=d.split('/'); return new Date(+yyyy,+mm-1,+dd).getTime(); } return new Date(d).getTime()||0; };
+      return ts(b.date) - ts(a.date);
+    });
   const totalPaid = allPayments.reduce((sum,p)=>sum+p.amount,0);
   const handleToggle=async(endDate?:string)=>{ if(!onToggleStatus) return; setToggling(true); try{ await onToggleStatus(s,endDate); }finally{ setToggling(false); } };
   const attendColor=(attendPct??0)>=90?'#10b981':(attendPct??0)>=70?'#f97316':'#ef4444';

@@ -28,7 +28,7 @@
   --r-input:        8px;
   --r-btn:          8px;
   --r-badge:        999px;
-  --header-h:       50px;
+  --header-h:       56px;
   --bnav-h:         56px;
   --safe-top:    env(safe-area-inset-top,    0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);

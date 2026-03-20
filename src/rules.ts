@@ -62,7 +62,7 @@ export const RULES = {
   ───────────────────────────────────────── */
   pagination: {
     /** Items per page mặc định */
-    defaultIPP: 10,
+    defaultIPP: 25,
   },
 
   /* ─────────────────────────────────────────

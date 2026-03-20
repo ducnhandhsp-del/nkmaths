@@ -74,9 +74,12 @@ export const buildPaidMap = (
     if (!mo) {
       const raw = p.date || '';
       const s   = raw.includes(' - ') ? raw.split(' - ')[1] : raw;
-      if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) mo = parseInt(s.split('/')[1]);
-      else if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
-        const d = new Date(s.slice(0, 10)); if (!isNaN(d.getTime())) mo = d.getMonth() + 1;
+      if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
+        mo = parseInt(s.split('/')[1]);
+      } else if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+        // B1 FIX: parse component trực tiếp — new Date('YYYY-MM-DD') UTC shift
+        // khiến ngày 1 tháng bị lùi về tháng trước ở UTC+7.
+        mo = parseInt(s.slice(5, 7));
       }
     }
     if (!mo || mo < 1 || mo > 12) return;
@@ -199,8 +202,8 @@ export const buildChartData = (payments: Payment[], expenses: Expense[]): ChartP
       return `${parseInt(p[1])}/${p[2].slice(2)}`;
     }
     if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
-      const d = new Date(s.slice(0, 10));
-      if (!isNaN(d.getTime())) return `${d.getMonth() + 1}/${d.getFullYear().toString().slice(2)}`;
+      // B2 FIX: parse component trực tiếp — tránh UTC midnight shift
+      return `${parseInt(s.slice(5, 7))}/${s.slice(2, 4)}`;
     }
     return null;
   };

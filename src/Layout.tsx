@@ -197,13 +197,14 @@ export const MobileHeader = memo(({ active, set, centerName, isDesktop }: {
         display: 'flex', alignItems: 'center', gap: 10,
         padding: '0 14px',
         paddingTop: 'env(safe-area-inset-top, 0px)',
+        minHeight: 56,
         boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
       }} className="print:hidden">
-        <button onClick={() => setOpen(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 4, display: 'flex' }}>
-          <Menu size={19} />
+        <button onClick={() => setOpen(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: '10px 8px', display: 'flex', minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', margin: '0 -4px' }}>
+          <Menu size={22} />
         </button>
-        <button onClick={() => set('overview')} title="Về Tổng quan" style={{ width: 26, height: 26, borderRadius: 7, background: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: 'none', cursor: 'pointer', padding: 0 }}>
-          <GraduationCap size={13} color="white" />
+        <button onClick={() => set('overview')} title="Về Tổng quan" style={{ width: 32, height: 32, borderRadius: 8, background: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: 'none', cursor: 'pointer', padding: 0 }}>
+          <GraduationCap size={15} color="white" />
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 800, color: '#0f172a', fontSize: 13 }}>{centerName}</div>
@@ -218,9 +219,9 @@ export const MobileHeader = memo(({ active, set, centerName, isDesktop }: {
   );
 });
 
-// Bottom nav 5 tab thực dụng nhất — có Tổng quan
+// Bottom nav 5 tab thực dụng nhất — Báo cáo thay Cài đặt (Cài đặt vẫn có trong sidebar)
 const BOTTOM_NAV_ITEMS = NAV_ITEMS.filter(n =>
-  ['overview','operations','students','finance','settings'].includes(n.id)
+  ['overview','operations','students','finance','reports'].includes(n.id)
 );
 
 export const BottomNav = memo(({ active, set, isDesktop }: {

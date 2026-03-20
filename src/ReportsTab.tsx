@@ -5,7 +5,7 @@
  * ✅ [v28.1] Fix: parseMoYr fallback dùng parseDMY thay vì new Date()
  * ✅ [v28.1] Học phí: bảng thống kê tháng học theo buổi (12 buổi/tháng) và theo tuần (4 tuần/tháng)
  */
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { BarChart3, TrendingUp, TrendingDown, Users, BookOpen, DollarSign, Printer, School, ChevronLeft, ChevronRight } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { fmtVND, parseDMY, exportCSV, isStudentActive } from './helpers';
@@ -15,7 +15,7 @@ import type { Student, Payment, Expense, SummaryData } from './types';
 
 const COLORS = ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#f97316'];
 const ACADEMIC_ORDER = ['Xuất sắc','Giỏi','Khá','Trung bình','Yếu','Chưa xác định'];
-type ReportType = 'revenue' | 'attendance' | 'academic' | 'fee';
+type ReportType = 'revenue' | 'attendance' | 'academic';
 
 interface Props {
   students: Student[]; payments: Payment[]; expenses: Expense[];
@@ -34,19 +34,25 @@ function parseMoYr(raw: string): { m: number; y: number } | null {
 }
 
 /** Tính ISO week key: "YYYY-WNN" để đếm số tuần học riêng biệt */
-function isoWeekKey(ts: number): string {
-  const d = new Date(ts);
-  // Thứ Hai đầu tuần theo ISO 8601
-  const day = d.getDay() === 0 ? 7 : d.getDay(); // 1=Mon..7=Sun
-  const mon = new Date(d);
-  mon.setDate(d.getDate() - day + 1);
-  return `${mon.getFullYear()}-${String(mon.getMonth()+1).padStart(2,'0')}-${String(mon.getDate()).padStart(2,'0')}`;
-}
-
 export default function ReportsTab({ students, payments, expenses, tlogs, uClasses, summary, curMo, curYr, isPaid }: Props) {
   const [reportType, setReportType] = useState<ReportType>('revenue');
   const [filterMo, setFilterMo] = useState(curMo);
   const [filterYr, setFilterYr] = useState(curYr);
+
+  // Bug6 FIX: sync khi prop curMo/curYr thay đổi (app chạy qua đêm sang tháng mới)
+  // chỉ sync nếu user đang xem tháng hiện tại (không override nếu đã navigate sang tháng khác)
+  const prevCurMoRef = useRef(curMo);
+  const prevCurYrRef = useRef(curYr);
+  useEffect(() => {
+    if (curMo !== prevCurMoRef.current || curYr !== prevCurYrRef.current) {
+      if (filterMo === prevCurMoRef.current && filterYr === prevCurYrRef.current) {
+        setFilterMo(curMo);
+        setFilterYr(curYr);
+      }
+      prevCurMoRef.current = curMo;
+      prevCurYrRef.current = curYr;
+    }
+  }, [curMo, curYr, filterMo, filterYr]);
   const prevMonth = () => { if (filterMo === 1) { setFilterMo(12); setFilterYr(y => y-1); } else setFilterMo(m => m-1); };
   const nextMonth = () => { if (filterMo === 12) { setFilterMo(1); setFilterYr(y => y+1); } else setFilterMo(m => m+1); };
   const isCurrentMonth = filterMo === curMo && filterYr === curYr;
@@ -60,8 +66,7 @@ export default function ReportsTab({ students, payments, expenses, tlogs, uClass
   // FIX: dùng isStudentActive thay vì chỉ check status
   const activeStudents = useMemo(() => students.filter(isStudentActive), [students]);
   const active = activeStudents.length;
-  const paidCount = useMemo(() => activeStudents.filter(s => isPaid(s.id, filterMo, filterYr)).length, [activeStudents, isPaid, filterMo, filterYr]);
-
+  
   const revenueByClass = useMemo(() => {
     const map: Record<string, {revenue:number;count:number;teacher:string}> = {};
     uClasses.forEach(c => { map[c['Mã Lớp']] = {revenue:0,count:0,teacher:c['Giáo viên']||'---'}; });
@@ -104,69 +109,12 @@ export default function ReportsTab({ students, payments, expenses, tlogs, uClass
   }, [students]);
 
   // FIX: dùng isStudentActive cho feeByClass
-  const feeByClass = useMemo(() => uClasses.map(c => {
-    const cls = students.filter(s => s.classId===c['Mã Lớp'] && isStudentActive(s));
-    const paid = cls.filter(s => isPaid(s.id,filterMo,filterYr)).length;
-    return { cls:c['Mã Lớp'], total:cls.length, paid, unpaid:cls.length-paid, pct:cls.length>0?Math.round(paid/cls.length*100):0 };
-  }).filter(r=>r.total>0).sort((a,b)=>b.pct-a.pct), [uClasses,students,isPaid,filterMo,filterYr]);
-
-  /**
-   * sessionFeeStats — Thống kê số tháng học tương đương theo 2 cách:
-   *   A. 12 buổi có mặt = 1 tháng (dựa vào attendanceList)
-   *   B. 4 tuần học = 1 tháng (đếm tuần riêng biệt có ít nhất 1 buổi)
-   * Dùng TOÀN BỘ tlogs (lịch sử tích lũy), không lọc theo tháng đang xem.
-   */
-  const sessionFeeStats = useMemo(() => {
-    const now = new Date();
-    return activeStudents.map(s => {
-      let sessions = 0;
-      const weekSet = new Set<string>();
-
-      tlogs.forEach(log => {
-        // Không lọc theo classId vì HS có thể đã chuyển lớp —
-        // tìm theo ID học sinh trong toàn bộ attendanceList
-        const att = (log.attendanceList || []).find((a: any) =>
-          (a.maHS || a['Mã HS'] || a.MaHS) === s.id
-        );
-        if (!att) return;
-        const status = att.trangThai || att['Trạng thái'] || att.TrangThai || '';
-        if (status === 'Có mặt' || status === 'Muộn') {
-          sessions++;
-          const ts = parseDMY(log.date || '');
-          if (ts) weekSet.add(isoWeekKey(ts));
-        }
-      });
-
-      const weeks = weekSet.size;
-      const monthsBySession = Math.round((sessions / 12) * 10) / 10; // 1 chữ số thập phân
-      const monthsByWeek    = Math.round((weeks   / 4)  * 10) / 10;
-
-      // Đếm tháng đã đóng từ startDate đến nay
-      let paidMonths = 0;
-      const startTs = parseDMY(s.startDate || '');
-      if (startTs) {
-        const sd = new Date(startTs);
-        let y = sd.getFullYear(), m = sd.getMonth() + 1;
-        while (y < now.getFullYear() || (y === now.getFullYear() && m <= now.getMonth() + 1)) {
-          if (isPaid(s.id, m, y)) paidMonths++;
-          m++; if (m > 12) { m = 1; y++; }
-        }
-      }
-
-      // Chênh lệch: tháng đã đóng - tháng tương đương theo buổi
-      const diffSession = Math.round((paidMonths - monthsBySession) * 10) / 10;
-      const diffWeek    = Math.round((paidMonths - monthsByWeek)    * 10) / 10;
-
-      return { id: s.id, name: s.name, classId: s.classId, sessions, weeks, monthsBySession, monthsByWeek, paidMonths, diffSession, diffWeek };
-    }).sort((a, b) => a.classId.localeCompare(b.classId) || a.name.localeCompare(b.name));
-  }, [activeStudents, tlogs, isPaid]);
-
   const kpiConfig = {
     revenue:    [
       {icon:TrendingUp,  value:fmtM(moRevenue),          label:`Tổng thu T${filterMo}`,    sub:`${moPayments.length} phiếu`,   gradient:'linear-gradient(135deg,#10b981,#059669)'},
       {icon:TrendingDown,value:fmtM(moExpense),          label:`Tổng chi T${filterMo}`,    sub:`${moExpenses.length} phiếu`,   gradient:'linear-gradient(135deg,#f43f5e,#e11d48)'},
       {icon:DollarSign,  value:fmtM(moRevenue-moExpense),label:'Lợi nhuận tháng',          sub:moRevenue>=moExpense?'Dương':'Âm',gradient:(moRevenue-moExpense)>=0?'linear-gradient(135deg,#6366f1,#4f46e5)':'linear-gradient(135deg,#f97316,#ea580c)'},
-      {icon:BookOpen,    value:moTlogs.length,            label:'Buổi dạy tháng',           sub:`${uClasses.length} lớp`,       gradient:'linear-gradient(135deg,#0ea5e9,#2563eb)'},
+      {icon:DollarSign,  value:fmtM(summary?.totalRevenue ?? 0), label:'Tổng thu niên khóa', sub:`${payments.length} phiếu thu`, gradient:'linear-gradient(135deg,#10b981,#059669)'},
     ],
     attendance: [
       {icon:BookOpen,    value:moTlogs.length,            label:'Tổng buổi dạy',            sub:`T${filterMo}/${filterYr}`,     gradient:'linear-gradient(135deg,#6366f1,#4f46e5)'},
@@ -179,21 +127,13 @@ export default function ReportsTab({ students, payments, expenses, tlogs, uClass
       {icon:TrendingUp,  value:students.filter(s=>['Xuất sắc','Giỏi'].includes(s.academicLevel)).length, label:'Xuất sắc + Giỏi', sub:'học sinh', gradient:'linear-gradient(135deg,#10b981,#059669)'},
       {icon:BarChart3,   value:students.filter(s=>['Khá','Trung bình'].includes(s.academicLevel)).length,label:'Khá + TB',         sub:'học sinh', gradient:'linear-gradient(135deg,#f59e0b,#d97706)'},
       {icon:TrendingDown,value:students.filter(s=>s.academicLevel==='Yếu').length,                        label:'Yếu',             sub:'học sinh', gradient:'linear-gradient(135deg,#f43f5e,#e11d48)'},
-      {icon:Users,       value:students.filter(s=>!s.academicLevel||s.academicLevel==='Chưa xác định').length, label:'Chưa xác định', sub:'chưa đánh giá', gradient:'linear-gradient(135deg,#94a3b8,#64748b)'},
     ],
-    fee:        [
-      {icon:BarChart3,   value:`${paidCount}/${active}`,  label:`Đóng phí T${filterMo}`,    sub:`${active>0?Math.round(paidCount/active*100):0}%`, gradient:'linear-gradient(135deg,#6366f1,#7c3aed)'},
-      {icon:TrendingUp,  value:paidCount,                 label:'Đã đóng',                  sub:'học sinh đang học',            gradient:'linear-gradient(135deg,#10b981,#059669)'},
-      {icon:TrendingDown,value:active-paidCount,          label:'Chưa đóng',                sub:'học sinh đang học',            gradient:'linear-gradient(135deg,#f43f5e,#e11d48)'},
-      {icon:DollarSign,  value:fmtM(moRevenue),           label:'Doanh thu tháng',          sub:'từ học phí',                   gradient:'linear-gradient(135deg,#f59e0b,#d97706)'},
-    ],
+    fee:        [],
   };
 
   const [hovR, setHovR] = useState<number|null>(null);
   const [hovT, setHovT] = useState<number|null>(null);
   const [hovA, setHovA] = useState<number|null>(null);
-  const [hovF, setHovF] = useState<number|null>(null);
-  const [hovSF, setHovSF] = useState<number|null>(null);
 
   const handleExport = () => {
     const mo = `t${filterMo}-${filterYr}`;
@@ -212,11 +152,6 @@ export default function ReportsTab({ students, payments, expenses, tlogs, uClass
         ['Mã HS', 'Họ tên', 'Lớp', 'Khối', 'Học lực'],
         students.map(s => [s.id, s.name, s.classId, s.grade || '', s.academicLevel || 'Chưa xác định'])
       );
-    } else if (reportType === 'fee') {
-      exportCSV(`hoc-phi-buoi-hoc`,
-        ['Mã HS', 'Họ tên', 'Lớp', 'Buổi đã học', 'Tháng (12 buổi)', 'Tuần đã học', 'Tháng (4 tuần)', 'Tháng đã đóng', 'Chênh lệch (buổi)', 'Chênh lệch (tuần)'],
-        sessionFeeStats.map(r => [r.id, r.name, r.classId, r.sessions, r.monthsBySession, r.weeks, r.monthsByWeek, r.paidMonths, r.diffSession, r.diffWeek])
-      );
     }
   };
 
@@ -228,7 +163,7 @@ export default function ReportsTab({ students, payments, expenses, tlogs, uClass
         <span style={{ width: 1, height: 22, background: '#e2e8f0', flexShrink: 0 }} />
         <div style={{ padding: 3, background: '#f1f5f9' }}>
           <FilterTabs variant="segment" size="sm" active={reportType} onChange={id => setReportType(id as ReportType)}
-            tabs={[{id:'revenue',label:'Doanh thu'},{id:'attendance',label:'Chuyên cần'},{id:'academic',label:'Học lực'},{id:'fee',label:'Học phí'}]} />
+            tabs={[{id:'revenue',label:'Doanh thu'},{id:'attendance',label:'Chuyên cần'},{id:'academic',label:'Học lực'}]} />
         </div>
         <span style={{ width: 1, height: 22, background: '#e2e8f0', flexShrink: 0 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'white', border: '1px solid #e2e8f0', padding: '4px 8px' }}>
@@ -383,136 +318,6 @@ export default function ReportsTab({ students, payments, expenses, tlogs, uClass
         </div>
       )}
 
-      {/* Fee */}
-      {reportType === 'fee' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-
-          {/* Bảng đóng phí theo lớp tháng đang xem */}
-          <div style={TABLE_WRAP}>
-            <div style={{ padding: '9px 14px', borderBottom: '1px solid #f1f5f9' }}>
-              <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Đóng phí theo lớp · T{filterMo}/{filterYr}</p>
-            </div>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 300 }}>
-                <thead><tr>
-                  <th style={TH_SHARED}>Lớp</th>
-                  <th style={{ ...TH_SHARED, textAlign:'center' }}>Sĩ số</th>
-                  <th style={{ ...TH_SHARED, textAlign:'center' }}>Đã đóng</th>
-                  <th style={{ ...TH_SHARED, textAlign:'center' }}>Chưa đóng</th>
-                  <th style={TH_SHARED}>Tỷ lệ</th>
-                </tr></thead>
-                <tbody>
-                  {feeByClass.length === 0 ? <tr><td colSpan={5} style={{ padding: '36px 16px', textAlign: 'center', color: '#94a3b8', fontStyle: 'italic' }}>Chưa có dữ liệu</td></tr>
-                    : feeByClass.map((r, i) => (
-                    <tr key={r.cls} onMouseEnter={() => setHovF(i)} onMouseLeave={() => setHovF(null)} style={trStyle(i, hovF===i)}>
-                      <td style={TD_SHARED}><Badge color="indigo">{r.cls}</Badge></td>
-                      <td style={{ ...TD_SHARED, textAlign: 'center', fontWeight: 600 }}>{r.total}</td>
-                      <td style={{ ...TD_SHARED, textAlign: 'center', fontWeight: 700, color: '#059669' }}>{r.paid}</td>
-                      <td style={{ ...TD_SHARED, textAlign: 'center', fontWeight: 700, color: '#e11d48' }}>{r.unpaid}</td>
-                      <td style={TD_SHARED}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                          <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', background: r.pct>=80?'#ecfdf5':r.pct>=50?'#fff7ed':'#fff1f2', color: r.pct>=80?'#059669':r.pct>=50?'#d97706':'#e11d48' }}>{r.pct}%</span>
-                          <div style={{ flex: 1, height: 5, background: '#f1f5f9', minWidth: 60 }}><div style={{ height: '100%', width: `${r.pct}%`, background: r.pct>=80?'#10b981':r.pct>=50?'#f97316':'#ef4444' }} /></div>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* ══ BẢNG THÁNG HỌC TƯƠNG ĐƯƠNG — tích lũy toàn thời gian ══ */}
-          <div style={TABLE_WRAP}>
-            <div style={{ padding: '9px 14px', borderBottom: '1px solid #f1f5f9' }}>
-              <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 2px' }}>
-                Tháng học tương đương · Tích lũy toàn bộ
-              </p>
-              <p style={{ fontSize: 11, color: '#94a3b8', margin: 0, fontStyle: 'italic' }}>
-                Cách A: 12 buổi có mặt = 1 tháng &nbsp;·&nbsp; Cách B: 4 tuần học = 1 tháng &nbsp;·&nbsp; Chênh: Tháng đã đóng − Tháng tương đương
-              </p>
-            </div>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
-                <thead>
-                  <tr>
-                    <th style={TH_SHARED}>Học sinh</th>
-                    <th style={{ ...TH_SHARED, textAlign:'center' }}>Lớp</th>
-                    {/* Cách A */}
-                    <th style={{ ...TH_SHARED, textAlign:'center', background:'#eff6ff', color:'#2563eb' }}>Buổi có mặt</th>
-                    <th style={{ ...TH_SHARED, textAlign:'center', background:'#eff6ff', color:'#2563eb' }}>Tháng (A)</th>
-                    {/* Cách B */}
-                    <th style={{ ...TH_SHARED, textAlign:'center', background:'#f5f3ff', color:'#7c3aed' }}>Tuần học</th>
-                    <th style={{ ...TH_SHARED, textAlign:'center', background:'#f5f3ff', color:'#7c3aed' }}>Tháng (B)</th>
-                    {/* Thực tế */}
-                    <th style={{ ...TH_SHARED, textAlign:'center', background:'#ecfdf5', color:'#059669' }}>Đã đóng</th>
-                    <th style={{ ...TH_SHARED, textAlign:'center', background:'#ecfdf5', color:'#059669' }}>Chênh (A)</th>
-                    <th style={{ ...TH_SHARED, textAlign:'center', background:'#ecfdf5', color:'#059669' }}>Chênh (B)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sessionFeeStats.length === 0
-                    ? <tr><td colSpan={9} style={{ padding: '36px 16px', textAlign: 'center', color: '#94a3b8', fontStyle: 'italic' }}>Chưa có dữ liệu điểm danh</td></tr>
-                    : sessionFeeStats.map((r, i) => {
-                      const diffAColor = r.diffSession >= 0 ? '#059669' : '#e11d48';
-                      const diffBColor = r.diffWeek    >= 0 ? '#059669' : '#e11d48';
-                      const diffABg    = r.diffSession >= 0 ? '#ecfdf5' : '#fff1f2';
-                      const diffBBg    = r.diffWeek    >= 0 ? '#ecfdf5' : '#fff1f2';
-                      return (
-                        <tr key={r.id} onMouseEnter={() => setHovSF(i)} onMouseLeave={() => setHovSF(null)} style={trStyle(i, hovSF===i)}>
-                          <td style={TD_SHARED}>
-                            <p style={{ fontWeight: 700, color: '#0f172a', margin: 0, fontSize: 13 }}>{r.name}</p>
-                            <p style={{ fontSize: 11, color: '#94a3b8', margin: 0 }}>{r.id}</p>
-                          </td>
-                          <td style={{ ...TD_SHARED, textAlign: 'center' }}><Badge color="indigo">{r.classId}</Badge></td>
-                          {/* Cách A */}
-                          <td style={{ ...TD_SHARED, textAlign: 'center', fontWeight: 700, color: '#2563eb' }}>{r.sessions}</td>
-                          <td style={{ ...TD_SHARED, textAlign: 'center' }}>
-                            <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 5, background: '#eff6ff', color: '#2563eb' }}>
-                              {r.monthsBySession.toFixed(1)}
-                            </span>
-                          </td>
-                          {/* Cách B */}
-                          <td style={{ ...TD_SHARED, textAlign: 'center', fontWeight: 700, color: '#7c3aed' }}>{r.weeks}</td>
-                          <td style={{ ...TD_SHARED, textAlign: 'center' }}>
-                            <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 5, background: '#f5f3ff', color: '#7c3aed' }}>
-                              {r.monthsByWeek.toFixed(1)}
-                            </span>
-                          </td>
-                          {/* Thực tế + chênh */}
-                          <td style={{ ...TD_SHARED, textAlign: 'center', fontWeight: 800, color: '#059669' }}>{r.paidMonths}</td>
-                          <td style={{ ...TD_SHARED, textAlign: 'center' }}>
-                            <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 5, background: diffABg, color: diffAColor }}>
-                              {r.diffSession >= 0 ? '+' : ''}{r.diffSession.toFixed(1)}
-                            </span>
-                          </td>
-                          <td style={{ ...TD_SHARED, textAlign: 'center' }}>
-                            <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 5, background: diffBBg, color: diffBColor }}>
-                              {r.diffWeek >= 0 ? '+' : ''}{r.diffWeek.toFixed(1)}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  }
-                </tbody>
-              </table>
-            </div>
-            {/* Legend */}
-            <div style={{ padding: '8px 14px', borderTop: '1px solid #f1f5f9', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-              {[
-                { bg: '#ecfdf5', color: '#059669', label: 'Chênh ≥ 0: Đã đóng đủ hoặc dư' },
-                { bg: '#fff1f2', color: '#e11d48', label: 'Chênh < 0: Thiếu tháng học phí' },
-              ].map(l => (
-                <span key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#64748b' }}>
-                  <span style={{ width: 10, height: 10, borderRadius: 3, background: l.bg, border: `1px solid ${l.color}33`, display: 'inline-block' }} />
-                  <span style={{ color: l.color, fontWeight: 700 }}>{l.label}</span>
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

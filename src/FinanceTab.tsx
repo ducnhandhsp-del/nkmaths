@@ -19,7 +19,7 @@ import { DollarSign, TrendingDown, Eye, Edit3, Trash2, Plus, Copy, Check } from 
 import { fmtVND, formatDate, capitalizeName, exportCSV, parseDMY, isStudentActive } from './helpers';
 import { Badge, Pager, FilterTabs } from './dsComponents';
 import { FAB } from './AppComponents';
-import { StatBlock, StatGrid, TABLE_WRAP, TH_SHARED, TD_SHARED, trStyle, fmtM } from './AppComponents';
+import { TABLE_WRAP, TH_SHARED, TD_SHARED, trStyle } from './AppComponents';
 import type { Payment, Expense, Student, SummaryData, FinanceSub } from './types';
 
 const ZaloIcon = () => (
@@ -55,7 +55,7 @@ interface Props {
   onViewExpense: (e: Expense) => void;
 }
 
-const IPP = 10;
+const IPP = 25;
 const LEDGER_IPP = 20; // phân trang sổ cái
 const EXPENSE_IPP = 20; // phân trang chi tiêu
 
@@ -87,6 +87,159 @@ function isMonthBillable(s: Student, fm: { m: number; y: number }): boolean {
   return true;
 }
 
+/* ── MonthSelect — picker T/YYYY không phụ thuộc locale ── */
+function MonthSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const options = React.useMemo(() => {
+    const now = new Date();
+    const list = [{ value: '', label: 'Tất cả tháng' }];
+    for (let i = 0; i < 24; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const m = d.getMonth() + 1;
+      const y = d.getFullYear();
+      const v = `${String(m).padStart(2,'0')}/${y}`;
+      list.push({ value: v, label: `T${m}/${y}` });
+    }
+    return list;
+  }, []);
+  return (
+    <select value={value} onChange={e => onChange(e.target.value)}
+      style={{ padding: '5px 9px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, fontWeight: 600, color: '#374151', background: 'white', cursor: 'pointer', outline: 'none' }}>
+      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  );
+}
+
+/* ── isoWeekKey helper ─────────────────────────────── */
+function isoWeekKey(ts: number): string {
+  const d = new Date(ts);
+  const day = d.getDay() === 0 ? 7 : d.getDay();
+  const mon = new Date(d);
+  mon.setDate(d.getDate() - day + 1);
+  return `${mon.getFullYear()}-${String(mon.getMonth()+1).padStart(2,'0')}-${String(mon.getDate()).padStart(2,'0')}`;
+}
+
+/* ── TuitionTab — Học phí theo buổi học ───────────── */
+function TuitionTab({ students, tlogs, isPaid, filterCls }: {
+  students: Student[]; tlogs: any[];
+  isPaid: (sid: string, mo: number, yr: number) => boolean;
+  filterCls: string;
+}) {
+  const [hovRow, setHovRow] = useState<string|null>(null);
+
+  const activeStudents = useMemo(() => students.filter(isStudentActive), [students]);
+
+  const rows = useMemo(() => {
+    const now = new Date();
+    return activeStudents.map(s => {
+      let sessions = 0;
+      const weekSet = new Set<string>();
+      tlogs.forEach(log => {
+        const att = (log.attendanceList || []).find((a: any) =>
+          (a.maHS || a['Mã HS'] || a.MaHS) === s.id
+        );
+        if (!att) return;
+        const status = att.trangThai || att['Trạng thái'] || att.TrangThai || '';
+        if (status === 'Có mặt' || status === 'Muộn') {
+          sessions++;
+          const ts = parseDMY(log.date || '');
+          if (ts) weekSet.add(isoWeekKey(ts));
+        }
+      });
+      // Tháng đã đóng từ startDate đến nay
+      let paidMonths = 0;
+      const startTs = parseDMY(s.startDate || '');
+      if (startTs) {
+        const sd = new Date(startTs);
+        let y = sd.getFullYear(), m = sd.getMonth() + 1;
+        while (y < now.getFullYear() || (y === now.getFullYear() && m <= now.getMonth() + 1)) {
+          if (isPaid(s.id, m, y)) paidMonths++;
+          m++; if (m > 12) { m = 1; y++; }
+        }
+      }
+      const monthsBySession = Math.round((sessions / 12) * 10) / 10;
+      const diff = Math.round((paidMonths - monthsBySession) * 10) / 10;
+      return { id: s.id, name: s.name, classId: s.classId, sessions, monthsBySession, paidMonths, diff };
+    }).sort((a, b) => a.diff - b.diff || a.classId.localeCompare(b.classId))
+      .filter(r => !filterCls || r.classId === filterCls);
+  }, [activeStudents, tlogs, isPaid, filterCls]);
+
+  const statusBadge = (diff: number) => {
+    if (diff >= 0)        return { label: '✓ Đủ',         bg: '#ecfdf5', color: '#059669' };
+    if (diff >= -1)       return { label: `⚠ Thiếu ${Math.abs(diff)}T`, bg: '#fffbeb', color: '#d97706' };
+    return                       { label: `✗ Thiếu ${Math.abs(diff)}T`, bg: '#fff1f2', color: '#e11d48' };
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+      <div style={{ ...TABLE_WRAP }}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' as any }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 460 }}>
+            <thead>
+              <tr>
+                <th style={{ ...TH_SHARED }}>Học sinh</th>
+                <th style={{ ...TH_SHARED, textAlign: 'center' }}>Lớp</th>
+                <th style={{ ...TH_SHARED, textAlign: 'center' }}>Buổi có mặt</th>
+                <th style={{ ...TH_SHARED, textAlign: 'center' }}>Tháng đã đóng</th>
+                <th style={{ ...TH_SHARED, textAlign: 'center' }}>Trạng thái</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 ? (
+                <tr><td colSpan={5} style={{ padding: '48px 16px', textAlign: 'center', color: '#94a3b8', fontStyle: 'italic' }}>
+                  Chưa có dữ liệu điểm danh
+                </td></tr>
+              ) : rows.map((r, idx) => {
+                const badge = statusBadge(r.diff);
+                return (
+                  <tr key={r.id}
+                    onMouseEnter={() => setHovRow(r.id)}
+                    onMouseLeave={() => setHovRow(null)}
+                    style={{ ...trStyle(idx, hovRow === r.id) }}>
+                    <td style={TD_SHARED}>
+                      <p style={{ fontWeight: 700, color: '#0f172a', margin: 0, fontSize: 13 }}>{r.name}</p>
+                      <p style={{ fontSize: 11, color: '#94a3b8', margin: 0 }}>{r.id}</p>
+                    </td>
+                    <td style={{ ...TD_SHARED, textAlign: 'center' }}>
+                      <Badge color="indigo">{r.classId}</Badge>
+                    </td>
+                    <td style={{ ...TD_SHARED, textAlign: 'center' }}>
+                      <span style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>{r.sessions}</span>
+                      <p style={{ fontSize: 10, color: '#94a3b8', margin: '1px 0 0' }}>≈ {r.monthsBySession}T</p>
+                    </td>
+                    <td style={{ ...TD_SHARED, textAlign: 'center' }}>
+                      <span style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>{r.paidMonths}</span>
+                      <p style={{ fontSize: 10, color: '#94a3b8', margin: '1px 0 0' }}>tháng</p>
+                    </td>
+                    <td style={{ ...TD_SHARED, textAlign: 'center' }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6, background: badge.bg, color: badge.color, whiteSpace: 'nowrap' }}>
+                        {badge.label}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {/* Legend */}
+        <div style={{ padding: '8px 14px', borderTop: '1px solid #f1f5f9', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+          {[
+            { bg: '#ecfdf5', color: '#059669', label: 'Đóng đủ hoặc dư' },
+            { bg: '#fffbeb', color: '#d97706', label: 'Thiếu ≤ 1 tháng' },
+            { bg: '#fff1f2', color: '#e11d48', label: 'Thiếu > 1 tháng' },
+          ].map(l => (
+            <span key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#64748b' }}>
+              <span style={{ width: 10, height: 10, borderRadius: 3, background: l.bg, border: `1px solid ${l.color}44`, display: 'inline-block' }} />
+              <span style={{ color: l.color, fontWeight: 700 }}>{l.label}</span>
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function FinanceTab({
   summary, payments, expenses, students, uClasses, tlogs,
   curMo, curYr, qF, setQF, fMo, setFMo, fTch, setFTch, fFC, setFFC, fSt, setFSt,
@@ -94,8 +247,6 @@ export default function FinanceTab({
   onViewInvoice, onViewFinance, onShowFAB, onEditPayment, onDeletePayment, onEditExpense, onDeleteExpense, onViewExpense,
 }: Props) {
   const [finSub, setFinSub] = useState<FinanceSub>('debt');
-  const totalRevenue = summary?.totalRevenue ?? 0;
-  const totalExpense = summary?.totalExpense ?? 0;
   const pagedFin = filtFin.slice((pgF - 1) * IPP, pgF * IPP);
 
   // FIX Bug 4: dùng fM (tháng đang filter) thay vì curMo (tháng thực tế)
@@ -106,19 +257,36 @@ export default function FinanceTab({
 
   // FIX: dùng isStudentActive từ helpers, nhất quán toàn app
   const activeStudents = useMemo(() => students.filter(isStudentActive), [students]);
-  const paidNow = useMemo(() => activeStudents.filter(s => isPaid(s.id, curMo, curYr)).length, [activeStudents, isPaid, curMo, curYr]);
-
   // Phân trang sổ cái
   const [pgLedger, setPgLedger] = useState(1);
+  const [lFilterMo, setLFilterMo] = useState('');
+  const [lFilterCls, setLFilterCls] = useState('');
   // FIX Bug 3: reset về trang 1 khi có phiếu mới (optimistic update thêm vào đầu)
-  useEffect(() => { setPgLedger(1); }, [payments.length]);
+  useEffect(() => { setPgLedger(1); }, [payments.length, lFilterMo, lFilterCls]);
+  const filteredLedger = useMemo(() => {
+    const [lFM, lFY] = (lFilterMo || '').split('/').map(Number);
+    return payments.slice().reverse().filter(p => {
+      if (lFilterMo) {
+        const raw = p.date || '';
+        const s = raw.includes(' - ') ? raw.split(' - ')[1] : raw;
+        const match = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        if (!match || parseInt(match[2]) !== lFM || parseInt(match[3]) !== lFY) return false;
+      }
+      if (lFilterCls) {
+        const st = students.find(s => s.id === p.studentId);
+        if (!st || st.classId !== lFilterCls) return false;
+      }
+      return true;
+    });
+  }, [payments, lFilterMo, lFilterCls, students]);
+
   const pagedLedger = useMemo(() => {
-    const sorted = payments.slice().reverse();
-    return sorted.slice((pgLedger - 1) * LEDGER_IPP, pgLedger * LEDGER_IPP);
-  }, [payments, pgLedger]);
+    return filteredLedger.slice((pgLedger - 1) * LEDGER_IPP, pgLedger * LEDGER_IPP);
+  }, [filteredLedger, pgLedger]);
 
   // Phân trang chi tiêu
   const [pgExpense, setPgExpense] = useState(1);
+  const [tFilterCls, setTFilterCls] = useState(''); // TuitionTab class filter
   // FIX Bug 3: reset về trang 1 khi có phiếu chi mới
   useEffect(() => { setPgExpense(1); }, [expenses.length]);
   const pagedExpense = useMemo(() => {
@@ -167,18 +335,30 @@ export default function FinanceTab({
         <div style={{ padding: 3, background: '#f1f5f9' }}>
           <FilterTabs variant="segment" size="sm" active={finSub} onChange={id => setFinSub(id as FinanceSub)}
             tabs={[
-              { id: 'debt',   label: '⚠ Công nợ' },
-              { id: 'ledger', label: '📋 Sổ cái' },
-              { id: 'expense',label: '📉 Chi tiêu' },
+              { id: 'debt',    label: '⚠ Công nợ' },
+              { id: 'ledger',  label: '📋 Sổ cái' },
+              { id: 'expense', label: '📉 Chi tiêu' },
+              { id: 'tuition', label: '📊 Học phí/Buổi' },
             ]} />
         </div>
+
+        {/* Tuition class filter inline */}
+        {finSub === 'tuition' && (<>
+          <span style={{ width: 1, height: 22, background: '#e2e8f0', flexShrink: 0 }} />
+          <select value={tFilterCls} onChange={e => setTFilterCls(e.target.value)}
+            style={{ padding: '6px 10px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, fontWeight: 600, color: '#374151', background: 'white', cursor: 'pointer', outline: 'none' }}>
+            <option value="">Tất cả lớp</option>
+            {uClasses.map(c => <option key={c['Mã Lớp']} value={c['Mã Lớp']}>{c['Mã Lớp']}</option>)}
+          </select>
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', background: '#f1f5f9', padding: '5px 10px', borderRadius: 6 }}>
+            Tích lũy toàn thời gian
+          </span>
+        </>)}
 
         {/* Debt filters inline */}
         {finSub === 'debt' && (<>
           <span style={{ width: 1, height: 22, background: '#e2e8f0', flexShrink: 0 }} />
-          <input type="month" value={fMo ? `${fMo.split('/')[1]}-${fMo.split('/')[0].padStart(2,'0')}` : ''}
-            onChange={e => { const [y,m] = e.target.value.split('-'); setFMo(`${m}/${y}`); setPgF(1); }}
-            style={{ background: 'white', color: '#0f172a', padding: '6px 10px', border: '1px solid #e2e8f0', fontWeight: 600, fontSize: 12, outline: 'none' }} />
+          <MonthSelect value={fMo} onChange={v => { setFMo(v); setPgF(1); }} />
           <select value={fSt} onChange={e => { setFSt(e.target.value); setPgF(1); }} style={{ background: 'white', color: '#0f172a', padding: '6px 10px', border: '1px solid #e2e8f0', fontWeight: 600, fontSize: 12, outline: 'none', cursor: 'pointer' }}>
             <option value="unpaid">Chưa đóng</option><option value="paid">Đã đóng</option><option value="">Tất cả</option>
           </select>
@@ -186,44 +366,16 @@ export default function FinanceTab({
             <option value="">Tất cả lớp</option>
             {uClasses.map(c => <option key={c['Mã Lớp']} value={c['Mã Lớp']}>{c['Mã Lớp']}</option>)}
           </select>
-          <span style={{ fontSize: 12, fontWeight: 700, color: fSt === 'unpaid' ? '#e11d48' : '#059669', background: fSt === 'unpaid' ? '#fff1f2' : '#ecfdf5', padding: '5px 10px' }}>{filtFin.length} HS</span>
         </>)}
       </div>
 
-      {/* Summary StatBlocks — chỉ hiện ở Công nợ */}
-      {finSub === 'debt' && (
-        <>
-          <StatGrid>
-            <StatBlock icon={DollarSign} value={fmtM(totalRevenue)} label="Tổng thu"    sub="toàn niên khóa"  gradient="linear-gradient(135deg,#10b981,#059669)" />
-            <StatBlock icon={TrendingDown} value={fmtM(totalExpense)} label="Tổng chi"  sub="toàn niên khóa"  gradient="linear-gradient(135deg,#f43f5e,#e11d48)" />
-            <StatBlock icon={DollarSign} value={fmtM(totalRevenue-totalExpense)} label="Lợi nhuận" sub={(totalRevenue-totalExpense)>=0?'Dương':'Âm'} gradient={(totalRevenue-totalExpense)>=0?'linear-gradient(135deg,#6366f1,#4f46e5)':'linear-gradient(135deg,#f97316,#ea580c)'} />
-            <StatBlock icon={DollarSign} value={`${paidNow}/${activeStudents.length}`} label={`Đóng phí T${curMo}`} sub="học sinh đang học đã đóng" gradient="linear-gradient(135deg,#0ea5e9,#2563eb)" />
-          </StatGrid>
-          <p style={{ fontSize:11, color:'#94a3b8', margin:'-4px 0 0', fontStyle:'italic' }}>
-            ※ Tổng thu/chi tính toàn bộ {payments.length} phiếu thu · {expenses.length} phiếu chi từ đầu niên khóa. Xem theo tháng cụ thể tại tab <strong style={{ color:'#6366f1' }}>Báo cáo → Doanh thu</strong>.
-          </p>
-        </>
-      )}
+
 
       {/* ══ CÔNG NỢ ══ */}
       {finSub === 'debt' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Niên khóa:</span>
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#6366f1', background: '#eef2ff', border: '1px solid #c7d2fe', padding: '2px 10px' }}>{schoolYear}</span>
-            <button onClick={() => exportCSV(`cong-no-t${curMo}-${curYr}`,
-              ['Mã HS', 'Họ tên', 'Lớp', 'SĐT phụ huynh', 'Tháng bắt đầu', 'Số tháng nợ (niên khóa)', 'Tổng nợ (đ)'],
-              // FIX: xuất đúng danh sách đang hiển thị (filtFin), không re-filter lại theo logic khác
-              filtFin.map(s => {
-                const billable = schoolYearMonths.filter(fm => isMonthBillable(s, fm));
-                const u = billable.filter(fm => !isPaid(s.id, fm.m, fm.y)).length;
-                return [s.id, s.name, s.classId, s.parentPhone || '', s.startDate || '', u, u * baseTuition];
-              })
-            )} style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, padding: '5px 11px', background: '#059669', border: 'none', color: 'white', fontWeight: 700, fontSize: 11, cursor: 'pointer' }}>
-              📥 Xuất CSV
-            </button>
-          </div>
           <div style={TABLE_WRAP}>
+            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' as any }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
@@ -243,7 +395,13 @@ export default function FinanceTab({
                     const isInactive = s.status === 'inactive' || (s.endDate && s.endDate !== '---' && s.endDate !== '');
 
                     // Chỉ tính tháng mà học sinh thực sự phải đóng
-                    const billableMonths = schoolYearMonths.filter(fm => isMonthBillable(s, fm));
+                    // FIX A: chỉ tính tháng đã qua/đang diễn ra — không tính tương lai là nợ
+                    const billableMonths = schoolYearMonths.filter(fm => {
+                      if (!isMonthBillable(s, fm)) return false;
+                      if (fm.y > curYr) return false;
+                      if (fm.y === curYr && fm.m > curMo) return false;
+                      return true;
+                    });
                     const unpaidCount = billableMonths.filter(fm => !isPaid(s.id, fm.m, fm.y)).length;
                     const paidCount   = billableMonths.filter(fm =>  isPaid(s.id, fm.m, fm.y)).length;
                     const paidPct     = billableMonths.length > 0 ? Math.round(paidCount / billableMonths.length * 100) : 100;
@@ -278,7 +436,9 @@ export default function FinanceTab({
                             {schoolYearMonths.map(fm => {
                               const billable = isMonthBillable(s, fm);
                               const paid = isPaid(s.id, fm.m, fm.y);
-                              const isCurM = fm.m === curMo && fm.y === curYr;
+                              const isCurM   = fm.m === curMo && fm.y === curYr;
+                              // FIX A: tháng tương lai — xám trung tính, không tính là nợ
+                              const isFuture = fm.y > curYr || (fm.y === curYr && fm.m > curMo);
 
                               // Màu dot theo trạng thái
                               let dotBg = '#e2e8f0';       // mặc định: chưa học (xám nhạt)
@@ -296,8 +456,14 @@ export default function FinanceTab({
                                 dotColor = 'white';
                                 dotBorder = '1px solid transparent';
                                 dotTitle = `T${fm.m}/${fm.y}: Đã đóng`;
+                              } else if (isFuture) {
+                                // Tháng tương lai — xám nhạt, không tính là nợ
+                                dotBg = '#f8fafc';
+                                dotColor = '#e2e8f0';
+                                dotBorder = '1px solid #e2e8f0';
+                                dotTitle = `T${fm.m}/${fm.y}: Chưa đến`;
                               } else {
-                                // Billable nhưng chưa đóng
+                                // Đã đến hạn nhưng chưa đóng
                                 dotBg = isCurM ? '#fca5a5' : '#fde68a';
                                 dotColor = isCurM ? '#dc2626' : '#92400e';
                                 dotBorder = isCurM ? '1.5px solid #ef4444' : '1px solid #fcd34d';
@@ -349,6 +515,7 @@ export default function FinanceTab({
                 }
               </tbody>
             </table>
+            </div>
             <div style={{ borderTop: '1px solid #f1f5f9', background: '#fafafa' }}>
               <Pager page={pgF} total={filtFin.length} perPage={IPP} setPage={setPgF} showTotal />
             </div>
@@ -359,9 +526,14 @@ export default function FinanceTab({
       {/* ══ SỔ CÁI — NO stat blocks ══ */}
       {finSub === 'ledger' && (
         <div style={TABLE_WRAP}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '1px solid #f1f5f9' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '1px solid #f1f5f9', flexWrap: 'wrap' }}>
             <DollarSign size={14} color="#10b981" />
-            <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Thu học phí ({payments.length} phiếu thu)</p>
+            <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Thu học phí ({filteredLedger.length}/{payments.length} phiếu)</p>
+            <MonthSelect value={lFilterMo} onChange={v => setLFilterMo(v)} />
+            <select value={lFilterCls} onChange={e => setLFilterCls(e.target.value)} style={{ padding: '5px 9px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, fontWeight: 600, color: '#374151', background: 'white', cursor: 'pointer', outline: 'none' }}>
+              <option value="">Tất cả lớp</option>
+              {uClasses.map(c => <option key={c['Mã Lớp']} value={c['Mã Lớp']}>{c['Mã Lớp']}</option>)}
+            </select>
             <button onClick={() => exportCSV('phieu-thu',
               ['Ngày', 'Số CT', 'Học sinh', 'Người nộp', 'Nội dung', 'Hình thức', 'Số tiền (đ)'],
               payments.slice().reverse().map(p => [p.date, p.docNum, p.studentName, p.payer || '', p.description, p.method || '', p.amount])
@@ -440,7 +612,7 @@ export default function FinanceTab({
           </div>
           {/* Phân trang sổ cái */}
           <div style={{ borderTop: '1px solid #f1f5f9', background: '#fafafa' }}>
-            <Pager page={pgLedger} total={payments.length} perPage={LEDGER_IPP} setPage={setPgLedger} showTotal />
+            <Pager page={pgLedger} total={filteredLedger.length} perPage={LEDGER_IPP} setPage={setPgLedger} showTotal />
           </div>
         </div>
       )}
@@ -518,6 +690,9 @@ export default function FinanceTab({
           </div>
         </div>
       )}
+
+      {/* ══ HỌC PHÍ THEO BUỔI ══ */}
+      {finSub === 'tuition' && <TuitionTab students={students} tlogs={tlogs} isPaid={isPaid} filterCls={tFilterCls} />}
 
       <FAB onClick={onShowFAB} label="Thêm phiếu thu/chi" icon={Plus} color="#059669" shadow="0 8px 24px rgba(5,150,105,0.5)" />
     </div>

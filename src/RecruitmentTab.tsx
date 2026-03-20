@@ -337,7 +337,7 @@ export default function RecruitmentTab({ leads: propLeads, students, onSaveLead,
                   {/* Ngày tạo */}
                   <td style={TD_STYLE}>
                     <span style={{ color: DS.textLight, fontSize: 12 }}>
-                      {new Date(l.createdAt).toLocaleDateString('vi-VN')}
+                      {formatDate(l.createdAt)}
                     </span>
                   </td>
 

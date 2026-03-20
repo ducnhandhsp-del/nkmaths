@@ -46,7 +46,14 @@ export function DiaryModal({
         setContent(editingLog.content||''); setHw(editingLog.homework==='---'?'':editingLog.homework||'');
         setCaDay(editingLog.caDay||'');
         const attInit:Record<string,{trangThai:string;ghiChu:string}>={};
-        (editingLog.attendanceList||[]).forEach((a:any)=>{ attInit[a.maHS||a['Mã HS']]={trangThai:a['Trạng thái']||'Có mặt',ghiChu:a['Ghi chú']||''}; });
+        (editingLog.attendanceList||[]).forEach((a:any)=>{
+          const id = a.maHS||a['Mã HS']||'';
+          if(!id) return;
+          attInit[id]={
+            trangThai: a.trangThai||a['Trạng thái']||'Có mặt',
+            ghiChu:    a.ghiChu||a['Ghi chú']||'',
+          };
+        });
         setAtt(attInit);
       } else {
         const dc=preselectedClassId||uniqueClasses[0]?.['Mã Lớp']||'';
@@ -66,6 +73,10 @@ export function DiaryModal({
     s.status!=='inactive' &&
     (!s.endDate || s.endDate==='---' || s.endDate==='')
   );
+  // BUG3 FIX: lấy tên GV từ class record thay vì student đầu tiên
+  // tránh trường hợp lớp trống (chưa có HS) → teacherName = ''
+  const clsRecord = uniqueClasses.find(c => c['Mã Lớp'] === classId);
+  const teacherName = clsRecord?.['Giáo viên'] || cls[0]?.teacher || '';
   const caList=caDayOptions.length>0?caDayOptions:['7h30','9h','13h30','15h30','17h30','19h30'];
   const classOptions=uniqueClasses.map(c=>({value:c['Mã Lớp'],label:`Lớp ${c['Mã Lớp']}`}));
   const caOptions=[{value:'',label:'-- Chọn ca dạy --'},...caList.map(ca=>({value:ca,label:`⏰ ${ca}`}))];
@@ -85,7 +96,7 @@ export function DiaryModal({
     if(!classId){toast.error('⚠️ Vui lòng chọn lớp học!');return;}
     if(!caDay){toast.error('⚠️ Vui lòng chọn ca dạy!');return;}
     if(!content.trim()){toast.error('⚠️ Vui lòng nhập nội dung bài dạy!');return;}
-    onSave({ date,classId,caDay,content,homework:hw||'---',teacherName:cls[0]?.teacher||'',
+    onSave({ date,classId,caDay,content,homework:hw||'---',teacherName,
       ...(editingLog&&{originalDate:editingLog.originalDate||editingLog.rawDate,originalClassId:editingLog.originalClassId||editingLog.classId,originalCaDay:editingLog.originalCaDay||editingLog.caDay||''}),
       attendance:cls.map(s=>({maHS:s.id,tenHS:s.name,trangThai:att[s.id]?.trangThai||'Có mặt',ghiChu:att[s.id]?.ghiChu||''})),
     });

@@ -360,7 +360,16 @@ export function FABModal({
               intent="success"
               loading={isSaving}
               icon={<Save size={14} />}
-              onClick={() => { onClose(); onSaveFee(fee); }}
+              onClick={() => {
+                // Validate trước khi đóng modal — nếu lỗi user vẫn thấy modal để sửa
+                const rawId = (fee.maHS || '').trim();
+                const maHS  = rawId.includes(' - ') ? rawId.split(' - ')[0].trim() : rawId;
+                if (!maHS)                                   { toast.error('⚠️ Vui lòng nhập mã học sinh!'); return; }
+                if (!fee.date)                               { toast.error('⚠️ Vui lòng chọn ngày thu!'); return; }
+                if (!fee.soTien || Number(fee.soTien) <= 0)  { toast.error('⚠️ Số tiền không hợp lệ!'); return; }
+                if (!fee.thangHP)                            { toast.error('⚠️ Vui lòng chọn tháng học phí!'); return; }
+                onClose(); onSaveFee(fee);
+              }}
               style={{ boxShadow: '0 4px 14px rgba(5,150,105,0.4)', flex: 1, maxWidth: 200 }}
             >
               {isEditing ? 'Cập nhật thu' : 'Ghi sổ thu'}
@@ -370,7 +379,12 @@ export function FABModal({
               intent="danger"
               loading={isSaving}
               icon={<Save size={14} />}
-              onClick={() => { onClose(); onSaveExpense(exp); }}
+              onClick={() => {
+                if (!exp.description?.trim()) { toast.error('⚠️ Vui lòng nhập lý do chi!'); return; }
+                if (!exp.amount || Number(exp.amount) <= 0) { toast.error('⚠️ Số tiền không hợp lệ!'); return; }
+                if (!exp.date) { toast.error('⚠️ Vui lòng chọn ngày chi!'); return; }
+                onClose(); onSaveExpense(exp);
+              }}
               style={{ boxShadow: '0 4px 14px rgba(220,38,38,0.4)', flex: 1, maxWidth: 200 }}
             >
               {isEditing ? 'Cập nhật chi' : 'Ghi sổ chi'}

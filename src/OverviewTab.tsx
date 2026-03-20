@@ -275,7 +275,7 @@ export default function OverviewTab({
       const ts = parseDMY(s.startDate || '');
       if (ts > thirtyDaysAgo) acts.push({ iconBg: '#ecfdf5', iconColor: '#059669', desc: `HS mới: ${capitalizeName(s.name)} — Lớp ${s.classId}`, time: ts, dateStr: s.startDate, type: 'student' });
     });
-    tlogs.forEach(l => { const ts = parseDMY(l.date || ''); if (ts) acts.push({ iconBg: '#f5f3ff', iconColor: '#7c3aed', desc: `${l.classId}: ${l.content || '---'} · ${l.present ?? 0} có mặt`, time: ts, dateStr: l.date, type: 'diary' }); });
+    tlogs.forEach((l, i) => { const ts = parseDMY(l.rawDate || l.date || ''); if (ts) acts.push({ iconBg: '#f5f3ff', iconColor: '#7c3aed', desc: `${l.classId}: ${l.content || '---'} · ${l.present ?? 0} có mặt`, time: ts + (tlogs.length - i), dateStr: l.date, type: 'diary' }); });
     return acts.filter(a => a.time > 0).sort((a, b) => b.time - a.time).slice(0, 12);
   }, [students, tlogs]);
 

@@ -128,6 +128,7 @@ export function useDomains(cfg: DomainConfig) {
         throw new Error(`⚠️ Mã HS "${normalizedId}" đã tồn tại!`);
       form = { ...form, id: normalizedId };
 
+      // Optimistic update CHỈ sau khi validate xong
       const optimistic: Student = {
         id: normalizedId, name: form.name?.trim() || '',
         dob: form.dob || '', branch: form.branch || '',
@@ -233,7 +234,20 @@ export function useDomains(cfg: DomainConfig) {
         setUClasses(prev => [...prev, form]);
       }
       setEditClass(null);
-      await api({ action: editClass ? 'updateClass' : 'saveClass', ...sanitizeObject(form) });
+      // FIX CRITICAL: GAS lopVals reads camelCase (MaLop, TenLop...) NOT Vietnamese keys ('Mã Lớp'...)
+      // Phải map sang đúng field name mà GAS expect
+      await api({
+        action: editClass ? 'updateClass' : 'saveClass',
+        MaLop:    form['Mã Lớp']    || '',
+        'Ma Lop': form['Mã Lớp']    || '',  // backup key GAS cũng check
+        TenLop:   form['Tên Lớp']   || '',
+        Khoi:     form['Khối']      || '',
+        GiaoVien: form['Giáo viên'] || '',
+        CoSo:     form['Cơ sở']     || '',
+        Buoi1:    form['Buổi 1']    || '',
+        Buoi2:    form['Buổi 2']    || '',
+        Buoi3:    form['Buổi 3']    || '',
+      });
       setSilent(); loadData();
     }, editClass ? '✅ Đã cập nhật lớp!' : '✅ Đã thêm lớp mới!')
   , [withSave, editClass, api, setUClasses, setSilent, loadData]);
@@ -468,7 +482,14 @@ export function useDomains(cfg: DomainConfig) {
       } else {
         setTeachers(prev => [payload, ...prev]);
       }
-      await api({ action: isEdit ? 'updateTeacher' : 'saveTeacher', ...payload });
+      // FIX CRITICAL: GAS tvVals reads {subject, degree, salary} NOT {specialization, qualification, baseSalary}
+      await api({
+        action: isEdit ? 'updateTeacher' : 'saveTeacher',
+        ...payload,
+        subject:    payload.specialization || '',
+        degree:     payload.qualification  || '',
+        salary:     payload.baseSalary     || 0,
+      });
       setSilent(); loadData();
     }, '✅ Đã lưu giáo viên!');
   }, [teachers, withSave, api, setTeachers, setSilent, loadData]);
@@ -482,7 +503,14 @@ export function useDomains(cfg: DomainConfig) {
     const tagsArr: string[] = Array.isArray(form.tags)
       ? form.tags
       : (form.tags ? String(form.tags).split(',').map((t: string) => t.trim()).filter(Boolean) : []);
-    const payload    = { ...form, id: optimisticId, tags: tagsArr.join(','), uploadDate: form.uploadDate || new Date().toISOString() };
+    const payload = {
+      ...form, id: optimisticId,
+      // FIX CRITICAL: GAS hlVals reads d.title, frontend uses d.name → send both
+      title: form.name || form.title || '',
+      name:  form.name || form.title || '',
+      tags: tagsArr.join(','),
+      uploadDate: form.uploadDate || new Date().toISOString(),
+    };
     const optimistic = { ...form, id: optimisticId, tags: tagsArr, uploadedAt: form.uploadedAt || new Date().toISOString(), uploadedBy: form.uploadedBy || '' };
     await withSave(async () => {
       if (isEdit) {
@@ -542,7 +570,7 @@ export function useDomains(cfg: DomainConfig) {
   /* ── Filters ── */
   const [qS, setQS]           = useState('');
   const [fCls, setFCls]       = useState('');
-  const [hideInactive, setHideInactive] = useState(false);
+  const [hideInactive, setHideInactive] = useState(true); // default: chỉ hiện học sinh đang học
   const [pgS, setPgS]         = useState(1);
 
   const filtS = useMemo(() => students.filter(s =>
@@ -615,11 +643,15 @@ export function useDomains(cfg: DomainConfig) {
       return true;
     });
     if (fSt === 'unpaid') {
-      const n = new Date();
-      const debtMonths = Array.from({ length: 12 }, (_, i) => {
-        const d = new Date(n.getFullYear(), n.getMonth() - i, 1);
-        return { m: d.getMonth() + 1, y: d.getFullYear() };
-      });
+      // M1 FIX: dùng cửa sổ niên khóa hiện tại thay vì rolling-12-months.
+      // Niên khóa bắt đầu T7 (nếu curMo >= 7 → năm curYr; nếu < 7 → năm curYr-1).
+      const syStartYr = curMo >= 7 ? curYr : curYr - 1;
+      const debtMonths: { m: number; y: number }[] = [];
+      for (let y = syStartYr, m = 7; ; ) {
+        if (y > curYr || (y === curYr && m > curMo)) break;
+        debtMonths.push({ m, y });
+        if (m === 12) { m = 1; y++; } else m++;
+      }
       return [...filtered].sort((a, b) => {
         const aDebt = debtMonths.filter(fm => isMonthBillableForStudent(a, fm) && !isPaid(a.id, fm.m, fm.y)).length;
         const bDebt = debtMonths.filter(fm => isMonthBillableForStudent(b, fm) && !isPaid(b.id, fm.m, fm.y)).length;
@@ -627,7 +659,7 @@ export function useDomains(cfg: DomainConfig) {
       });
     }
     return filtered;
-  }, [students, qF, fTch, fFC, fSt, fM, fY, isPaid, hideInactive, isMonthBillableForStudent]);
+  }, [students, qF, fTch, fFC, fSt, fM, fY, isPaid, hideInactive, isMonthBillableForStudent, curMo, curYr]);
 
   const prevFiltFinLen = useRef(filtFin.length);
   useEffect(() => {

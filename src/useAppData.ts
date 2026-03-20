@@ -16,7 +16,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import toast from 'react-hot-toast';
 
 import type { Student, Payment, Expense, Teacher, LeaveRequest, Material } from './types';
-import { fetchWithTimeout, parseDMY, resolveTeacher, loadLocal } from './helpers';
+import { fetchWithTimeout, parseDMY, formatDate, resolveTeacher, loadLocal } from './helpers';
 import { buildChartData } from './measures';
 import { RULES } from './rules';
 
@@ -59,7 +59,9 @@ function txPayments(raw: any[], hs: Student[]): Payment[] {
     const d          = p['Số hiệu CT'] || p.docNum || fallbackId;
     return {
       id:          String(d),
-      date:        String(p['Ngày CT'] || p.date || ''),
+      // B4 FIX: formatDate normalises any GAS date format (ISO / DD/MM/YYYY / ISO+T)
+      // to DD/MM/YYYY so filteredLedger regex filter never misses a record.
+      date:        formatDate(String(p['Ngày CT'] || p.date || '')),
       docNum:      String(d),
       studentId:   maHS,
       studentName: String(p.studentName || hs.find(s => s.id === maHS)?.name || '?'),
@@ -82,7 +84,8 @@ function txExpenses(raw: any[]): any[] {
     const d          = e['Số hiệu CT'] || e.docNum || fallbackId;
     return {
       id:          String(d),
-      date:        String(e['Ngày CT'] || e.date || ''),
+      // B4 FIX: same as txPayments — normalise to DD/MM/YYYY
+      date:        formatDate(String(e['Ngày CT'] || e.date || '')),
       docNum:      String(d),
       description: String(e['Nội dung chi'] || e.description || ''),
       category:    String(e['Hạng mục']     || e.category    || ''),
@@ -92,6 +95,24 @@ function txExpenses(raw: any[]): any[] {
   });
 }
 
+/**
+ * normAttStatus — chuẩn hóa trạng thái điểm danh về dạng có dấu.
+ * GAS cũ hoặc nhập tay có thể lưu 'Co mat', 'Vang', 'Muon' (không dấu).
+ * Nếu không normalize, TuitionTab và absStats đếm thiếu vì so sánh strict === 'Có mặt'.
+ */
+function normAttStatus(raw: string): string {
+  const s = (raw || '').trim();
+  // Đã đúng dấu — trả về luôn (fast path)
+  if (s === 'Có mặt' || s === 'Vắng' || s === 'Muộn') return s;
+  // Normalize NFC + lowercase để so sánh không phân biệt dấu
+  const n = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (n === 'co mat' || n === 'comat') return 'Có mặt';
+  if (n === 'vang')                    return 'Vắng';
+  if (n === 'muon')                    return 'Muộn';
+  // Fallback: trả về 'Có mặt' nếu không nhận ra (tránh đếm sai)
+  return s || 'Có mặt';
+}
+
 function txLogs(raw: any[], tl: string[]): any[] {
   return raw.map(l => {
     const dt    = l['Ngày'] || l.date || '';
@@ -99,13 +120,17 @@ function txLogs(raw: any[], tl: string[]): any[] {
     const caVal = String(l['Ca dạy'] || l.caDay || '');
 
     /* attendanceList đã được GAS nhúng sẵn trong mỗi log record */
-    const atts = (l.attendanceList || []).map((a: any) => ({
-      maHS:         String(a.maHS || a.MaHS || a['Mã HS'] || ''),
-      'Mã HS':      String(a.maHS || a.MaHS || a['Mã HS'] || ''),
-      tenHS:        String(a.tenHS || ''),
-      'Trạng thái': String(a.trangThai || a.TrangThai || a['Trạng thái'] || 'Có mặt'),
-      'Ghi chú':    String(a.ghiChu || a.GhiChu || a['Ghi chú'] || ''),
-    }));
+    const atts = (l.attendanceList || []).map((a: any) => {
+      const status = normAttStatus(a.trangThai || a.TrangThai || a['Trạng thái'] || '');
+      return {
+        maHS:         String(a.maHS || a.MaHS || a['Mã HS'] || ''),
+        'Mã HS':      String(a.maHS || a.MaHS || a['Mã HS'] || ''),
+        tenHS:        String(a.tenHS || ''),
+        trangThai:    status,
+        'Trạng thái': status,
+        'Ghi chú':    String(a.ghiChu || a.GhiChu || a['Ghi chú'] || ''),
+      };
+    });
 
     return {
       rawDate:         String(l.rawDate || dt),
@@ -119,7 +144,7 @@ function txLogs(raw: any[], tl: string[]): any[] {
       teacherNote:     String(l['Ghi chú GV']       || l.teacherNote || ''),
       teacherName:     resolveTeacher(l['Giáo viên'] || l.teacherName || '---', tl),
       caDay:           caVal,
-      // atts đã normalize sang key 'Trạng thái' — dùng trực tiếp, không cần fallback trangThai
+      // Cả 'Trạng thái' lẫn trangThai đều đã normalize → dùng trực tiếp không cần fallback thêm
       present: atts.filter((a: any) => a['Trạng thái'] === 'Có mặt').length,
       absent:  atts.filter((a: any) => a['Trạng thái'] === 'Vắng').length,
       late:    atts.filter((a: any) => a['Trạng thái'] === 'Muộn').length,
@@ -154,10 +179,11 @@ function txTeachers(raw: any[]): Teacher[] {
     phone:          String(t.phone          || ''),
     email:          String(t.email          || ''),
     gender:         t.gender                || 'male',
-    specialization: String(t.specialization || 'Toán'),
-    qualification:  String(t.qualification  || ''),
+    // FIX CRITICAL: GAS readGiaoVien returns {subject, degree, salary} NOT {specialization, qualification, baseSalary}
+    specialization: String(t.specialization || t.subject || 'Toán'),
+    qualification:  String(t.qualification  || t.degree  || ''),
     experience:     Number(t.experience)    || 0,
-    baseSalary:     Number(t.baseSalary)    || 0,
+    baseSalary:     Number(t.baseSalary     || t.salary)  || 0,
     hourlyRate:     Number(t.hourlyRate)    || 0,
     allowance:      Number(t.allowance)     || 0,
     status:         String(t.status         || 'active'),
@@ -172,6 +198,9 @@ function txTeachers(raw: any[]): Teacher[] {
 function txMaterials(raw: any[]): Material[] {
   return raw.map((m: any) => ({
     ...m,
+    // FIX CRITICAL: GAS readHocLieu returns {title} but Material type uses {name}
+    name: String(m.name || m.title || ''),
+    title: String(m.title || m.name || ''),
     tags: Array.isArray(m.tags)
       ? m.tags
       : (m.tags ? String(m.tags).split(',').map((t: string) => t.trim()).filter(Boolean) : []),

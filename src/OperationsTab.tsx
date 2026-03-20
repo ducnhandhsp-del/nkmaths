@@ -14,8 +14,8 @@ import type { Student, TeachingLog, LeaveRequest } from './types';
 
 type Sub = 'diary' | 'schedule' | 'absence';
 const SUBS = [
-  { id: 'diary'    as Sub, label: 'Nhật ký giảng dạy', icon: BookOpen    },
   { id: 'schedule' as Sub, label: 'Lịch dạy',           icon: Calendar   },
+  { id: 'diary'    as Sub, label: 'Nhật ký giảng dạy', icon: BookOpen    },
   { id: 'absence'  as Sub, label: 'Thống kê vắng',      icon: AlertTriangle },
 ];
 
@@ -295,7 +295,7 @@ interface Props {
 }
 
 export default function OperationsTab({ filtD, pgD, setPgD, qD, setQD, dCls, setDCls, uClasses, IPP, students, tlogs, onViewDiary, onEditDiary, onAddDiary }: Props) {
-  const [sub, setSub] = useState<Sub>('diary');
+  const [sub, setSub] = useState<Sub>('schedule');
   const [absSearch, setAbsSearch] = useState('');
   const [absClass, setAbsClass]   = useState('');
   const [absSort, setAbsSort]     = useState<'absent' | 'late' | 'name'>('absent');
@@ -400,7 +400,7 @@ export default function OperationsTab({ filtD, pgD, setPgD, qD, setQD, dCls, set
                       </div>
                     </td></tr>
                   : paged.map((l, i) => (
-                    <tr key={i} onMouseEnter={() => setHovIdx(i)} onMouseLeave={() => setHovIdx(null)} style={trStyle(i, hovIdx === i)}>
+                    <tr key={`${l.classId}-${l.date}-${l.caDay}`} onMouseEnter={() => setHovIdx(i)} onMouseLeave={() => setHovIdx(null)} style={trStyle(i, hovIdx === i)}>
                       <td style={{ ...TD_SHARED, fontSize: 12, color: '#475569', fontWeight: 600 }}>{formatDate(l.date)}</td>
                       <td style={TD_SHARED}><Badge color="indigo">{l.classId}</Badge></td>
                       <td style={TD_SHARED}>
@@ -430,7 +430,7 @@ export default function OperationsTab({ filtD, pgD, setPgD, qD, setQD, dCls, set
               ? <div style={{ padding: '40px 16px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
                   <span style={{ fontSize: 32 }}>📖</span>
                   <p style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: 13, margin: 0 }}>Chưa có nhật ký nào</p>
-                  <button onClick={onAddDiary} style={{ padding: '8px 18px', background: '#7c3aed', color: 'white', border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer', borderRadius: 8 }}>+ Ghi buổi đầu tiên</button>
+                  <button onClick={() => onAddDiary()} style={{ padding: '8px 18px', background: '#7c3aed', color: 'white', border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer', borderRadius: 8 }}>+ Ghi buổi đầu tiên</button>
                 </div>
               : paged.map((l, i) => (
                 <div key={i} style={{ padding: '12px 14px', borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? 'white' : '#f9fafc' }}>
