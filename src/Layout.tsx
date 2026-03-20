@@ -221,7 +221,7 @@ export const MobileHeader = memo(({ active, set, centerName, isDesktop }: {
 
 // Bottom nav 5 tab thực dụng nhất — Báo cáo thay Cài đặt (Cài đặt vẫn có trong sidebar)
 const BOTTOM_NAV_ITEMS = NAV_ITEMS.filter(n =>
-  ['overview','operations','students','finance','reports'].includes(n.id)
+  ['overview','operations','students','classes','finance','reports'].includes(n.id)
 );
 
 export const BottomNav = memo(({ active, set, isDesktop }: {
