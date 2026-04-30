@@ -239,7 +239,7 @@ export default function OverviewTab({
 
   const hocLuc = useMemo(() => {
     const m: Record<string, number> = {};
-    students.forEach(s => {
+    activeStudents.forEach(s => {
       const k = (s.academicLevel && s.academicLevel.trim()) ? s.academicLevel.trim() : 'Chưa xác định';
       m[k] = (m[k] || 0) + 1;
     });
@@ -251,10 +251,10 @@ export default function OverviewTab({
         if (ai === -1 && bi === -1) return a.name.localeCompare(b.name);
         return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
       });
-  }, [students]);
+  }, [activeStudents]);
   const theoKhoi = useMemo(() => {
     const m: Record<string, number> = {};
-    students.forEach(s => { const k = s.grade || 'Khác'; m[k] = (m[k] || 0) + 1; });
+    activeStudents.forEach(s => { const k = s.grade || 'Khác'; m[k] = (m[k] || 0) + 1; });
     return Object.entries(m)
       .sort((a, b) => {
         const na = parseInt(a[0]), nb = parseInt(b[0]);
@@ -265,7 +265,7 @@ export default function OverviewTab({
         return a[0].localeCompare(b[0]);
       })
       .map(([name, value]) => ({ name, value }));
-  }, [students]);
+  }, [activeStudents]);
 
   const teachingActs = useMemo(() => {
     const acts: any[] = [];

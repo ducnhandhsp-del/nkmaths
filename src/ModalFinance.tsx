@@ -251,7 +251,7 @@ export function FABModal({
                       {...focusBorder('#059669')}
                     />
                     <datalist id="fab-hs">
-                      {students.map(s => <option key={s.id} value={`${s.id} - ${s.name}`} />)}
+                      {students.filter(s => s.status !== 'inactive' && (!s.endDate || s.endDate === '---' || s.endDate === '')).map(s => <option key={s.id} value={`${s.id} - ${s.name}`} />)}
                     </datalist>
                   </LField>
                   <LField label="Người nộp">

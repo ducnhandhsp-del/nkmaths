@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { X, Save, BookOpen, Calendar, Users, FileText } from 'lucide-react';
 import { formatDate, toInputDate, localDateStr } from './helpers';
@@ -39,31 +39,38 @@ export function DiaryModal({
   const [caDay,setCaDay]=useState('');
   const [att,setAtt]=useState<Record<string,{trangThai:string;ghiChu:string}>>({});
 
+  // Chỉ reset form khi modal vừa mở (false→true).
+  // Bỏ uniqueClasses khỏi deps: silent-reload tạo array reference mới nhưng
+  // không được coi là "modal vừa mở" → form không bị clear khi đang nhập.
+  const prevOpenRef = useRef(false);
   useEffect(()=>{
-    if(open){
-      if(editingLog){
-        setClassId(editingLog.classId||''); setDate(toInputDate(editingLog.rawDate||editingLog.date||''));
-        setContent(editingLog.content||''); setHw(editingLog.homework==='---'?'':editingLog.homework||'');
-        setCaDay(editingLog.caDay||'');
-        const attInit:Record<string,{trangThai:string;ghiChu:string}>={};
-        (editingLog.attendanceList||[]).forEach((a:any)=>{
-          const id = a.maHS||a['Mã HS']||'';
-          if(!id) return;
-          attInit[id]={
-            trangThai: a.trangThai||a['Trạng thái']||'Có mặt',
-            ghiChu:    a.ghiChu||a['Ghi chú']||'',
-          };
-        });
-        setAtt(attInit);
-      } else {
-        const dc=preselectedClassId||uniqueClasses[0]?.['Mã Lớp']||'';
-        setClassId(dc);
-        setDate(preselectedDate||localDateStr());
-        setCaDay(preselectedCaDay||'');
-        setContent(''); setHw(''); setAtt({});
-      }
+    const justOpened = open && !prevOpenRef.current;
+    prevOpenRef.current = open;
+    if(!justOpened) return;
+    if(editingLog){
+      setClassId(editingLog.classId||''); setDate(toInputDate(editingLog.rawDate||editingLog.date||''));
+      setContent(editingLog.content||''); setHw(editingLog.homework==='---'?'':editingLog.homework||'');
+      setCaDay(editingLog.caDay||'');
+      const attInit:Record<string,{trangThai:string;ghiChu:string}>={};
+      (editingLog.attendanceList||[]).forEach((a:any)=>{
+        const id = a.maHS||a['Mã HS']||'';
+        if(!id) return;
+        attInit[id]={
+          trangThai: a.trangThai||a['Trạng thái']||'Có mặt',
+          ghiChu:    a.ghiChu||a['Ghi chú']||'',
+        };
+      });
+      setAtt(attInit);
+    } else {
+      // uniqueClasses được đọc tại thời điểm mở (closure tươi) — không cần ở deps
+      const dc=preselectedClassId||uniqueClasses[0]?.['Mã Lớp']||'';
+      setClassId(dc);
+      setDate(preselectedDate||localDateStr());
+      setCaDay(preselectedCaDay||'');
+      setContent(''); setHw(''); setAtt({});
     }
-  },[open,uniqueClasses,editingLog,preselectedClassId,preselectedDate,preselectedCaDay]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[open,editingLog,preselectedClassId,preselectedDate,preselectedCaDay]);
 
   if(!open) return null;
 
