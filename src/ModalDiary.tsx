@@ -25,6 +25,16 @@ function SBox({ color, icon:Icon, title, children }: { color:string; icon:any; t
   );
 }
 
+function normalizeAttendanceLabel(raw: string): 'Có mặt' | 'Vắng' | 'Có phép' {
+  const s = (raw || '').trim();
+  if (s === 'Vắng') return 'Vắng';
+  if (s === 'Có phép' || s === 'Nghỉ có phép') return 'Có phép';
+  const n = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (n === 'vang' || n === 'absent') return 'Vắng';
+  if (n === 'co phep' || n === 'nghi co phep' || n === 'excused') return 'Có phép';
+  return 'Có mặt';
+}
+
 export function DiaryModal({
   open, onClose, uniqueClasses, students, isSaving, onSave, editingLog, caDayOptions=[], preselectedClassId='', preselectedDate='', preselectedCaDay='',
 }: {
@@ -36,6 +46,7 @@ export function DiaryModal({
   const [date,setDate]=useState(localDateStr());
   const [content,setContent]=useState('');
   const [hw,setHw]=useState('');
+  const [teacherNote,setTeacherNote]=useState('');
   const [caDay,setCaDay]=useState('');
   const [att,setAtt]=useState<Record<string,{trangThai:string;ghiChu:string}>>({});
 
@@ -50,24 +61,23 @@ export function DiaryModal({
     if(editingLog){
       setClassId(editingLog.classId||''); setDate(toInputDate(editingLog.rawDate||editingLog.date||''));
       setContent(editingLog.content||''); setHw(editingLog.homework==='---'?'':editingLog.homework||'');
+      setTeacherNote(editingLog.teacherNote||editingLog['Ghi chú GV']||'');
       setCaDay(editingLog.caDay||'');
       const attInit:Record<string,{trangThai:string;ghiChu:string}>={};
       (editingLog.attendanceList||[]).forEach((a:any)=>{
         const id = a.maHS||a['Mã HS']||'';
         if(!id) return;
         attInit[id]={
-          trangThai: a.trangThai||a['Trạng thái']||'Có mặt',
+          trangThai: normalizeAttendanceLabel(a.trangThai||a['Trạng thái']||a.TrangThai||'Có mặt'),
           ghiChu:    a.ghiChu||a['Ghi chú']||'',
         };
       });
       setAtt(attInit);
     } else {
-      // uniqueClasses được đọc tại thời điểm mở (closure tươi) — không cần ở deps
-      const dc=preselectedClassId||uniqueClasses[0]?.['Mã Lớp']||'';
-      setClassId(dc);
+      setClassId(preselectedClassId||'');
       setDate(preselectedDate||localDateStr());
       setCaDay(preselectedCaDay||'');
-      setContent(''); setHw(''); setAtt({});
+      setContent(''); setHw(''); setTeacherNote(''); setAtt({});
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[open,editingLog,preselectedClassId,preselectedDate,preselectedCaDay]);
@@ -85,17 +95,17 @@ export function DiaryModal({
   const clsRecord = uniqueClasses.find(c => c['Mã Lớp'] === classId);
   const teacherName = clsRecord?.['Giáo viên'] || cls[0]?.teacher || '';
   const caList=caDayOptions.length>0?caDayOptions:['7h30','9h','13h30','15h30','17h30','19h30'];
-  const classOptions=uniqueClasses.map(c=>({value:c['Mã Lớp'],label:`Lớp ${c['Mã Lớp']}`}));
+  const classOptions=[{value:'',label:'-- Chọn lớp học --'},...uniqueClasses.map(c=>({value:c['Mã Lớp'],label:`Lớp ${c['Mã Lớp']}`}))];
   const caOptions=[{value:'',label:'-- Chọn ca dạy --'},...caList.map(ca=>({value:ca,label:`⏰ ${ca}`}))];
   // Attendance
   const attStudents: AttendanceStudent[] = cls.map(s=>({
     id:s.id, name:s.name,
-    status:(att[s.id]?.trangThai==='Vắng'?'absent':att[s.id]?.trangThai==='Muộn'?'late':'present') as any,
+    status:(att[s.id]?.trangThai==='Vắng'?'absent':att[s.id]?.trangThai==='Có phép'?'excused':'present') as any,
     note:att[s.id]?.ghiChu||'',
   }));
   const handleAttChange=(updated:AttendanceStudent[])=>{
     const next:Record<string,{trangThai:string;ghiChu:string}>={};
-    updated.forEach(a=>{ next[a.id]={trangThai:a.status==='absent'?'Vắng':a.status==='late'?'Muộn':'Có mặt',ghiChu:a.note||''}; });
+    updated.forEach(a=>{ next[a.id]={trangThai:a.status==='absent'?'Vắng':a.status==='excused'?'Có phép':'Có mặt',ghiChu:a.note||''}; });
     setAtt(next);
   };
 
@@ -103,7 +113,7 @@ export function DiaryModal({
     if(!classId){toast.error('⚠️ Vui lòng chọn lớp học!');return;}
     if(!caDay){toast.error('⚠️ Vui lòng chọn ca dạy!');return;}
     if(!content.trim()){toast.error('⚠️ Vui lòng nhập nội dung bài dạy!');return;}
-    onSave({ date,classId,caDay,content,homework:hw||'---',teacherName,
+    onSave({ date,classId,caDay,content,homework:hw||'---',teacherNote:teacherNote.trim(),teacherName,
       ...(editingLog&&{originalDate:editingLog.originalDate||editingLog.rawDate,originalClassId:editingLog.originalClassId||editingLog.classId,originalCaDay:editingLog.originalCaDay||editingLog.caDay||''}),
       attendance:cls.map(s=>({maHS:s.id,tenHS:s.name,trangThai:att[s.id]?.trangThai||'Có mặt',ghiChu:att[s.id]?.ghiChu||''})),
     });
@@ -117,8 +127,10 @@ export function DiaryModal({
           <div style={{ display:'flex',alignItems:'center',gap:10 }}>
             <div style={{ width:36,height:36,borderRadius:9,background:'#eef2ff',display:'flex',alignItems:'center',justifyContent:'center' }}><BookOpen size={16} color="#6366f1"/></div>
             <div>
-              <h3 style={{ fontSize:15,fontWeight:800,color:'#0f172a',margin:0 }}>{editingLog?'Cập nhật buổi dạy':'Ghi buổi dạy mới'}</h3>
-              {classId&&<p style={{ fontSize:11,color:'#6366f1',fontWeight:600,margin:0 }}>Lớp {classId} · {cls.length} học sinh</p>}
+              <h3 style={{ fontSize:15,fontWeight:800,color:'#0f172a',margin:0 }}>{editingLog?'Cập nhật buổi học':'Ghi buổi học'}</h3>
+              <p style={{ fontSize:11,color:classId?'#6366f1':'#94a3b8',fontWeight:600,margin:0 }}>
+                {classId ? `Lớp ${classId} · ${cls.length} học sinh${caDay ? ` · ${caDay}` : ''}` : 'Chọn lớp, ngày và ca để bắt đầu'}
+              </p>
             </div>
           </div>
           <IconButton icon={<X size={18}/>} label="Đóng" onClick={onClose}/>
@@ -126,11 +138,11 @@ export function DiaryModal({
 
         {/* Body */}
         <div style={{ flex:1,minHeight:0,overflowY:'auto',padding:'16px 18px' }}>
-          {/* Thông tin buổi dạy — always 1 col on mobile, 2 col desktop */}
+          {/* Thông tin buổi học — always 1 col on mobile, 2 col desktop */}
           <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:14 }}>
             {/* Left col */}
             <div style={{ display:'flex',flexDirection:'column',gap:12 }}>
-              <SBox color="#6366f1" icon={Calendar} title="Thông tin buổi dạy">
+              <SBox color="#6366f1" icon={Calendar} title="Thông tin buổi học">
                 <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10 }}>
                   <Input label="Ngày dạy" type="date" value={date} onChange={setDate}/>
                   <Select label="Lớp học" value={classId} onChange={v=>{setClassId(v);setAtt({});}} options={classOptions}/>
@@ -138,6 +150,10 @@ export function DiaryModal({
                 {/* Ca dạy dùng Select thay RadioGroup để tiết kiệm không gian */}
                 <Select label="Ca dạy *" value={caDay} onChange={setCaDay} options={caOptions}/>
                 {!caDay&&<p style={{ fontSize:11,color:'#f59e0b',fontWeight:600,margin:0 }}>⚠️ Bắt buộc chọn ca dạy</p>}
+                <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,padding:'8px 10px',borderRadius:8,background:'#f8fafc',border:'1px solid #e2e8f0' }}>
+                  <span style={{ fontSize:11,fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.08em' }}>Giáo viên</span>
+                  <span style={{ fontSize:13,fontWeight:700,color:teacherName?'#0f172a':'#94a3b8',textAlign:'right' }}>{teacherName||'Chưa có giáo viên'}</span>
+                </div>
               </SBox>
               <SBox color="#7c3aed" icon={FileText} title="Nội dung bài học">
                 <div style={{ display:'flex',flexDirection:'column',gap:4 }}>
@@ -148,6 +164,10 @@ export function DiaryModal({
                   <label style={{ fontSize:11,fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.08em' }}>Bài tập về nhà</label>
                   <textarea value={hw} onChange={e=>setHw(e.target.value)} rows={2} placeholder="SBT tr.45: 1,2,3 — hoặc để trống" style={{ width:'100%',padding:'10px 12px',borderRadius:8,border:'1.5px solid #ede9fe',fontSize:13,fontWeight:500,color:'#0f172a',outline:'none',background:'white',resize:'vertical',fontFamily:'inherit',boxSizing:'border-box' }} onFocus={e=>e.target.style.borderColor='#7c3aed'} onBlur={e=>e.target.style.borderColor='#ede9fe'}/>
                 </div>
+                <div style={{ display:'flex',flexDirection:'column',gap:4 }}>
+                  <label style={{ fontSize:11,fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.08em' }}>Ghi chú giáo viên</label>
+                  <textarea value={teacherNote} onChange={e=>setTeacherNote(e.target.value)} rows={2} placeholder="Ghi chú thêm về lớp, học sinh hoặc phần cần theo dõi" style={{ width:'100%',padding:'10px 12px',borderRadius:8,border:'1.5px solid #ede9fe',fontSize:13,fontWeight:500,color:'#0f172a',outline:'none',background:'white',resize:'vertical',fontFamily:'inherit',boxSizing:'border-box' }} onFocus={e=>e.target.style.borderColor='#7c3aed'} onBlur={e=>e.target.style.borderColor='#ede9fe'}/>
+                </div>
               </SBox>
             </div>
             {/* Right col: điểm danh */}
@@ -156,7 +176,7 @@ export function DiaryModal({
                   <AttendancePicker students={attStudents} onChange={handleAttChange}/>
                 </SBox>
               : <div style={{ display:'flex',alignItems:'center',justifyContent:'center',background:'#f8fafc',border:'1.5px dashed #e2e8f0',borderRadius:8,color:'#94a3b8',fontStyle:'italic',fontSize:13,minHeight:120 }}>
-                  Chọn lớp để điểm danh
+                  {classId ? 'Lớp này chưa có học sinh đang học' : 'Chọn lớp để điểm danh'}
                 </div>
             }
           </div>
@@ -166,7 +186,7 @@ export function DiaryModal({
         <div style={{ padding:'12px 18px',borderTop:'1px solid #f1f5f9',display:'flex',justifyContent:'flex-end',gap:10,flexShrink:0,flexWrap:'wrap' }}>
           <Button variant="outline" intent="neutral" onClick={onClose} style={{ minWidth:90 }}>Hủy</Button>
           <Button intent="primary" loading={isSaving} icon={<Save size={14}/>} onClick={doSave} style={{ boxShadow:'0 4px 14px rgba(99,102,241,0.4)',flex:1,maxWidth:200 }}>
-            {editingLog?'Cập nhật buổi dạy':'Lưu buổi dạy'}
+            {editingLog?'Cập nhật buổi học':'Lưu buổi học'}
           </Button>
         </div>
       </div>
@@ -176,11 +196,21 @@ export function DiaryModal({
 
 const STATUS_STYLES: Record<string,{active:string;bg:string;dot:string}> = {
   'Có mặt':{active:'#059669',bg:'#ecfdf5',dot:'#10b981'},
-  'Muộn':  {active:'#d97706',bg:'#fffbeb',dot:'#f59e0b'},
   'Vắng':  {active:'#dc2626',bg:'#fef2f2',dot:'#ef4444'},
+  'Có phép':{active:'#d97706',bg:'#fffbeb',dot:'#f59e0b'},
 };
 export function DiaryDetailModal({ log, onClose }: { log:any; onClose:()=>void }) {
   const l=log;
+  const detailAttendance = l.attendanceList || [];
+  const detailPresent = detailAttendance.length
+    ? detailAttendance.filter((a:any) => normalizeAttendanceLabel(a.trangThai||a['Trạng thái']||a.TrangThai||'') === 'Có mặt').length
+    : Number(l.present || 0);
+  const detailAbsent = detailAttendance.length
+    ? detailAttendance.filter((a:any) => normalizeAttendanceLabel(a.trangThai||a['Trạng thái']||a.TrangThai||'') === 'Vắng').length
+    : Number(l.absent || 0);
+  const detailExcused = detailAttendance.length
+    ? detailAttendance.filter((a:any) => normalizeAttendanceLabel(a.trangThai||a['Trạng thái']||a.TrangThai||'') === 'Có phép').length
+    : Number(l.excused || 0);
   return (
     <div style={FS_WRAP}>
       <div style={{ ...FS_DLG, maxWidth:560 }}>
@@ -199,7 +229,7 @@ export function DiaryDetailModal({ log, onClose }: { log:any; onClose:()=>void }
         </div>
         <div style={{ flex:1,minHeight:0,overflowY:'auto',padding:'16px 24px',display:'flex',flexDirection:'column',gap:12 }}>
           <div style={{ display:'flex',gap:8 }}>
-            {[{label:'Có mặt',val:l.present,color:'#059669',bg:'#ecfdf5',border:'#a7f3d0'},{label:'Vắng',val:l.absent,color:'#dc2626',bg:'#fef2f2',border:'#fecaca'},{label:'Muộn',val:l.late,color:'#d97706',bg:'#fffbeb',border:'#fde68a'}].map(({label,val,color,bg,border})=>(
+            {[{label:'Có mặt',val:detailPresent,color:'#059669',bg:'#ecfdf5',border:'#a7f3d0'},{label:'Vắng',val:detailAbsent,color:'#dc2626',bg:'#fef2f2',border:'#fecaca'},{label:'Có phép',val:detailExcused,color:'#d97706',bg:'#fffbeb',border:'#fde68a'}].map(({label,val,color,bg,border})=>(
               <div key={label} style={{ flex:1,textAlign:'center',padding:'10px 8px',borderRadius:8,background:bg,border:`1.5px solid ${border}` }}>
                 <p style={{ fontSize:26,fontWeight:800,color,margin:0,lineHeight:1 }}>{val}</p>
                 <p style={{ fontSize:10,fontWeight:700,color,margin:'3px 0 0',textTransform:'uppercase' }}>{label}</p>
@@ -211,13 +241,14 @@ export function DiaryDetailModal({ log, onClose }: { log:any; onClose:()=>void }
             <p style={{ fontSize:14,fontWeight:600,color:'#1e1b4b',margin:0,lineHeight:1.5 }}>{l.content}</p>
           </div>
           {l.homework&&l.homework!=='---'&&<div style={{ borderRadius:8,background:'#fffbeb',border:'1.5px solid #fde68a',padding:'12px 14px' }}><p style={{ fontSize:10,fontWeight:700,color:'#d97706',textTransform:'uppercase',letterSpacing:'0.08em',margin:'0 0 5px' }}>📝 Bài tập về nhà</p><p style={{ fontSize:14,fontWeight:600,color:'#451a03',margin:0 }}>{l.homework}</p></div>}
+          {l.teacherNote&&<div style={{ borderRadius:8,background:'#f8fafc',border:'1.5px solid #e2e8f0',padding:'12px 14px' }}><p style={{ fontSize:10,fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.08em',margin:'0 0 5px' }}>Ghi chú giáo viên</p><p style={{ fontSize:14,fontWeight:600,color:'#334155',margin:0,lineHeight:1.5 }}>{l.teacherNote}</p></div>}
           {l.attendanceList?.length>0&&(
             <div style={{ border:'1.5px solid #e2e8f0',overflow:'hidden',borderRadius:8 }}>
               <div style={{ padding:'8px 12px',background:'#f8fafc',borderBottom:'1.5px solid #e2e8f0' }}><p style={{ fontSize:10,fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.08em',margin:0 }}>Danh sách điểm danh</p></div>
               <div style={{ maxHeight:200,overflowY:'auto' }}>
                 {l.attendanceList.map((a:any,i:number)=>{
                   const name=a['Họ và tên']||a.tenHS||a['tenHS']||'---';
-                  const status=a.trangThai||a['Trạng thái']||a.TrangThai||'---';
+                  const status=normalizeAttendanceLabel(a.trangThai||a['Trạng thái']||a.TrangThai||'Có mặt');
                   const note=a.ghiChu||a['Ghi chú']||a['ghiChu']||'';
                   const sty=STATUS_STYLES[status]||STATUS_STYLES['Có mặt'];
                   return (

@@ -16,7 +16,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import toast from 'react-hot-toast';
 
 import type { Student, Payment, Expense, Teacher, LeaveRequest, Material } from './types';
-import { fetchWithTimeout, parseDMY, formatDate, resolveTeacher, loadLocal } from './helpers';
+import { fetchWithTimeout, parseDMY, formatDate, resolveTeacher, loadLocal, normalizePaymentMethod } from './helpers';
 import { buildChartData } from './measures';
 import { RULES } from './rules';
 
@@ -48,6 +48,8 @@ function txStudents(raw: any[], tl: string[]): Student[] {
     status:        String(s['Trạng thái']   || s.status     || 'active'),
     notes:         String(s.notes       || ''),
     facebookUrl:   String(s.facebookUrl || ''),
+    createdAt:     String(s.createdAt   || s.CreatedAt || ''),
+    updatedAt:     String(s.updatedAt   || s.UpdatedAt || ''),
   }));
 }
 
@@ -66,12 +68,15 @@ function txPayments(raw: any[], hs: Student[]): Payment[] {
       studentId:   maHS,
       studentName: String(p.studentName || hs.find(s => s.id === maHS)?.name || '?'),
       payer:       String(p['Người thanh toán'] || p.payer  || '---'),
-      method:      String(p['Hình thức']        || p.method || '---'),
+      method:      normalizePaymentMethod(p['Hình thức'] || p.method || '---'),
       description: String(p['Diễn giải']        || p.description || ''),
       amount:      Number(p['Số tiền']          || p.amount) || 0,
       note:        String(p['Ghi chú']          || p.note   || ''),
       thangHP:     Number(p.thangHP) || 0,
       namHP:       Number(p.namHP)   || 0,
+      maLop:       String(p.maLop || p.MaLop || p.classId || p['MÃ£ Lá»›p'] || ''),
+      createdAt:   String(p.createdAt || p.CreatedAt || ''),
+      updatedAt:   String(p.updatedAt || p.UpdatedAt || ''),
     };
   });
 }
@@ -91,6 +96,8 @@ function txExpenses(raw: any[]): any[] {
       category:    String(e['Hạng mục']     || e.category    || ''),
       amount:      Number(e['Số tiền']      || e.amount) || 0,
       spender:     String(e['Người chi']    || e.spender || ''),
+      createdAt:   String(e.createdAt || e.CreatedAt || ''),
+      updatedAt:   String(e.updatedAt || e.UpdatedAt || ''),
     };
   });
 }
@@ -103,12 +110,14 @@ function txExpenses(raw: any[]): any[] {
 function normAttStatus(raw: string): string {
   const s = (raw || '').trim();
   // Đã đúng dấu — trả về luôn (fast path)
-  if (s === 'Có mặt' || s === 'Vắng' || s === 'Muộn') return s;
+  if (s === 'Có mặt' || s === 'Vắng' || s === 'Có phép' || s === 'Nghỉ có phép') {
+    return s === 'Nghỉ có phép' ? 'Có phép' : s;
+  }
   // Normalize NFC + lowercase để so sánh không phân biệt dấu
   const n = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  if (n === 'co mat' || n === 'comat') return 'Có mặt';
+  if (n === 'co mat' || n === 'comat' || n === 'muon' || n === 'late') return 'Có mặt';
   if (n === 'vang')                    return 'Vắng';
-  if (n === 'muon')                    return 'Muộn';
+  if (n === 'co phep' || n === 'nghi co phep' || n === 'excused') return 'Có phép';
   // Fallback: trả về 'Có mặt' nếu không nhận ra (tránh đếm sai)
   return s || 'Có mặt';
 }
@@ -143,12 +152,16 @@ function txLogs(raw: any[], tl: string[]): any[] {
       homework:        String(l['Bài tập về nhà']   || l.homework   || '---'),
       teacherNote:     String(l['Ghi chú GV']       || l.teacherNote || ''),
       teacherName:     resolveTeacher(l['Giáo viên'] || l.teacherName || '---', tl),
+      maGV:            String(l.maGV || l.MaGV || l.teacherId || ''),
       caDay:           caVal,
       // Cả 'Trạng thái' lẫn trangThai đều đã normalize → dùng trực tiếp không cần fallback thêm
       present: atts.filter((a: any) => a['Trạng thái'] === 'Có mặt').length,
       absent:  atts.filter((a: any) => a['Trạng thái'] === 'Vắng').length,
-      late:    atts.filter((a: any) => a['Trạng thái'] === 'Muộn').length,
+      late:    0,
+      excused: atts.filter((a: any) => a['Trạng thái'] === 'Có phép').length,
       attendanceList: atts,
+      createdAt: String(l.createdAt || l.CreatedAt || ''),
+      updatedAt: String(l.updatedAt || l.UpdatedAt || ''),
     };
   }).sort((a: any, b: any) => parseDMY(b.date) - parseDMY(a.date));
 }
@@ -160,6 +173,9 @@ function txClasses(raw: any[], tl: string[]): any[] {
     if (!maLop || map.has(maLop)) return;
     map.set(maLop, {
       'Mã Lớp':    maLop,
+      MaGV:        c.MaGV    || c.maGV       || c.teacherId || '',
+      teacherId:    c.teacherId || c.MaGV || c.maGV || '',
+      GiaoVien:     resolveTeacher(c.GiaoVien || c['GiÃ¡o viÃªn'] || '', tl),
       'Tên Lớp':   c.TenLop  || c['Tên Lớp']  || '',
       'Khối':      c.Khoi    || c['Khối']      || '',
       'Giáo viên': resolveTeacher(c.GiaoVien || c['Giáo viên'] || '', tl),
@@ -174,21 +190,24 @@ function txClasses(raw: any[], tl: string[]): any[] {
 
 function txTeachers(raw: any[]): Teacher[] {
   return raw.map((t: any, i: number) => ({
-    id:             String(t.id             || `GV${Date.now()}-${i}`),
-    name:           String(t.name           || ''),
-    phone:          String(t.phone          || ''),
-    email:          String(t.email          || ''),
+    id:             String(t.MaGV           || t.id || t.teacherId || `GV${Date.now()}-${i}`),
+    name:           String(t.HoTen          || t.TenGV || t.GiaoVien || t.name || t.teacherName || ''),
+    phone:          String(t.SDT            || t.SDTGV || t.SoDienThoai || t.phone || ''),
+    email:          String(t.Email          || t.email          || ''),
     gender:         t.gender                || 'male',
+    dob:            t.dob ? formatDate(String(t.dob)) : '',
+    address:        String(t.address        || ''),
+    idNumber:       String(t.idNumber       || ''),
     // FIX CRITICAL: GAS readGiaoVien returns {subject, degree, salary} NOT {specialization, qualification, baseSalary}
-    specialization: String(t.specialization || t.subject || 'Toán'),
+    specialization: String(t.ChuyenMon      || t.specialization || t.subject || 'Toán'),
     qualification:  String(t.qualification  || t.degree  || ''),
     experience:     Number(t.experience)    || 0,
-    baseSalary:     Number(t.baseSalary     || t.salary)  || 0,
-    hourlyRate:     Number(t.hourlyRate)    || 0,
-    allowance:      Number(t.allowance)     || 0,
-    status:         String(t.status         || 'active'),
-    notes:          String(t.notes          || ''),
-    createdAt:      String(t.createdAt      || ''),
+    baseSalary:     Number(t.LuongCoBan     || t.baseSalary || t.salary)  || 0,
+    hourlyRate:     Number(t.DonGiaMoiBuoi  || t.DonGia || t.hourlyRate)    || 0,
+    allowance:      Number(t.PhuCap         || t.allowance)     || 0,
+    status:         String(t.TrangThai      || t.status         || 'active'),
+    notes:          String(t.GhiChu         || t.notes          || ''),
+    createdAt:      String(t.CreatedAt      || t.createdAt      || ''),
     classes: Array.isArray(t.classes)
       ? t.classes
       : (t.classes ? String(t.classes).split(',').map((c: string) => c.trim()).filter(Boolean) : []),

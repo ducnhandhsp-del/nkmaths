@@ -5,7 +5,7 @@
 
 import { useMemo } from 'react';
 import type { Student } from './types';
-import type { Screen } from './types';
+import type { Screen, TrainingSub } from './types';
 
 export interface Command {
   id:       string;
@@ -20,6 +20,7 @@ interface UseCommandsParams {
   students:     Student[];
   uClasses:     any[];
   goScreen:     (s: Screen) => void;
+  goTraining:   (sub?: TrainingSub) => void;
   onAddStudent: () => void;
   onAddClass:   () => void;
   onAddDiary:   (classId?: string) => void;
@@ -28,7 +29,7 @@ interface UseCommandsParams {
 
 export function useCommands({
   students, uClasses,
-  goScreen, onAddStudent, onAddClass, onAddDiary, onAddPayment,
+  goScreen, goTraining, onAddStudent, onAddClass, onAddDiary, onAddPayment,
 }: UseCommandsParams): Command[] {
 
   return useMemo<Command[]>(() => {
@@ -37,9 +38,8 @@ export function useCommands({
     /* ── Điều hướng ── */
     const navItems: [Screen, string, string, string][] = [
       ['overview',  'Tổng quan',         'tong quan dashboard',       '🏠'],
-      ['operations', 'Nhật ký giảng dạy', 'nhat ky diem danh diary',   '📖'],
-      ['students',  'Học sinh',          'hoc sinh danh sach student', '👥'],
-      ['classes',   'Lớp học',           'lop hoc class',              '🏫'],
+      ['training',  'Đào tạo',           'dao tao hoc sinh lop giao vien', '🎓'],
+      ['operations', 'Vận hành',          'nhat ky diem danh diary',   '📖'],
       ['finance',   'Tài chính',         'tai chinh thu chi finance',  '💰'],
       ['settings',  'Cài đặt',           'cai dat settings',           '⚙️'],
     ];
@@ -50,7 +50,23 @@ export function useCommands({
         label,
         keywords: kw.split(' '),
         icon,
-        handler:  () => goScreen(id),
+        handler:  () => id === 'training' ? goTraining('overview') : goScreen(id),
+      });
+    });
+
+    [
+      ['overview', 'Tổng hợp đào tạo', 'tong hop dao tao overview', '📊'],
+      ['students', 'Học sinh', 'hoc sinh student', '👤'],
+      ['classes', 'Lớp học', 'lop hoc class', '🏫'],
+      ['teachers', 'Giáo viên', 'giao vien teacher', '👩‍🏫'],
+    ].forEach(([sub, label, kw, icon]) => {
+      cmds.push({
+        id:       `training-${sub}`,
+        group:    'Đào tạo',
+        label:    `${label}`,
+        keywords: String(kw).split(' '),
+        icon:     String(icon),
+        handler:  () => goTraining(sub as TrainingSub),
       });
     });
 
@@ -100,10 +116,10 @@ export function useCommands({
         label:    `${s.name} — Lớp ${s.classId}`,
         keywords: s.name.toLowerCase().split(' ').concat([s.id.toLowerCase(), s.classId.toLowerCase()]),
         icon:     '👤',
-        handler:  () => goScreen('students'),
+        handler:  () => goTraining('students'),
       });
     });
 
     return cmds;
-  }, [students, uClasses, goScreen, onAddStudent, onAddClass, onAddDiary, onAddPayment]);
+  }, [students, uClasses, goScreen, goTraining, onAddStudent, onAddClass, onAddDiary, onAddPayment]);
 }

@@ -4,9 +4,10 @@
  */
 import React, { useState, useMemo } from 'react';
 import { Edit3, Clock, Plus, LayoutList, LayoutGrid, X, Users, MapPin, User } from 'lucide-react';
-import { resolveTeacher } from './helpers';
+import { isStudentActive, parseDMY, resolveTeacher } from './helpers';
 import { FAB, TABLE_WRAP, TH_SHARED, TD_SHARED, trStyle } from './AppComponents';
 import { Badge, SearchBar, Select, IconButton, Button } from './dsComponents';
+import { EmptyState } from './UIComponents';
 import type { Student, ClassRecord } from './types';
 
 interface Props {
@@ -16,6 +17,35 @@ interface Props {
   fClsTeacher: string; setFClsTeacher: (v: string) => void;
   isPaid: (sid: string, mo: number, yr: number) => boolean;
   onEditClass: (c: ClassRecord) => void; onAddClass: () => void; uniqueBranches: string[];
+  embedded?: boolean;
+}
+
+function isMonthBillable(s: Student, month: number, year: number): boolean {
+  const monthStart = new Date(year, month - 1, 1).getTime();
+
+  const startTs = parseDMY(s.startDate || '');
+  if (startTs) {
+    const d = new Date(startTs);
+    const startMonth = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+    if (monthStart < startMonth) return false;
+  }
+
+  const endRaw = String(s.endDate || '').trim();
+  const endTs = parseDMY(endRaw);
+  if (endTs && endRaw && endRaw !== '---') {
+    const d = new Date(endTs);
+    const leaveMonth = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+    if (monthStart >= leaveMonth) return false;
+  }
+
+  return true;
+}
+
+function tuitionTone(total: number, pct: number): 'emerald' | 'amber' | 'rose' | 'slate' {
+  if (total === 0) return 'slate';
+  if (pct >= 80) return 'emerald';
+  if (pct >= 50) return 'amber';
+  return 'rose';
 }
 
 function ClassDetailModal({ cls, curMo, curYr, students, isPaid, onClose, onEdit }: {
@@ -28,12 +58,16 @@ function ClassDetailModal({ cls, curMo, curYr, students, isPaid, onClose, onEdit
   // Chỉ tính HS đang học — bỏ qua HS đã nghỉ
   const clsStudents = students.filter(s =>
     s.classId === cls['Mã Lớp'] &&
-    s.status !== 'inactive' &&
-    (!s.endDate || s.endDate === '---' || s.endDate === '')
+    isStudentActive(s)
   );
-  const paid   = clsStudents.filter(s => isPaid(s.id, curMo, curYr));
-  const unpaid = clsStudents.filter(s => !isPaid(s.id, curMo, curYr));
-  const pct = clsStudents.length > 0 ? Math.round(paid.length / clsStudents.length * 100) : 0;
+  const billableStudents = clsStudents.filter(s => isMonthBillable(s, curMo, curYr));
+  const paid   = billableStudents.filter(s => isPaid(s.id, curMo, curYr));
+  const unpaid = billableStudents.filter(s => !isPaid(s.id, curMo, curYr));
+  const pct = billableStudents.length > 0 ? Math.round(paid.length / billableStudents.length * 100) : 0;
+  const feeTone = tuitionTone(billableStudents.length, pct);
+  const feeBg = feeTone === 'emerald' ? '#ecfdf5' : feeTone === 'amber' ? '#fefce8' : feeTone === 'rose' ? '#fff1f2' : '#f8fafc';
+  const feeBorder = feeTone === 'emerald' ? '#a7f3d0' : feeTone === 'amber' ? '#fde68a' : feeTone === 'rose' ? '#fecaca' : '#e2e8f0';
+  const feeColor = feeTone === 'emerald' ? '#059669' : feeTone === 'amber' ? '#d97706' : feeTone === 'rose' ? '#e11d48' : '#64748b';
 
   return (
     <div style={{ position:'fixed',inset:0,zIndex:200,display:'flex',alignItems:'flex-end',justifyContent:'center',background:'rgba(15,23,42,0.6)',backdropFilter:'blur(4px)' }}>
@@ -76,13 +110,13 @@ function ClassDetailModal({ cls, curMo, curYr, students, isPaid, onClose, onEdit
           </div>
 
           {/* Progress đóng phí */}
-          <div style={{ padding:'12px 14px',background: pct >= 80 ? '#ecfdf5' : pct >= 50 ? '#fefce8' : '#fff1f2', borderRadius:10, border:`1px solid ${pct>=80?'#a7f3d0':pct>=50?'#fde68a':'#fecaca'}` }}>
+          <div style={{ padding:'12px 14px',background: feeBg, borderRadius:10, border:`1px solid ${feeBorder}` }}>
             <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8 }}>
               <span style={{ fontSize:12,fontWeight:700,color:'#374151' }}>Đóng phí T{curMo}</span>
-              <span style={{ fontSize:16,fontWeight:800,color:pct>=80?'#059669':pct>=50?'#d97706':'#e11d48' }}>{paid.length}/{clsStudents.length} · {pct}%</span>
+              <span style={{ fontSize:16,fontWeight:800,color:feeColor }}>{paid.length}/{billableStudents.length} · {pct}%</span>
             </div>
             <div style={{ height:6,background:'rgba(0,0,0,0.08)',borderRadius:3,overflow:'hidden' }}>
-              <div style={{ width:`${pct}%`,height:'100%',background:pct>=80?'#10b981':pct>=50?'#f59e0b':'#ef4444',borderRadius:3,transition:'width 0.4s' }}/>
+              <div style={{ width:`${pct}%`,height:'100%',background:feeTone==='slate'?'#94a3b8':pct>=80?'#10b981':pct>=50?'#f59e0b':'#ef4444',borderRadius:3,transition:'width 0.4s' }}/>
             </div>
           </div>
 
@@ -90,7 +124,7 @@ function ClassDetailModal({ cls, curMo, curYr, students, isPaid, onClose, onEdit
           {clsStudents.length > 0 && (
             <div>
               <p style={{ fontSize:11,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.08em',margin:'0 0 8px' }}>
-                Danh sách học sinh ({clsStudents.length})
+                Danh sách học sinh cần đóng ({billableStudents.length}/{clsStudents.length})
               </p>
 
               {/* Chưa đóng phí */}
@@ -154,7 +188,7 @@ function ClassDetailModal({ cls, curMo, curYr, students, isPaid, onClose, onEdit
   );
 }
 
-export default function ClassesTab({ uClasses,students,curMo,curYr,qCls,setQCls,fClsTeacher,setFClsTeacher,isPaid,onEditClass,onAddClass,uniqueBranches }: Props) {
+export default function ClassesTab({ uClasses,students,curMo,curYr,qCls,setQCls,fClsTeacher,setFClsTeacher,isPaid,onEditClass,onAddClass,uniqueBranches,embedded=false }: Props) {
   const [fBranch, setFBranch] = useState('');
   const [viewMode, setViewMode] = useState<'table'|'grid'>('table');
   const [detailCls, setDetailCls] = useState<any>(null);
@@ -169,12 +203,12 @@ export default function ClassesTab({ uClasses,students,curMo,curYr,qCls,setQCls,
   const clsStats = React.useMemo(() => uClasses.map(c => {
     const cls = students.filter(s =>
       s.classId === c['Mã Lớp'] &&
-      s.status !== 'inactive' &&
-      (!s.endDate || s.endDate === '---' || s.endDate === '')
+      isStudentActive(s)
     );
-    const paidCount = cls.filter(s => isPaid(s.id, curMo, curYr)).length;
-    const pct = cls.length > 0 ? Math.round(paidCount / cls.length * 100) : 0;
-    return { ...c, studentCount: cls.length, paidCount, pct };
+    const billable = cls.filter(s => isMonthBillable(s, curMo, curYr));
+    const paidCount = billable.filter(s => isPaid(s.id, curMo, curYr)).length;
+    const pct = billable.length > 0 ? Math.round(paidCount / billable.length * 100) : 0;
+    return { ...c, studentCount: cls.length, billableCount: billable.length, paidCount, pct };
   }).sort((a, b) => (a['Mã Lớp'] || '').localeCompare(b['Mã Lớp'] || '')),
   [uClasses, students, isPaid, curMo, curYr]);
 
@@ -206,28 +240,39 @@ export default function ClassesTab({ uClasses,students,curMo,curYr,qCls,setQCls,
 
   const emptyState = (
     <div style={{ padding:'52px 16px',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:12 }}>
-      <span style={{ fontSize:40 }}>🏫</span>
-      <p style={{ color:'#94a3b8',fontStyle:'italic',fontSize:14,margin:0 }}>Chưa có lớp nào</p>
+      <EmptyState
+        title={qCls || fClsTeacher || fBranch ? 'Không tìm thấy lớp phù hợp' : 'Chưa có lớp học'}
+        subtitle={qCls || fClsTeacher || fBranch ? 'Thử đổi từ khóa hoặc bộ lọc.' : 'Tạo lớp đầu tiên để gán học sinh, giáo viên và lịch học.'}
+      />
       <Button intent="primary" size="sm" icon={<Plus size={13}/>} onClick={onAddClass}>Tạo lớp đầu tiên</Button>
     </div>
   );
 
-  const pctBar = (pct: number) => (
+  const pctBar = (pct: number, total = 1) => (
     <div style={{ width:'100%',height:4,background:'#f1f5f9',borderRadius:2,overflow:'hidden',marginTop:4 }}>
-      <div style={{ width:`${pct}%`,height:'100%',background:pct>=80?'#10b981':pct>=50?'#f59e0b':'#ef4444',transition:'width 0.3s' }}/>
+      <div style={{ width:`${pct}%`,height:'100%',background:total===0?'#94a3b8':pct>=80?'#10b981':pct>=50?'#f59e0b':'#ef4444',transition:'width 0.3s' }}/>
     </div>
   );
 
   return (
-    <div style={{ display:'flex',flexDirection:'column',gap:14 }}>
+    <div style={{ display:'flex',flexDirection:'column',gap: embedded ? 10 : 14 }}>
 
       {/* Header */}
       <div style={{ display:'flex',alignItems:'center',flexWrap:'wrap',gap:8 }}>
-        <div style={{ flexShrink:0 }}>
-          <h2 style={{ fontSize:22,fontWeight:800,color:'#0f172a',textTransform:'uppercase',letterSpacing:'0.04em',margin:0 }}>Lớp học</h2>
-          <p style={{ fontSize:12,color:'#64748b',margin:'2px 0 0' }}>{filtCls.length}/{uClasses.length} lớp · {students.length} học sinh</p>
-        </div>
-        <span style={{ width:1,height:22,background:'#e2e8f0',flexShrink:0 }}/>
+        {!embedded && (
+          <>
+            <div style={{ flexShrink:0 }}>
+              <h2 style={{ fontSize:22,fontWeight:800,color:'#0f172a',textTransform:'uppercase',letterSpacing:'0.04em',margin:0 }}>Lớp học</h2>
+              <p style={{ fontSize:12,color:'#64748b',margin:'2px 0 0' }}>{filtCls.length}/{uClasses.length} lớp · {students.length} học sinh</p>
+            </div>
+            <span style={{ width:1,height:22,background:'#e2e8f0',flexShrink:0 }}/>
+          </>
+        )}
+        {embedded && (
+          <span style={{ fontSize:12,fontWeight:700,color:'#64748b',background:'#f8fafc',border:'1px solid #e2e8f0',padding:'7px 10px',borderRadius:8 }}>
+            {filtCls.length}/{uClasses.length} lớp
+          </span>
+        )}
         <SearchBar value={qCls} onChange={setQCls} placeholder="Tìm mã/tên lớp..." width={140}/>
         <Select value={fClsTeacher} onChange={setFClsTeacher} options={teacherOptions}/>
         <Select value={fBranch} onChange={setFBranch} options={branchOptions}/>
@@ -264,8 +309,8 @@ export default function ClassesTab({ uClasses,students,curMo,curYr,qCls,setQCls,
                     <td style={{ ...TD,color:'#475569' }}>{c['Cơ sở']||'---'}</td>
                     <td style={{ ...TD,fontWeight:600,color:'#374151' }}>{resolveTeacher(c['Giáo viên']||'')}</td>
                     <td style={{ ...TD,textAlign:'center' }}>
-                      <Badge color={c.pct>=80?'emerald':c.pct>=50?'amber':'rose'}>{c.paidCount}/{c.studentCount} ({c.pct}%)</Badge>
-                      {pctBar(c.pct)}
+                      <Badge color={tuitionTone(c.billableCount, c.pct)}>{c.paidCount}/{c.billableCount} ({c.pct}%)</Badge>
+                      {pctBar(c.pct, c.billableCount)}
                     </td>
                     <td style={{ ...TD,textAlign:'center' }}><IconButton icon={<Edit3 size={13}/>} label={`Sửa ${c['Mã Lớp']}`} intent="warning" onClick={e=>{e.stopPropagation();onEditClass(c);}}/></td>
                   </tr>
@@ -284,10 +329,10 @@ export default function ClassesTab({ uClasses,students,curMo,curYr,qCls,setQCls,
                 </div>
                 <div style={{ flex:1,minWidth:0 }}>
                   <div style={{ display:'flex',alignItems:'center',gap:6 }}>
-                    <Badge color={c.pct>=80?'emerald':c.pct>=50?'amber':'rose'}>{c.paidCount}/{c.studentCount}</Badge>
-                    <span style={{ fontSize:12,fontWeight:700,color:c.pct>=80?'#059669':c.pct>=50?'#d97706':'#e11d48' }}>{c.pct}%</span>
+                    <Badge color={tuitionTone(c.billableCount, c.pct)}>{c.paidCount}/{c.billableCount}</Badge>
+                <span style={{ fontSize:12,fontWeight:700,color:c.billableCount===0?'#64748b':c.pct>=80?'#059669':c.pct>=50?'#d97706':'#e11d48' }}>{c.pct}%</span>
                   </div>
-                  {pctBar(c.pct)}
+                  {pctBar(c.pct, c.billableCount)}
                 </div>
                 <button onClick={()=>setDetailCls(c)}
                   style={{ flexShrink:0,padding:'7px 11px',borderRadius:8,background:'#eef2ff',border:'none',color:'#4f46e5',fontWeight:700,fontSize:12,cursor:'pointer' }}>
@@ -324,16 +369,16 @@ export default function ClassesTab({ uClasses,students,curMo,curYr,qCls,setQCls,
               </div>
               <div style={{ fontSize:10,color:'#94a3b8',fontWeight:600,marginBottom:4,display:'flex',justifyContent:'space-between' }}>
                 <span>Đóng phí T{curMo}</span>
-                <span style={{ fontWeight:700,color:c.pct>=80?'#059669':c.pct>=50?'#d97706':'#e11d48' }}>{c.pct}%</span>
+                <span style={{ fontWeight:700,color:c.billableCount===0?'#64748b':c.pct>=80?'#059669':c.pct>=50?'#d97706':'#e11d48' }}>{c.pct}%</span>
               </div>
-              {pctBar(c.pct)}
-              <p style={{ fontSize:10,color:'#94a3b8',margin:'4px 0 0',textAlign:'right' }}>{c.paidCount}/{c.studentCount} HS</p>
+              {pctBar(c.pct, c.billableCount)}
+              <p style={{ fontSize:10,color:'#94a3b8',margin:'4px 0 0',textAlign:'right' }}>{c.paidCount}/{c.billableCount} cần đóng</p>
             </div>
           ))}
         </div>
       )}
 
-      <FAB onClick={onAddClass} label="Thêm lớp học mới"/>
+      {!embedded && <FAB onClick={onAddClass} label="Thêm lớp học mới"/>}
 
       {detailCls && <ClassDetailModal cls={detailCls} curMo={curMo} curYr={curYr} students={students} isPaid={isPaid} onClose={()=>setDetailCls(null)} onEdit={()=>{onEditClass(detailCls);setDetailCls(null);}}/>}
     </div>

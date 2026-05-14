@@ -1,16 +1,13 @@
 export type Screen =
   | 'overview'
   | 'operations'
-  | 'teachers'
-  | 'classes'
-  | 'students'
-  | 'materials'
+  | 'training'
   | 'finance'
-  | 'reports'
   | 'settings';
 
-export type FinanceSub = 'ledger' | 'debt' | 'expense' | 'tuition';
-export type OperationsSub = 'diary' | 'leave' | 'schedule' | 'absence';
+export type TrainingSub = 'overview' | 'students' | 'classes' | 'teachers';
+export type FinanceSub = 'ledger' | 'debt' | 'expense' | 'report';
+export type OperationsSub = 'overview' | 'schedule' | 'lessons' | 'attendance';
 
 export interface Student {
   id:            string;
@@ -33,6 +30,8 @@ export interface Student {
   startDate:     string;
   endDate:       string;
   status:        string;
+  createdAt?:     string;
+  updatedAt?:     string;
 }
 
 export interface Payment {
@@ -48,6 +47,9 @@ export interface Payment {
   note:        string;
   thangHP?:    number;
   namHP?:      number;
+  maLop?:      string;
+  createdAt?:   string;
+  updatedAt?:   string;
 }
 
 export interface Expense {
@@ -58,6 +60,8 @@ export interface Expense {
   category:    string;
   amount:      number;
   spender:     string;
+  createdAt?:   string;
+  updatedAt?:   string;
 }
 
 export interface TeachingLog {
@@ -71,17 +75,22 @@ export interface TeachingLog {
   homework:        string;
   teacherNote:     string;
   teacherName:     string;
+  maGV?:           string;
   caDay:           string;
   present:         number;
   absent:          number;
   late:            number;
+  excused?:        number;
   attendanceList:  AttendanceEntry[];
+  createdAt?:      string;
+  updatedAt?:      string;
 }
 
 export interface AttendanceEntry {
   maHS?:      string;
   'Mã HS'?:   string;
   tenHS?:     string;
+  trangThai?: string;
   ghiChu?:    string;
   'Trạng thái'?: string;
   'Ghi chú'?:    string;
@@ -179,5 +188,8 @@ export interface ClassRecord {
   'Buổi 1'?:   string;
   'Buổi 2'?:   string;
   'Buổi 3'?:   string;
-  [key: string]: string | undefined;
+  MaGV?:         string;
+  GiaoVien?:     string;
+  teacherId?:    string;
+  [key: string]: string | number | undefined;
 }

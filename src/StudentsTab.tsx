@@ -15,6 +15,8 @@ import { IPP, capitalizeName, isStudentActive } from './helpers';
 import { ScrollHintTable, FAB } from './AppComponents';
 import { TABLE_WRAP, TH_SHARED, TD_SHARED, trStyle } from './AppComponents';
 import { Badge, Pager, SearchBar, Button, TableActions, Select, FilterChip } from './dsComponents';
+import { EmptyState } from './UIComponents';
+import { StatusBadge } from './uiSystem';
 import type { Student, DeleteTarget } from './types';
 
 interface Props {
@@ -35,6 +37,7 @@ interface Props {
   onDeleteStudent: (t: DeleteTarget) => void;
   onAddStudent:    () => void;
   onBulkTransfer:  (ss: Student[]) => void;
+  embedded?:        boolean;
   /* FIX T1: đã xoá curMo, curYr, isPaid, zaloTpl, baseTuition */
 }
 
@@ -47,7 +50,7 @@ export default function StudentsTab({
   filtS, pgS, setPgS, students, qS, setQS,
   fCls, setFCls, hideInactive, setHideInactive, uClasses,
   onViewStudent, onEditStudent, onDeleteStudent,
-  onAddStudent, onBulkTransfer,
+  onAddStudent, onBulkTransfer, embedded = false,
 }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [hovRow,   setHovRow]   = useState<string | null>(null);
@@ -80,25 +83,35 @@ export default function StudentsTab({
 
   const emptyState = (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-      <span style={{ fontSize: 40 }}>👤</span>
-      <p style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: 15, margin: 0 }}>Không có học sinh nào</p>
-      <Button intent="primary" size="sm" icon={<UserPlus size={14} />} onClick={onAddStudent}>Thêm học sinh đầu tiên</Button>
+      <EmptyState
+        title={qS || fCls ? 'Không tìm thấy học sinh phù hợp' : 'Chưa có học sinh'}
+        subtitle={qS || fCls ? 'Thử đổi từ khóa tìm kiếm hoặc bộ lọc lớp.' : 'Thêm học sinh đầu tiên để bắt đầu quản lý lớp.'}
+      />
+      {!embedded && <Button intent="primary" size="sm" icon={<UserPlus size={14} />} onClick={onAddStudent}>Thêm học sinh đầu tiên</Button>}
     </div>
   );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: embedded ? 10 : 20 }}>
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-        <div style={{ flexShrink: 0 }}>
-          <h2 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>Học sinh</h2>
-          <p style={{ fontSize: 12, color: '#64748b', margin: '2px 0 0' }}>
-            {filtS.length}/{students.length} · {students.filter(isStudentActive).length} đang học · {students.filter(s => !isStudentActive(s)).length} đã nghỉ
-          </p>
-        </div>
-
-        <span style={{ width: 1, height: 22, background: '#e2e8f0', flexShrink: 0 }} />
+        {!embedded && (
+          <>
+            <div style={{ flexShrink: 0 }}>
+              <h2 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>Học sinh</h2>
+              <p style={{ fontSize: 12, color: '#64748b', margin: '2px 0 0' }}>
+                {filtS.length}/{students.length} · {students.filter(isStudentActive).length} đang học · {students.filter(s => !isStudentActive(s)).length} đã nghỉ
+              </p>
+            </div>
+            <span style={{ width: 1, height: 22, background: '#e2e8f0', flexShrink: 0 }} />
+          </>
+        )}
+        {embedded && (
+          <span style={{ fontSize:12,fontWeight:700,color:'#64748b',background:'#f8fafc',border:'1px solid #e2e8f0',padding:'7px 10px',borderRadius:8 }}>
+            {filtS.length}/{students.length} HS
+          </span>
+        )}
 
         {selected.size > 0 && (
           <Button intent="primary" size="sm" icon={<ArrowRight size={14} />} iconPosition="left"
@@ -116,8 +129,8 @@ export default function StudentsTab({
           color="indigo"
         />
         <FilterChip
-          label="Đã nghỉ"
-          count={students.filter(s => !isStudentActive(s)).length}
+          label="Tất cả"
+          count={students.length}
           active={!hideInactive}
           onClick={() => { setHideInactive(false); setPgS(1); }}
           color="slate"
@@ -153,8 +166,9 @@ export default function StudentsTab({
                 {paged.length === 0 ? (
                   <tr><td colSpan={6} style={{ padding: '56px 16px', textAlign: 'center' }}>{emptyState}</td></tr>
                 ) : paged.map((s, idx) => {
-                  const inactive   = !isStudentActive(s);
-                  const levelColor = LEVEL_COLOR[s.academicLevel] || 'slate';
+                const inactive   = !isStudentActive(s);
+                const levelColor = LEVEL_COLOR[s.academicLevel] || 'slate';
+                const studentZalo = String(s.studentPhone || '').replace(/\D/g, '');
                   return (
                     <tr key={s.id}
                       onMouseEnter={() => setHovRow(s.id)}
@@ -166,7 +180,10 @@ export default function StudentsTab({
                       </td>
                       <td style={TD_SHARED}>
                         <p style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', margin: 0 }}>{capitalizeName(s.name)}</p>
-                        <p style={{ fontSize: 12, color: '#94a3b8', margin: '2px 0 0' }}>{s.id}</p>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 12, color: '#94a3b8' }}>{s.id}</span>
+                          <StatusBadge domain="student" status={inactive ? 'inactive' : 'active'} />
+                        </div>
                       </td>
                       <td style={TD_SHARED}><Badge color="indigo">{s.classId || '---'}</Badge></td>
                       <td style={TD_SHARED}><Badge color={levelColor}>{s.academicLevel || '---'}</Badge></td>
@@ -177,6 +194,13 @@ export default function StudentsTab({
                             <a href={s.facebookUrl.startsWith('http') ? s.facebookUrl : `https://m.me/${s.facebookUrl}`}
                               target="_blank" rel="noopener noreferrer" title="Messenger PH"
                               style={{ width: 28, height: 28, background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#2563eb', textDecoration: 'none', flexShrink: 0 }}>
+                              <MessageCircle size={13} />
+                            </a>
+                          )}
+                          {studentZalo.length >= 9 && (
+                            <a href={`https://zalo.me/${studentZalo}`}
+                              target="_blank" rel="noopener noreferrer" title="Zalo HS"
+                              style={{ width: 28, height: 28, background: '#eef6ff', border: '1px solid #bfdbfe', borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#0068FF', textDecoration: 'none', flexShrink: 0 }}>
                               <MessageCircle size={13} />
                             </a>
                           )}
@@ -198,14 +222,13 @@ export default function StudentsTab({
         {/* Mobile — FIX T4: inline, key trực tiếp trên <div> */}
         <div className="student-mobile-cards">
           {paged.length === 0 ? (
-            <div style={{ padding: '40px 16px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-              <span style={{ fontSize: 36 }}>👤</span>
-              <p style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: 13, margin: 0 }}>Không có học sinh nào</p>
-              <button onClick={onAddStudent} style={{ padding: '8px 18px', background: '#6366f1', color: 'white', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>+ Thêm học sinh</button>
+            <div style={{ padding: '40px 16px', textAlign: 'center' }}>
+              {emptyState}
             </div>
           ) : paged.map((s, idx) => {
             const inactive   = !isStudentActive(s);
             const levelColor = LEVEL_COLOR[s.academicLevel] || 'slate';
+            const studentZalo = String(s.studentPhone || '').replace(/\D/g, '');
             return (
               <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderBottom: '1px solid #f1f5f9', background: idx % 2 === 0 ? 'white' : '#f9fafc', opacity: inactive ? 0.55 : 1 }}>
                 <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -216,12 +239,20 @@ export default function StudentsTab({
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{capitalizeName(s.name)}</p>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, flexWrap: 'wrap' }}>
+                    <StatusBadge domain="student" status={inactive ? 'inactive' : 'active'} />
                     <Badge color="indigo">{s.classId || '---'}</Badge>
                     <Badge color={levelColor}>{s.academicLevel || '---'}</Badge>
                     {s.parentPhone && <span style={{ fontSize: 11, color: '#94a3b8' }}>{s.parentPhone}</span>}
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                  {studentZalo.length >= 9 && (
+                    <a href={`https://zalo.me/${studentZalo}`}
+                      target="_blank" rel="noopener noreferrer" title="Zalo HS"
+                      style={{ width: 32, height: 32, borderRadius: 7, background: '#eef6ff', border: '1px solid #bfdbfe', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0068FF', textDecoration: 'none' }}>
+                      <MessageCircle size={14} />
+                    </a>
+                  )}
                   <button onClick={() => onViewStudent(s)} style={{ width: 32, height: 32, borderRadius: 7, background: '#eef2ff', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Eye size={14} color="#4f46e5" /></button>
                   <button onClick={() => onEditStudent(s)} style={{ width: 32, height: 32, borderRadius: 7, background: '#fffbeb', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Edit3 size={14} color="#b45309" /></button>
                 </div>
@@ -233,7 +264,7 @@ export default function StudentsTab({
         <Pager page={pgS} total={filtS.length} perPage={IPP} setPage={setPgS} showTotal />
       </div>
 
-      <FAB onClick={onAddStudent} label="Thêm học sinh mới" icon={UserPlus} />
+      {!embedded && <FAB onClick={onAddStudent} label="Thêm học sinh mới" icon={UserPlus} />}
     </div>
   );
 }

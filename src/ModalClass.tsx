@@ -21,7 +21,17 @@ export function ClassModal({
   const u = (k: string, v: string) => setF(p => ({...p, [k]: v}));
   const handleSave = () => {
     if(!f['Mã Lớp']?.trim()){ toast.error('⚠️ Mã lớp không được để trống!'); return; }
-    onSave(f as ClassRecord);
+    onSave({
+      ...f,
+      'Mã Lớp': String(f['Mã Lớp'] || '').trim().toUpperCase(),
+      'Tên Lớp': String(f['Tên Lớp'] || '').trim(),
+      'Khối': String(f['Khối'] || '').trim(),
+      'Giáo viên': String(f['Giáo viên'] || '').trim(),
+      'Cơ sở': String(f['Cơ sở'] || '').trim(),
+      'Buổi 1': String(f['Buổi 1'] || '').trim(),
+      'Buổi 2': String(f['Buổi 2'] || '').trim(),
+      'Buổi 3': String(f['Buổi 3'] || '').trim(),
+    } as ClassRecord);
   };
 
   const teacherOptions=[{value:'',label:'Chọn GV'},...(teacherList.length>0?teacherList:['Lê Đức Nhân','Nguyễn Thị Kiên']).map(t=>({value:t,label:t}))];

@@ -192,23 +192,24 @@ export function TableActions({actions,compact=false}:TableActionsProps){
 /* ─── DATA DISPLAY: AttendancePicker ─── */
 const ST_CFG:Record<AttendanceStatus,{label:string;bg:string;border:string;color:string;activeBg:string}>={
   present:{label:'Có mặt',bg:'#f0fdf4',border:'#86efac',color:'#15803d',activeBg:'#16a34a'},
-  late:   {label:'Muộn',  bg:'#fffbeb',border:'#fcd34d',color:'#b45309',activeBg:'#d97706'},
   absent: {label:'Vắng',  bg:'#fff1f2',border:'#fecaca',color:'#be123c',activeBg:'#e11d48'},
+  excused:{label:'Có phép',bg:'#fffbeb',border:'#fcd34d',color:'#b45309',activeBg:'#d97706'},
 };
+const ATTENDANCE_STATUSES: AttendanceStatus[] = ['present','absent','excused'];
 export function AttendancePicker({students,onChange,readOnly=false}:AttendancePickerProps){
   const update=(id:string,status:AttendanceStatus)=>onChange(students.map(s=>s.id===id?{...s,status}:s));
   const bulkSet=(status:AttendanceStatus)=>onChange(students.map(s=>({...s,status})));
   const counts={
     present:students.filter(s=>s.status==='present').length,
-    late:students.filter(s=>s.status==='late').length,
     absent:students.filter(s=>s.status==='absent').length,
+    excused:students.filter(s=>s.status==='excused').length,
   };
   return(
     <div style={{display:'flex',flexDirection:'column',gap:10}}>
       {/* Dòng tổng kết + nút chọn tất cả */}
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:6}}>
         <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-          {(['present','late','absent'] as AttendanceStatus[]).map(s=>{const c=ST_CFG[s];return(
+          {ATTENDANCE_STATUSES.map(s=>{const c=ST_CFG[s];return(
             <span key={s} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 9px',borderRadius:999,background:c.bg,border:`1px solid ${c.border}`,fontSize:12,fontWeight:700,color:c.color}}>
               {c.label}: {counts[s]}
             </span>
@@ -216,7 +217,7 @@ export function AttendancePicker({students,onChange,readOnly=false}:AttendancePi
         </div>
         {!readOnly&&(
           <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
-            {(['present','late','absent'] as AttendanceStatus[]).map(s=>{const c=ST_CFG[s];return(
+            {ATTENDANCE_STATUSES.map(s=>{const c=ST_CFG[s];return(
               <button key={s} onClick={()=>bulkSet(s)} style={{padding:'3px 8px',borderRadius:999,border:`1px solid ${c.border}`,background:c.bg,color:c.color,fontWeight:700,fontSize:10,cursor:'pointer'}}>
                 Tất cả: {c.label}
               </button>
@@ -227,7 +228,7 @@ export function AttendancePicker({students,onChange,readOnly=false}:AttendancePi
       {/* Danh sách học sinh — tên KHÔNG bị cắt */}
       <div style={{background:'white',borderRadius:radius.lg,border:`1px solid ${colors.neutral[200]}`,overflow:'hidden'}}>
         {students.map((s,idx)=>{
-          const activeStatus=ST_CFG[s.status];
+          const activeStatus=ST_CFG[s.status] || ST_CFG.present;
           return(
             <div key={s.id} style={{padding:'10px 14px',borderBottom:idx<students.length-1?`1px solid ${colors.neutral[100]}`:'none',background:idx%2===0?'white':colors.neutral[50]}}>
               {/* Hàng 1: STT + Tên đầy đủ + Mã */}
@@ -246,7 +247,7 @@ export function AttendancePicker({students,onChange,readOnly=false}:AttendancePi
               {/* Hàng 2: 3 nút trạng thái — chiều rộng đều nhau */}
               {!readOnly&&(
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6,paddingLeft:26}}>
-                  {(['present','late','absent'] as AttendanceStatus[]).map(st=>{
+                  {ATTENDANCE_STATUSES.map(st=>{
                     const c=ST_CFG[st],isActive=s.status===st;
                     return(
                       <button key={st} onClick={()=>update(s.id,st)}

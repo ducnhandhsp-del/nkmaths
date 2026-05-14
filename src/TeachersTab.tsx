@@ -1,73 +1,266 @@
-/**
- * TeachersTab.tsx — v27.0 (Design System)
- * - HStatCard horizontal
- * - SearchBar, IconButton, Button từ design-system
- * - Bảng sharp (borderRadius: 0)
- * - No Avatar
- * - Full-screen detail panel
+﻿/**
+ * TeachersTab.tsx
+ * Tab giáo viên theo hướng vận hành: hồ sơ, lớp phụ trách, buổi dạy,
+ * học sinh, học phí và chi tiết công việc trong tháng.
  */
-import React, { useState, useEffect } from 'react';
-import { Users, Award, School, Phone, Mail, X, Edit3, Eye, Plus, Save } from 'lucide-react';
-import { fmtVND } from './helpers';
-import { Button, IconButton, Input, Select, SearchBar, TableActions } from './dsComponents';
-import { StatBlock, StatGrid, TABLE_WRAP, TH_SHARED, TD_SHARED, trStyle } from './AppComponents';
-import { FAB } from './AppComponents';
-import type { Teacher } from './types';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  Award,
+  BookOpen,
+  Clock3,
+  Edit3,
+  Eye,
+  Mail,
+  Phone,
+  Plus,
+  Save,
+  School,
+  UserCheck,
+  Users,
+  Wallet,
+  X,
+} from 'lucide-react';
 
-const STATUS_MAP: Record<Teacher['status'],{label:string;bg:string;color:string}> = {
-  active:  { label:'Đang dạy',  bg:'#ecfdf5', color:'#059669' },
-  inactive:{ label:'Đã nghỉ',   bg:'#f8fafc', color:'#94a3b8' },
-  onleave: { label:'Nghỉ phép', bg:'#fffbeb', color:'#d97706' },
+import { fmtVND, parseDMY } from './helpers';
+import { isStudentActive } from './measures';
+import { Badge, Button, FilterTabs, IconButton, Input, SearchBar, Select, TableActions } from './dsComponents';
+import { fmtM, TABLE_WRAP, TD_SHARED, TH_SHARED, trStyle } from './AppComponents';
+import { StatusBadge } from './uiSystem';
+import type { ClassRecord, Payment, Student, Teacher, TeachingLog } from './types';
+
+type TeacherStatus = 'active' | 'inactive' | 'onleave' | string;
+type StatusFilter = 'all' | 'active' | 'onleave' | 'inactive';
+
+interface TeacherRow {
+  id: string;
+  teacher: Teacher;
+  official: boolean;
+  classes: ClassRecord[];
+  activeStudents: Student[];
+  monthLogs: TeachingLog[];
+  recentLogs: TeachingLog[];
+  billableStudents: Student[];
+  monthRevenue: number;
+  totalRevenue: number;
+  paidCount: number;
+  unpaidCount: number;
+  projectedCost: number;
+  hasCostData: boolean;
+  attendancePct: number | null;
+  attendanceText: string;
+}
+
+interface Props {
+  teachers: Teacher[];
+  students: Student[];
+  payments: Payment[];
+  uClasses: ClassRecord[];
+  tlogs: TeachingLog[];
+  curMo: number;
+  curYr: number;
+  isPaid: (sid: string, mo: number, yr: number) => boolean;
+  onSave: (f: any) => void | Promise<void>;
+  isSaving: boolean;
+  onAddDiary?: (classId?: string, date?: string, caDay?: string) => void;
+  focusFilter?: 'all' | 'active';
+  embedded?: boolean;
+  addTrigger?: number;
+}
+
+const TEACHER_STATUS: Record<string, 'active' | 'onleave' | 'inactive'> = {
+  active: 'active',
+  inactive: 'inactive',
+  onleave: 'onleave',
 };
 
-function TeacherModal({ open, onClose, editing, onSave, isSaving }: {
-  open:boolean; onClose:()=>void; editing:Teacher|null; onSave:(f:any)=>void; isSaving:boolean;
+const PANEL: React.CSSProperties = {
+  background: 'white',
+  border: '1px solid #e2e8f0',
+  borderRadius: 12,
+  boxShadow: '0 1px 3px rgba(15,23,42,0.05)',
+};
+
+const norm = (raw: any) =>
+  String(raw || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd');
+
+const isNamedTeacher = (raw: any) => {
+  const s = String(raw || '').trim();
+  return !!s && s !== '---' && s !== 'Chưa xác định';
+};
+
+const teacherMatches = (raw: any, teacherName: string) => {
+  if (!isNamedTeacher(raw) || !teacherName) return false;
+  const a = norm(raw);
+  const b = norm(teacherName);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const last = b.split(/\s+/).filter(Boolean).pop() || '';
+  return last.length >= 2 && a.includes(last);
+};
+
+const stableSyntheticId = (name: string) => `SYN-${norm(name).replace(/[^a-z0-9]+/g, '-')}`;
+
+const getClassId = (c: ClassRecord) => String(c['Mã Lớp'] || c.MaLop || c['Ma Lop'] || '');
+const getClassTeacherId = (c: ClassRecord) => String((c as any).MaGV || (c as any).teacherId || '');
+const getClassTeacherName = (c: ClassRecord) => String(c['Giáo viên'] || (c as any).GiaoVien || '');
+const getLogTeacherId = (l: TeachingLog) => String((l as any).maGV || (l as any).MaGV || (l as any).teacherId || '');
+const getClassSlotCount = (c: ClassRecord) =>
+  [c['Buá»•i 1'], c['Buá»•i 2'], c['Buá»•i 3']]
+    .filter(v => String(v || '').trim())
+    .length;
+const weeksInMonth = (mo: number, yr: number) => {
+  const days = new Date(yr, mo, 0).getDate();
+  return Math.ceil(days / 7);
+};
+
+const sameMonth = (raw: any, mo: number, yr: number) => {
+  const ts = parseDMY(raw || '');
+  if (!ts) return false;
+  const d = new Date(ts);
+  return d.getMonth() + 1 === mo && d.getFullYear() === yr;
+};
+
+const paymentInTuitionMonth = (p: Payment, mo: number, yr: number) => {
+  const hpMo = Number((p as any).thangHP || 0);
+  const hpYr = Number((p as any).namHP || 0);
+  if (hpMo) return hpMo === mo && (hpYr || yr) === yr;
+  return sameMonth(p.date, mo, yr);
+};
+
+function isMonthBillable(s: Student, mo: number, yr: number): boolean {
+  const monthStart = new Date(yr, mo - 1, 1).getTime();
+
+  const startTs = parseDMY(s.startDate || '');
+  if (startTs) {
+    const d = new Date(startTs);
+    const startMonth = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+    if (monthStart < startMonth) return false;
+  }
+
+  const endRaw = String(s.endDate || '').trim();
+  const endTs = parseDMY(endRaw);
+  if (endTs && endRaw && endRaw !== '---') {
+    const d = new Date(endTs);
+    const leaveMonth = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+    if (monthStart >= leaveMonth) return false;
+  }
+
+  return true;
+}
+
+function teacherMatchesRecord(rawName: any, rawId: any, teacher: Teacher) {
+  const id = String(rawId || '').trim();
+  if (id && teacher.id && norm(id) === norm(teacher.id)) return true;
+  return teacherMatches(rawName, teacher.name);
+}
+
+function TeacherModal({
+  open,
+  onClose,
+  editing,
+  onSave,
+  isSaving,
+}: {
+  open: boolean;
+  onClose: () => void;
+  editing: Teacher | null;
+  onSave: (f: any) => void | Promise<void>;
+  isSaving: boolean;
 }) {
-  const blank: Partial<Teacher> = { status:'active', gender:'male', experience:0, baseSalary:6000000, hourlyRate:150000, allowance:0, specialization:'Toán', qualification:'Cử nhân', classes:[] };
-  const [f,setF] = useState<Partial<Teacher>>(blank);
-  React.useEffect(()=>{ if(open) setF(editing??{...blank,id:`T${Date.now()}`,createdAt:new Date().toISOString()}); },[open,editing]);
-  if(!open) return null;
-  const u=(k:string,v:any)=>setF(p=>({...p,[k]:v}));
+  const blank: Partial<Teacher> = {
+    status: 'active',
+    gender: 'male',
+    experience: 0,
+    baseSalary: 0,
+    hourlyRate: 0,
+    allowance: 0,
+    specialization: 'Toán',
+    qualification: '',
+    classes: [],
+  };
+  const [f, setF] = useState<Partial<Teacher>>(blank);
+
+  React.useEffect(() => {
+    if (!open) return;
+    setF(editing ?? { ...blank, createdAt: new Date().toISOString() });
+  }, [open, editing]);
+
+  if (!open) return null;
+
+  const u = (k: keyof Teacher | string, v: any) => setF(p => ({ ...p, [k]: v }));
+  const save = async () => {
+    if (!f.name?.trim()) return;
+    await Promise.resolve(onSave({
+      ...f,
+      experience: Number(f.experience || 0),
+      baseSalary: Number(f.baseSalary || 0),
+      hourlyRate: Number(f.hourlyRate || 0),
+      allowance: Number(f.allowance || 0),
+    }));
+    onClose();
+  };
 
   return (
-    <div style={{ position:'fixed', inset:0, zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', padding:16, background:'rgba(15,23,42,0.6)', backdropFilter:'blur(4px)' }}>
-      <div style={{ background:'white', width:'100%', maxWidth:720, maxHeight:'92vh', borderRadius:12, overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 24px 80px rgba(0,0,0,0.25)' }}>
-        {/* Header */}
-        <div style={{ padding:'20px 24px', borderBottom:'1px solid #f1f5f9', display:'flex', alignItems:'center', justifyContent:'space-between', background:'linear-gradient(135deg,#fffbeb,#fef3c7)', flexShrink:0 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-            <div style={{ width:40,height:40,borderRadius:10,background:'#f59e0b',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 4px 12px rgba(245,158,11,0.4)' }}><Users size={18} color="white"/></div>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)' }}>
+      <div style={{ background: 'white', width: '100%', maxWidth: 760, maxHeight: '92vh', borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 80px rgba(0,0,0,0.25)' }}>
+        <div style={{ padding: '18px 22px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'linear-gradient(135deg,#fffbeb,#fef3c7)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 10, background: '#f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(245,158,11,0.35)' }}>
+              <Users size={18} color="white" />
+            </div>
             <div>
-              <h3 style={{ fontSize:17, fontWeight:800, color:'#0f172a', margin:0 }}>{editing?'Sửa thông tin giáo viên':'Thêm giáo viên mới'}</h3>
-              <p style={{ fontSize:12, color:'#d97706', fontWeight:600, margin:0 }}>Điền đầy đủ thông tin giáo viên</p>
+              <h3 style={{ fontSize: 17, fontWeight: 800, color: '#0f172a', margin: 0 }}>{editing?.id?.startsWith('SYN-') ? 'Bổ sung hồ sơ giáo viên' : editing ? 'Sửa hồ sơ giáo viên' : 'Thêm giáo viên mới'}</h3>
+              <p style={{ fontSize: 12, color: '#92400e', fontWeight: 600, margin: 0 }}>Thông tin này lưu vào sheet GiaoVien</p>
             </div>
           </div>
-          <IconButton icon={<X size={18}/>} label="Đóng" onClick={onClose}/>
+          <IconButton icon={<X size={18} />} label="Đóng" onClick={onClose} />
         </div>
-        {/* Body */}
-        <div style={{ flex:1, overflowY:'auto', padding:24 }}>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:14 }}>
-            <Input label="Họ tên *" value={f.name||''} onChange={v=>u('name',v)} placeholder="Nguyễn Văn A"/>
-            <Input label="SĐT *" value={f.phone||''} onChange={v=>u('phone',v)} placeholder="09xxxxxxxx"/>
-            <Input label="Email" value={f.email||''} onChange={v=>u('email',v)} placeholder="email@..."/>
-            <Select label="Giới tính" value={f.gender||'male'} onChange={v=>u('gender',v)} options={[{value:'male',label:'Nam'},{value:'female',label:'Nữ'},{value:'other',label:'Khác'}]}/>
-            <Input label="Chuyên môn" value={f.specialization||''} onChange={v=>u('specialization',v)}/>
-            <Input label="Bằng cấp" value={f.qualification||''} onChange={v=>u('qualification',v)}/>
-            <Input label="Kinh nghiệm (năm)" type="number" value={String(f.experience||0)} onChange={v=>u('experience',+v)}/>
-            <Select label="Trạng thái" value={f.status||'active'} onChange={v=>u('status',v)} options={[{value:'active',label:'Đang dạy'},{value:'inactive',label:'Đã nghỉ'},{value:'onleave',label:'Nghỉ phép'}]}/>
-            <Input label="Lương cơ bản (đ)" type="number" value={String(f.baseSalary||0)} onChange={v=>u('baseSalary',+v)}/>
-            <Input label="Lương/giờ (đ)" type="number" value={String(f.hourlyRate||0)} onChange={v=>u('hourlyRate',+v)}/>
-            <Input label="Phụ cấp (đ)" type="number" value={String(f.allowance||0)} onChange={v=>u('allowance',+v)}/>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: 22 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(210px,1fr))', gap: 14 }}>
+            <Input label="Họ tên" required value={f.name || ''} onChange={v => u('name', v)} placeholder="Nguyễn Văn A" />
+            <Input label="Số điện thoại" value={f.phone || ''} onChange={v => u('phone', v)} placeholder="09xxxxxxxx" />
+            <Input label="Email" type="email" value={f.email || ''} onChange={v => u('email', v)} placeholder="email@..." />
+            <Input label="Ngày sinh" value={f.dob || ''} onChange={v => u('dob', v)} placeholder="dd/mm/yyyy" />
+            <Select label="Giới tính" value={f.gender || 'male'} onChange={v => u('gender', v)} options={[
+              { value: 'male', label: 'Nam' },
+              { value: 'female', label: 'Nữ' },
+              { value: 'other', label: 'Khác' },
+            ]} />
+            <Select label="Trạng thái" value={f.status || 'active'} onChange={v => u('status', v as TeacherStatus)} options={[
+              { value: 'active', label: 'Đang dạy' },
+              { value: 'onleave', label: 'Nghỉ phép' },
+              { value: 'inactive', label: 'Đã nghỉ' },
+            ]} />
+            <Input label="Chuyên môn" value={f.specialization || ''} onChange={v => u('specialization', v)} />
+            <Input label="Bằng cấp" value={f.qualification || ''} onChange={v => u('qualification', v)} />
+            <Input label="Kinh nghiệm" type="number" value={String(f.experience || 0)} onChange={v => u('experience', Number(v || 0))} suffix="năm" />
+            <Input label="Lương cơ bản" type="number" value={String(f.baseSalary || 0)} onChange={v => u('baseSalary', Number(v || 0))} suffix="đ" />
+            <Input label="Đơn giá/buổi" type="number" value={String(f.hourlyRate || 0)} onChange={v => u('hourlyRate', Number(v || 0))} suffix="đ" />
+            <Input label="Phụ cấp" type="number" value={String(f.allowance || 0)} onChange={v => u('allowance', Number(v || 0))} suffix="đ" />
           </div>
-          <div style={{ marginTop:14 }}>
-            <label style={{ fontSize:11,fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.08em',display:'block',marginBottom:4 }}>Ghi chú</label>
-            <textarea value={f.notes||''} onChange={e=>u('notes',e.target.value)} rows={2} style={{ width:'100%',padding:'10px 12px',borderRadius:8,border:'1.5px solid #e2e8f0',fontSize:13,fontWeight:500,color:'#0f172a',outline:'none',resize:'vertical',fontFamily:'inherit',boxSizing:'border-box' }}/>
+
+          <div style={{ marginTop: 14 }}>
+            <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: 4 }}>Ghi chú nghiệp vụ</label>
+            <textarea
+              value={f.notes || ''}
+              onChange={e => u('notes', e.target.value)}
+              rows={3}
+              placeholder="Ví dụ: thế mạnh giảng dạy, lớp phù hợp, lưu ý phối hợp phụ huynh..."
+              style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: 13, fontWeight: 500, color: '#0f172a', outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }}
+            />
           </div>
         </div>
-        {/* Footer */}
-        <div style={{ padding:'16px 24px', borderTop:'1px solid #f1f5f9', display:'flex', justifyContent:'flex-end', gap:10, flexShrink:0 }}>
+
+        <div style={{ padding: '16px 22px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'flex-end', gap: 10, flexShrink: 0 }}>
           <Button variant="outline" intent="neutral" onClick={onClose}>Hủy</Button>
-          <Button intent="warning" loading={isSaving} icon={<Save size={15}/>} onClick={()=>onSave(f)} disabled={!f.name?.trim()}>
-            {editing?'Cập nhật':'Thêm mới'}
+          <Button intent="warning" loading={isSaving} icon={<Save size={15} />} onClick={() => { void save(); }} disabled={!f.name?.trim()}>
+            {editing ? 'Cập nhật' : 'Thêm mới'}
           </Button>
         </div>
       </div>
@@ -75,155 +268,440 @@ function TeacherModal({ open, onClose, editing, onSave, isSaving }: {
   );
 }
 
-interface Props { teachers:Teacher[]; uClasses:any[]; tlogs:any[]; onSave:(f:any)=>void; isSaving:boolean; }
+function MiniMetric({ label, value, tone }: { label: string; value: React.ReactNode; tone: 'violet' | 'amber' | 'emerald' | 'sky' | 'rose' }) {
+  const cfg = {
+    violet: { bg: '#f5f3ff', color: '#7c3aed' },
+    amber: { bg: '#fffbeb', color: '#d97706' },
+    emerald: { bg: '#ecfdf5', color: '#059669' },
+    sky: { bg: '#f0f9ff', color: '#0284c7' },
+    rose: { bg: '#fff1f2', color: '#e11d48' },
+  }[tone];
+  return (
+    <div style={{ background: cfg.bg, borderRadius: 8, padding: '10px 8px', minWidth: 0, textAlign: 'center' }}>
+      <p style={{ fontSize: 20, fontWeight: 800, color: cfg.color, margin: 0, lineHeight: 1.1 }}>{value}</p>
+      <p style={{ fontSize: 10, color: '#64748b', margin: '3px 0 0', fontWeight: 700 }}>{label}</p>
+    </div>
+  );
+}
 
-export default function TeachersTab({ teachers, uClasses, tlogs, onSave, isSaving }: Props) {
-  const [showModal,setShowModal] = useState(false);
-  const [editing,setEditing] = useState<Teacher|null>(null);
-  const [detail,setDetail] = useState<Teacher|null>(null);
-  const [search,setSearch] = useState('');
-  const [hovRow,setHovRow] = useState<string|null>(null);
+export default function TeachersTab({
+  teachers,
+  students,
+  payments,
+  uClasses,
+  tlogs,
+  curMo,
+  curYr,
+  isPaid,
+  onSave,
+  isSaving,
+  onAddDiary,
+  focusFilter = 'all',
+  embedded = false,
+  addTrigger = 0,
+}: Props) {
+  const [showModal, setShowModal] = useState(false);
+  const [editing, setEditing] = useState<Teacher | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [hovRow, setHovRow] = useState<string | null>(null);
 
-  /* FIX G4: thêm detail vào deps để không đọc stale closure */
   useEffect(() => {
-    if (detail) {
-      const updated = teachers.find(t => t.id === detail.id);
-      if (updated) setDetail(updated);
+    if (focusFilter === 'active') {
+      setStatusFilter('active');
+      setSearch('');
+    } else if (focusFilter === 'all') {
+      setStatusFilter('all');
     }
-  }, [teachers, detail?.id]);
+  }, [focusFilter]);
 
-  const filtered = teachers.filter(t => !search || t.name.toLowerCase().includes(search.toLowerCase()));
-  const active   = teachers.filter(t => t.status==='active').length;
+  const rows = useMemo<TeacherRow[]>(() => {
+    const names = new Map<string, string>();
+    const addName = (name: any) => {
+      if (!isNamedTeacher(name)) return;
+      const label = String(name).trim();
+      names.set(norm(label), label);
+    };
+
+    teachers.forEach(t => addName(t.name));
+    uClasses.forEach(c => addName(getClassTeacherName(c)));
+    students.forEach(s => addName(s.teacher));
+    tlogs.forEach(l => addName(l.teacherName));
+
+    const officialByName = new Map(teachers.filter(t => isNamedTeacher(t.name)).map(t => [norm(t.name), t]));
+    const studentById = new Map(students.map(s => [s.id, s]));
+
+    return Array.from(names.values()).map(name => {
+      const official = officialByName.get(norm(name));
+      const teacher: Teacher = official ?? {
+        id: stableSyntheticId(name),
+        name,
+        phone: '',
+        email: '',
+        gender: 'other',
+        specialization: 'Toán',
+        qualification: '',
+        experience: 0,
+        baseSalary: 0,
+        hourlyRate: 0,
+        allowance: 0,
+        status: 'active',
+        classes: [],
+        notes: '',
+        createdAt: '',
+      };
+
+      const classes = uClasses.filter(c => {
+        const classId = getClassId(c);
+        return teacherMatchesRecord(getClassTeacherName(c), getClassTeacherId(c), teacher) || (teacher.classes || []).includes(classId);
+      });
+      const classIds = new Set(classes.map(getClassId).filter(Boolean));
+      const activeStudents = students.filter(s =>
+        isStudentActive(s) && (teacherMatches(s.teacher, name) || classIds.has(s.classId))
+      );
+      const billableStudents = activeStudents.filter(s => isMonthBillable(s, curMo, curYr));
+      const teacherPayments = payments.filter(p => {
+        const st = studentById.get(p.studentId);
+        return !!st && (teacherMatches(st.teacher, name) || classIds.has(st.classId));
+      });
+      const logs = tlogs.filter(l => teacherMatchesRecord(l.teacherName, getLogTeacherId(l), teacher) || classIds.has(l.classId));
+      const monthLogs = logs.filter(l => sameMonth(l.date, curMo, curYr));
+      const recentLogs = [...logs].sort((a, b) => parseDMY(b.date) - parseDMY(a.date)).slice(0, 5);
+      const monthRevenue = teacherPayments
+        .filter(p => paymentInTuitionMonth(p, curMo, curYr))
+        .reduce((s, p) => s + p.amount, 0);
+      const totalRevenue = teacherPayments.reduce((s, p) => s + p.amount, 0);
+      const paidCount = billableStudents.filter(s => isPaid(s.id, curMo, curYr)).length;
+      const attendanceTotal = monthLogs.reduce((s, l) => s + (l.present || 0) + (l.absent || 0) + (l.late || 0) + (l.excused || 0), 0);
+      const attendancePresent = monthLogs.reduce((s, l) => s + (l.present || 0) + (l.late || 0), 0);
+      const attendancePct = attendanceTotal > 0 ? Math.round((attendancePresent / attendanceTotal) * 100) : null;
+      const plannedSessions = classes.reduce((s, c) => s + getClassSlotCount(c), 0) * weeksInMonth(curMo, curYr);
+      const baseSalary = Number(teacher.baseSalary || 0);
+      const hourlyRate = Number(teacher.hourlyRate || 0);
+      const allowance = Number(teacher.allowance || 0);
+      const hasCostData = baseSalary > 0 || hourlyRate > 0 || allowance > 0;
+      const projectedCost = hasCostData ? baseSalary + allowance + hourlyRate * plannedSessions : 0;
+
+      return {
+        id: teacher.id,
+        teacher,
+        official: !!official,
+        classes,
+        activeStudents,
+        billableStudents,
+        monthLogs,
+        recentLogs,
+        monthRevenue,
+        totalRevenue,
+        paidCount,
+        unpaidCount: Math.max(0, billableStudents.length - paidCount),
+        projectedCost,
+        hasCostData,
+        attendancePct,
+        attendanceText: attendancePct == null ? 'Chưa có dữ liệu' : `${attendancePct}% hiện diện`,
+      };
+    }).sort((a, b) => {
+      const aActive = a.teacher.status === 'active' ? 1 : 0;
+      const bActive = b.teacher.status === 'active' ? 1 : 0;
+      if (bActive !== aActive) return bActive - aActive;
+      if (b.monthLogs.length !== a.monthLogs.length) return b.monthLogs.length - a.monthLogs.length;
+      return a.teacher.name.localeCompare(b.teacher.name, 'vi');
+    });
+  }, [teachers, uClasses, students, tlogs, payments, curMo, curYr, isPaid]);
+
+  const statusCounts = useMemo(() => ({
+    all: rows.length,
+    active: rows.filter(r => r.teacher.status === 'active').length,
+    onleave: rows.filter(r => r.teacher.status === 'onleave').length,
+    inactive: rows.filter(r => r.teacher.status === 'inactive').length,
+  }), [rows]);
+
+  const visibleRows = rows.filter(r => {
+    if (statusFilter !== 'all' && r.teacher.status !== statusFilter) return false;
+    const q = norm(search);
+    if (!q) return true;
+    return [
+      r.teacher.name,
+      r.teacher.phone,
+      r.teacher.email,
+      r.teacher.specialization,
+      r.classes.map(getClassId).join(' '),
+    ].some(v => norm(v).includes(q));
+  });
+
+  const activeCount = rows.filter(r => r.teacher.status === 'active').length;
+  const detailRow = detailId ? rows.find(r => r.id === detailId) ?? null : null;
+
+  const openAdd = () => {
+    setEditing(null);
+    setShowModal(true);
+  };
+
+  useEffect(() => {
+    if (addTrigger > 0) openAdd();
+  }, [addTrigger]);
+
+  const openEdit = (teacher: Teacher) => {
+    setEditing(teacher);
+    setShowModal(true);
+  };
 
   const TH = TH_SHARED;
   const TD = TD_SHARED;
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-
-      {/* Header */}
-      <div style={{ display:'flex', alignItems:'center', flexWrap:'wrap', gap:10 }}>
-        <div style={{ flexShrink:0 }}>
-          <h2 style={{ fontSize:22, fontWeight:800, color:'#0f172a', textTransform:'uppercase', letterSpacing:'0.04em', margin:0 }}>Giáo viên</h2>
-          <p style={{ fontSize:12, color:'#64748b', margin:'2px 0 0' }}>{active}/{teachers.length} đang dạy</p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {!embedded && (
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+            <div style={{ flexShrink: 0 }}>
+              <h2 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>Giáo viên</h2>
+              <p style={{ fontSize: 12, color: '#64748b', margin: '2px 0 0' }}>
+                {activeCount}/{rows.length} đang dạy · T{curMo}/{curYr}
+              </p>
+            </div>
+            <span style={{ width: 1, height: 22, background: '#e2e8f0', flexShrink: 0 }} />
+          <SearchBar value={search} onChange={setSearch} placeholder="Tìm giáo viên, lớp, SĐT..." width={260} />
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Button intent="warning" icon={<Plus size={15} />} onClick={openAdd}>Thêm giáo viên</Button>
+          </div>
         </div>
-        <span style={{ width:1, height:22, background:'#e2e8f0', flexShrink:0 }}/>
-        <SearchBar value={search} onChange={setSearch} placeholder="Tìm giáo viên..." width={200}/>
+      )}
+
+      <div style={{ ...PANEL, padding: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <FilterTabs
+          variant="pill"
+          size="sm"
+          active={statusFilter}
+          onChange={id => setStatusFilter(id as StatusFilter)}
+          tabs={[
+            { id: 'all', label: 'Tất cả', count: statusCounts.all },
+            { id: 'active', label: 'Đang dạy', count: statusCounts.active },
+            { id: 'onleave', label: 'Nghỉ phép', count: statusCounts.onleave },
+            { id: 'inactive', label: 'Đã nghỉ', count: statusCounts.inactive },
+          ]}
+        />
+        <span style={{ marginLeft: 'auto', color: '#94a3b8', fontSize: 12, fontWeight: 700 }}>
+          Hiển thị {visibleRows.length}/{rows.length}
+        </span>
       </div>
 
-      {/* Horizontal stat cards */}
-      <StatGrid>
-        <StatBlock icon={Users}  value={teachers.length} label="Tổng giáo viên" sub="trong hệ thống"    gradient="linear-gradient(135deg,#f59e0b,#d97706)"/>
-        <StatBlock icon={Award}  value={active}           label="Đang dạy"       sub={`/ ${teachers.length} giáo viên`}  gradient="linear-gradient(135deg,#10b981,#059669)"/>
-        <StatBlock icon={School} value={uClasses.length}  label="Lớp phụ trách"  sub="tổng số lớp"       gradient="linear-gradient(135deg,#6366f1,#4f46e5)"/>
-      </StatGrid>
-
-      {/* Table - sharp borders */}
       <div style={TABLE_WRAP}>
-        <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse' }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr>{['Giáo viên','Chuyên môn','Kinh nghiệm','Lương cơ bản','Trạng thái','Thao tác'].map((h,i)=>(
-                <th key={i} style={{ ...TH, textAlign:i===5?'center':'left' }}>{h}</th>
-              ))}</tr>
+              <tr>
+                {['Giáo viên', 'Phụ trách', 'Tháng này', 'Thu HP lớp', 'Chuyên cần', 'Trạng thái', 'Thao tác'].map((h, i) => (
+                  <th key={h} style={{ ...TH, textAlign: i === 6 ? 'center' : 'left' }}>{h}</th>
+                ))}
+              </tr>
             </thead>
             <tbody>
-              {filtered.length===0
-                ? <tr><td colSpan={6} style={{ padding:'56px 16px', textAlign:'center' }}>
-                    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:10 }}>
-                      <span style={{ fontSize:36 }}>👨‍🏫</span>
-                      <p style={{ color:'#94a3b8', fontStyle:'italic', fontSize:14, margin:0 }}>
-                        {search ? `Không tìm thấy "${search}"` : 'Chưa có giáo viên — nhấn + để thêm mới'}
+              {visibleRows.length === 0 ? (
+                <tr>
+                  <td colSpan={7} style={{ padding: '52px 16px', textAlign: 'center' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+                      <BookOpen size={34} color="#cbd5e1" />
+                      <p style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: 14, margin: 0 }}>
+                        {search ? `Không tìm thấy "${search}"` : 'Chưa có giáo viên trong dữ liệu'}
                       </p>
-                      {!search && <p style={{ color:'#cbd5e1', fontSize:12, margin:0 }}>
-                        Dữ liệu GV lưu trong Google Sheets sheet "GiaoVien"
-                      </p>}
                     </div>
-                  </td></tr>
-                : filtered.map((t,idx)=>{
-                  const st=STATUS_MAP[t.status] ?? STATUS_MAP['active'];
-                  return (
-                    <tr key={t.id} onMouseEnter={()=>setHovRow(t.id)} onMouseLeave={()=>setHovRow(null)}
-                      style={trStyle(idx, hovRow===t.id)}>
-                      <td style={TD}>
-                        <p style={{ fontSize:14, fontWeight:700, color:'#0f172a', margin:0 }}>{t.name}</p>
-                        <p style={{ fontSize:11, color:'#94a3b8', margin:0 }}>{t.phone}</p>
-                      </td>
-                      <td style={TD}><span style={{ color:'#475569' }}>{t.specialization} · {t.qualification}</span></td>
-                      <td style={TD}><span style={{ background:'#fffbeb',color:'#d97706',fontSize:11,fontWeight:700,padding:'3px 9px',borderRadius:6 }}>{t.experience} năm</span></td>
-                      <td style={TD}><span style={{ fontWeight:700,color:'#059669' }}>{fmtVND(t.baseSalary ?? 0)}</span></td>
-                      <td style={TD}><span style={{ background:st.bg,color:st.color,fontSize:11,fontWeight:700,padding:'3px 9px',borderRadius:6 }}>{st.label}</span></td>
-                      <td style={{ ...TD, textAlign:'center' }}>
-                        <TableActions actions={[
-                          { icon:<Eye size={13}/>,   label:'Xem',   intent:'primary', onClick:()=>setDetail(t) },
-                          { icon:<Edit3 size={13}/>, label:'Sửa',   intent:'warning', onClick:()=>{setEditing(t);setShowModal(true);} },
-                        ]}/>
-                      </td>
-                    </tr>
-                  );
-                })
-              }
+                  </td>
+                </tr>
+              ) : visibleRows.map((r, idx) => {
+                const t = r.teacher;
+                const st = TEACHER_STATUS[t.status] ?? TEACHER_STATUS.active;
+                return (
+                  <tr key={r.id} onMouseEnter={() => setHovRow(r.id)} onMouseLeave={() => setHovRow(null)} style={trStyle(idx, hovRow === r.id)}>
+                    <td style={TD}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{ width: 34, height: 34, borderRadius: 9, background: '#fffbeb', border: '1px solid #fde68a', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, flexShrink: 0 }}>
+                          {t.name.trim().split(/\s+/).pop()?.slice(0, 1).toUpperCase() || 'G'}
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <p style={{ fontSize: 14, fontWeight: 800, color: '#0f172a', margin: 0, whiteSpace: 'nowrap' }}>{t.name}</p>
+                          <p style={{ fontSize: 11, color: '#94a3b8', margin: 0 }}>
+                            {r.official ? (t.phone || t.email || 'Đã có hồ sơ') : 'Chưa có hồ sơ trong sheet GiaoVien'}
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+                    <td style={TD}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        <span style={{ fontWeight: 800, color: '#334155' }}>{r.classes.length} lớp · {r.activeStudents.length} HS</span>
+                        <span style={{ fontSize: 11, color: '#64748b' }}>
+                          {r.classes.slice(0, 3).map(getClassId).join(', ') || 'Chưa gán lớp'}
+                          {r.classes.length > 3 ? ` +${r.classes.length - 3}` : ''}
+                        </span>
+                      </div>
+                    </td>
+                    <td style={TD}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        <span style={{ fontWeight: 800, color: '#7c3aed' }}>{r.monthLogs.length} buổi</span>
+                        <span style={{ fontSize: 11, color: '#64748b' }}>Tổng {r.recentLogs.length} buổi gần nhất</span>
+                      </div>
+                    </td>
+                    <td style={TD}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        <span style={{ fontWeight: 800, color: '#059669' }}>{fmtVND(r.monthRevenue)}</span>
+                        <span style={{ fontSize: 11, color: r.unpaidCount ? '#e11d48' : '#64748b' }}>
+                          {r.paidCount}/{r.billableStudents.length} đã đóng
+                        </span>
+                      </div>
+                    </td>
+                    <td style={TD}>
+                      <span style={{ color: r.attendancePct == null ? '#94a3b8' : r.attendancePct >= 85 ? '#059669' : r.attendancePct >= 70 ? '#d97706' : '#e11d48', fontWeight: 800 }}>
+                        {r.attendancePct == null ? '---' : `${r.attendancePct}%`}
+                      </span>
+                      <p style={{ margin: '2px 0 0', fontSize: 11, color: '#94a3b8' }}>{r.attendanceText}</p>
+                    </td>
+                    <td style={TD}>
+                      <StatusBadge domain="teacher" status={st} />
+                    </td>
+                    <td style={{ ...TD, textAlign: 'center' }}>
+                      <TableActions actions={[
+                        { icon: <Eye size={13} />, label: 'Xem', intent: 'primary', onClick: () => setDetailId(r.id) },
+                        { icon: <Edit3 size={13} />, label: r.official ? 'Sửa' : 'Bổ sung hồ sơ', intent: 'warning', onClick: () => openEdit(t) },
+                      ]} />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Detail Panel */}
-      {detail && (
-        <div style={{ position:'fixed', inset:0, zIndex:150, display:'flex', justifyContent:'flex-end' }} onClick={()=>setDetail(null)}>
-          <div style={{ position:'absolute', inset:0, background:'rgba(15,23,42,0.35)', backdropFilter:'blur(4px)' }}/>
-          <div style={{ position:'relative', background:'white', width:'100%', maxWidth:440, height:'100%', overflowY:'auto', boxShadow:'-8px 0 40px rgba(0,0,0,0.18)' }} onClick={e=>e.stopPropagation()}>
-            <div style={{ padding:24 }}>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-                <h3 style={{ fontSize:17, fontWeight:800, color:'#0f172a', margin:0 }}>Chi tiết giáo viên</h3>
-                <IconButton icon={<X size={18}/>} label="Đóng" onClick={()=>setDetail(null)}/>
-              </div>
-              <div style={{ background:'linear-gradient(135deg,#fffbeb,#fef3c7)', borderRadius:10, padding:18, marginBottom:20, border:'1px solid #fde68a' }}>
-                <h4 style={{ fontSize:19, fontWeight:800, color:'#0f172a', margin:0 }}>{detail.name}</h4>
-                <p style={{ fontSize:13, color:'#d97706', fontWeight:600, margin:'4px 0' }}>{detail.specialization} · {detail.qualification}</p>
-                <span style={{ background:(STATUS_MAP[detail.status]??STATUS_MAP['active']).bg, color:(STATUS_MAP[detail.status]??STATUS_MAP['active']).color, fontSize:11, fontWeight:700, padding:'3px 9px', borderRadius:6 }}>{(STATUS_MAP[detail.status]??STATUS_MAP['active']).label}</span>
-              </div>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginBottom:18 }}>
-                {[
-                  { label:'Buổi dạy',  val:tlogs.filter(l=>(l.teacherName||'').includes(detail.name.split(' ').pop()||'')).length, color:'#7c3aed', bg:'#f5f3ff' },
-                  { label:'Kinh nghiệm', val:`${detail.experience}n`, color:'#d97706', bg:'#fffbeb' },
-                  { label:'Lớp phụ trách', val:uClasses.filter(c=>(c['Giáo viên']||'').includes(detail.name.split(' ').pop()||'')).length, color:'#0284c7', bg:'#f0f9ff' },
-                ].map((s,i)=>(
-                  <div key={i} style={{ background:s.bg, borderRadius:8, padding:'10px 8px', textAlign:'center' }}>
-                    <p style={{ fontSize:20, fontWeight:800, color:s.color, margin:0 }}>{s.val}</p>
-                    <p style={{ fontSize:10, color:'#64748b', margin:'2px 0 0' }}>{s.label}</p>
-                  </div>
-                ))}
-              </div>
-              {[{label:'SĐT',val:detail.phone,icon:Phone},{label:'Email',val:detail.email,icon:Mail}].map((row,i)=>(
-                <div key={i} style={{ display:'flex', alignItems:'center', gap:12, padding:'11px 14px', borderRadius:8, background:'#f8fafc', marginBottom:7 }}>
-                  <row.icon size={14} color="#94a3b8"/>
-                  <div>
-                    <p style={{ fontSize:10,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',margin:0 }}>{row.label}</p>
-                    <p style={{ fontSize:13,fontWeight:600,color:'#1e293b',margin:0 }}>{row.val||'—'}</p>
-                  </div>
+      {detailRow && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 150, display: 'flex', justifyContent: 'flex-end' }} onClick={() => setDetailId(null)}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,0.35)', backdropFilter: 'blur(4px)' }} />
+          <div style={{ position: 'relative', background: 'white', width: '100%', maxWidth: 560, height: '100%', overflowY: 'auto', boxShadow: '-8px 0 40px rgba(0,0,0,0.18)' }} onClick={e => e.stopPropagation()}>
+            <div style={{ padding: 24 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+                <div>
+                  <h3 style={{ fontSize: 17, fontWeight: 800, color: '#0f172a', margin: 0 }}>Hồ sơ giáo viên</h3>
+                  <p style={{ fontSize: 12, color: '#64748b', margin: '2px 0 0' }}>Tổng hợp từ hồ sơ, lớp, buổi học và tài chính</p>
                 </div>
-              ))}
-              <div style={{ background:'#ecfdf5', borderRadius:8, padding:14, marginTop:10 }}>
-                <p style={{ fontSize:10,fontWeight:700,color:'#059669',textTransform:'uppercase',marginBottom:7 }}>💰 Thu nhập</p>
-                {[['Lương cơ bản',fmtVND(detail.baseSalary ?? 0)],['Phụ cấp',fmtVND(detail.allowance ?? 0)],['Lương/giờ',fmtVND(detail.hourlyRate ?? 0)]].map(([k,v])=>(
-                  <div key={k} style={{ display:'flex',justifyContent:'space-between',fontSize:13,marginBottom:4 }}>
-                    <span style={{ color:'#64748b' }}>{k}:</span>
-                    <span style={{ fontWeight:700,color:'#0f172a' }}>{v}</span>
+                <IconButton icon={<X size={18} />} label="Đóng" onClick={() => setDetailId(null)} />
+              </div>
+
+              <div style={{ background: 'linear-gradient(135deg,#fffbeb,#fef3c7)', borderRadius: 10, padding: 18, marginBottom: 16, border: '1px solid #fde68a' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                  <div>
+                    <h4 style={{ fontSize: 20, fontWeight: 800, color: '#0f172a', margin: 0 }}>{detailRow.teacher.name}</h4>
+                    <p style={{ fontSize: 13, color: '#92400e', fontWeight: 700, margin: '4px 0' }}>
+                      {detailRow.teacher.specialization || 'Toán'} {detailRow.teacher.qualification ? `· ${detailRow.teacher.qualification}` : ''}
+                    </p>
+                  </div>
+                  <StatusBadge domain="teacher" status={TEACHER_STATUS[detailRow.teacher.status] ?? TEACHER_STATUS.active} />
+                </div>
+                {!detailRow.official && (
+                  <div style={{ marginTop: 12, padding: 10, borderRadius: 8, background: 'rgba(255,255,255,0.7)', color: '#92400e', fontSize: 12, fontWeight: 700 }}>
+                    Giáo viên này đang xuất hiện trong lớp/buổi học nhưng chưa có hồ sơ riêng trong sheet GiaoVien.
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 14 }}>
+                <MiniMetric label="Lớp" value={detailRow.classes.length} tone="sky" />
+                <MiniMetric label="HS" value={detailRow.activeStudents.length} tone="emerald" />
+                <MiniMetric label="Buổi" value={detailRow.monthLogs.length} tone="violet" />
+                <MiniMetric label="Đã đóng" value={`${detailRow.paidCount}/${detailRow.billableStudents.length}`} tone="amber" />
+                <MiniMetric label="Thu HP" value={fmtM(detailRow.monthRevenue)} tone="emerald" />
+                <MiniMetric label="Chi phÃ­ GV dá»± kiáº¿n" value={detailRow.hasCostData ? fmtM(detailRow.projectedCost) : '---'} tone="violet" />
+                <MiniMetric label="Hiện diện" value={detailRow.attendancePct == null ? '---' : `${detailRow.attendancePct}%`} tone={detailRow.attendancePct != null && detailRow.attendancePct < 70 ? 'rose' : 'sky'} />
+              </div>
+
+              <div style={{ display: 'grid', gap: 8, marginBottom: 14 }}>
+                {[
+                  { label: 'SĐT', val: detailRow.teacher.phone, icon: Phone },
+                  { label: 'Email', val: detailRow.teacher.email, icon: Mail },
+                  { label: 'Kinh nghiệm', val: `${detailRow.teacher.experience || 0} năm`, icon: Award },
+                  { label: 'Lương cơ bản', val: fmtVND(detailRow.teacher.baseSalary ?? 0), icon: Wallet },
+                ].map(row => (
+                  <div key={row.label} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderRadius: 8, background: '#f8fafc' }}>
+                    <row.icon size={15} color="#94a3b8" />
+                    <div>
+                      <p style={{ fontSize: 10, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', margin: 0 }}>{row.label}</p>
+                      <p style={{ fontSize: 13, fontWeight: 700, color: '#1e293b', margin: 0 }}>{row.val || '---'}</p>
+                    </div>
                   </div>
                 ))}
               </div>
-              {detail.notes&&<div style={{ marginTop:10,padding:12,borderRadius:8,background:'#f8fafc',fontSize:13,color:'#475569',fontStyle:'italic' }}>💬 {detail.notes}</div>}
-              <div style={{ marginTop:16 }}>
-                <Button intent="warning" variant="outline" fullWidth icon={<Edit3 size={14}/>} onClick={()=>{setEditing(detail);setShowModal(true);}}>Sửa thông tin</Button>
-              </div>
+
+              <section style={{ ...PANEL, padding: 14, marginBottom: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <School size={16} color="#4f46e5" />
+                  <h4 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#0f172a' }}>Lớp đang phụ trách</h4>
+                </div>
+                {detailRow.classes.length === 0 ? (
+                  <p style={{ margin: 0, color: '#94a3b8', fontSize: 13, fontStyle: 'italic' }}>Chưa gán lớp cho giáo viên này.</p>
+                ) : (
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    {detailRow.classes.map(c => {
+                      const classId = getClassId(c);
+                      const slots = [c['Buổi 1'], c['Buổi 2'], c['Buổi 3']].filter(Boolean);
+                      return (
+                        <div key={classId} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                          <div style={{ minWidth: 0 }}>
+                            <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: '#0f172a' }}>{classId} · {c['Tên Lớp'] || c['Khối'] || 'Lớp học'}</p>
+                            <p style={{ margin: '2px 0 0', fontSize: 11, color: '#64748b' }}>
+                              {c['Cơ sở'] || 'Chưa rõ cơ sở'} · {slots.join(' · ') || 'Chưa có lịch'}
+                            </p>
+                          </div>
+                          {onAddDiary && <Button size="xs" intent="secondary" variant="outline" icon={<BookOpen size={12} />} onClick={() => onAddDiary(classId)}>Ghi buổi</Button>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+
+              <section style={{ ...PANEL, padding: 14, marginBottom: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <Clock3 size={16} color="#7c3aed" />
+                  <h4 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#0f172a' }}>Buổi học gần nhất</h4>
+                </div>
+                {detailRow.recentLogs.length === 0 ? (
+                  <p style={{ margin: 0, color: '#94a3b8', fontSize: 13, fontStyle: 'italic' }}>Chưa có nhật ký buổi học.</p>
+                ) : (
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    {detailRow.recentLogs.map(log => (
+                      <div key={`${log.date}-${log.classId}-${log.caDay}`} style={{ borderLeft: '3px solid #8b5cf6', padding: '8px 10px', background: '#faf5ff', borderRadius: 8 }}>
+                        <p style={{ margin: 0, fontSize: 12, fontWeight: 800, color: '#0f172a' }}>{log.date} · {log.classId} {log.caDay ? `· ${log.caDay}` : ''}</p>
+                        <p style={{ margin: '2px 0 0', fontSize: 12, color: '#64748b', lineHeight: 1.45 }}>{log.content || '---'}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              {detailRow.teacher.notes && (
+                <section style={{ ...PANEL, padding: 14, marginBottom: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <UserCheck size={16} color="#059669" />
+                    <h4 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#0f172a' }}>Ghi chú quản lý</h4>
+                  </div>
+                  <p style={{ margin: 0, color: '#475569', fontSize: 13, lineHeight: 1.55 }}>{detailRow.teacher.notes}</p>
+                </section>
+              )}
+
+              <Button intent="warning" variant="outline" fullWidth icon={<Edit3 size={14} />} onClick={() => openEdit(detailRow.teacher)}>
+                {detailRow.official ? 'Sửa hồ sơ giáo viên' : 'Bổ sung hồ sơ vào GiaoVien'}
+              </Button>
             </div>
           </div>
         </div>
       )}
 
-      <TeacherModal open={showModal} onClose={()=>setShowModal(false)} editing={editing} onSave={f=>{onSave(f);setShowModal(false);}} isSaving={isSaving}/>
-      <FAB onClick={()=>{setEditing(null);setShowModal(true);}} label="Thêm giáo viên mới" icon={Plus} color="#f59e0b" shadow="0 8px 24px rgba(245,158,11,0.5)"/>
+      <TeacherModal
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        editing={editing}
+        onSave={onSave}
+        isSaving={isSaving}
+      />
     </div>
   );
 }
+

@@ -10,7 +10,7 @@
  */
 
 export const SCRIPT_URL_DEFAULT =
-  'https://script.google.com/macros/s/AKfycbzMJsz_cw3VzRqU__nzOYSQqkCWrt-drhzzNU79svnCvVPpXC2-_xUhJTMAqWdIMz1e/exec';
+  'https://script.google.com/macros/s/AKfycbwN9Fvcm8GVz7WZmGcYG4oiLM5hmOmlislu0w4OqS0Sr1QT2ttUZ0CbTIGN4J1Xz1BslQ/exec';
 
 export const FEE_DEFAULT    = 600_000;
 export const IPP            = 25;
@@ -108,6 +108,19 @@ export const fmtVND = (n: number | undefined | null): string => {
   const safe = typeof n === 'number' && isFinite(n) ? n : 0;
   return safe.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0') + 'đ';
 };
+
+export function normalizePaymentMethod(raw: any): string {
+  const value = String(raw || '').trim();
+  if (!value || value === '---') return '---';
+  const normalized = value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd');
+  if (['bank', 'transfer', 'bank_transfer', 'chuyen khoan', 'ck'].includes(normalized)) return 'Chuyển khoản';
+  if (['cash', 'tien mat', 'tm'].includes(normalized)) return 'Tiền mặt';
+  return value;
+}
 
 /**
  * formatDate — BUG FIX v23.0: xử lý ISO UTC string từ GAS đúng timezone.

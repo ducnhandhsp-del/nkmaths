@@ -16,7 +16,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 
 import { loadSettings, parseDMY, SCRIPT_URL_DEFAULT, FEE_DEFAULT, CA_DAY_DEFAULT, TEACHER_LIST_DEFAULT } from './helpers';
 import { RULES } from './rules';
-import type { Screen, Student, DeleteTarget } from './types';
+import type { Screen, Student, DeleteTarget, TrainingSub, OperationsSub, FinanceSub } from './types';
 
 import { Sidebar, MobileHeader, BottomNav, useIsDesktop } from './Layout';
 import { ErrorBoundary } from './AppComponents';
@@ -34,19 +34,30 @@ import LoadingScreen from './LoadingScreen';
 
 import OverviewTab    from './OverviewTab';
 import OperationsTab  from './OperationsTab';
-import StudentsTab    from './StudentsTab';
-import ClassesTab     from './ClassesTab';
+import LearningTab    from './LearningTab';
 import FinanceTab     from './FinanceTab';
 import SettingsTab    from './SettingsTab';
-import TeachersTab    from './TeachersTab';
-import MaterialsTab   from './MaterialsTab';
-import ReportsTab     from './ReportsTab';
 
 export default function App() {
 
   /* ── Routing ── */
   const [screen, setScreen] = useState<Screen>('overview');
   const goScreen = useCallback((s: Screen) => setScreen(s), []);
+  const [trainingSubtab, setTrainingSubtab] = useState<TrainingSub>('overview');
+  const goTraining = useCallback((sub: TrainingSub = 'overview') => {
+    setTrainingSubtab(sub);
+    setScreen('training');
+  }, []);
+  const [operationsSubtab, setOperationsSubtab] = useState<OperationsSub>('overview');
+  const goOperations = useCallback((sub: OperationsSub = 'overview') => {
+    setOperationsSubtab(sub);
+    setScreen('operations');
+  }, []);
+  const [financeSubtab, setFinanceSubtab] = useState<FinanceSub>('report');
+  const goFinance = useCallback((sub: FinanceSub = 'report') => {
+    setFinanceSubtab(sub);
+    setScreen('finance');
+  }, []);
 
   /* ── Settings (localStorage) ── */
   const _saved        = useRef(loadSettings());
@@ -62,8 +73,6 @@ export default function App() {
   const [bankId,       setBankId]       = useState<string>(_saved.current?.bankId       ?? 'VCB');
   const [accountNo,    setAccountNo]    = useState<string>(_saved.current?.accountNo    ?? '1234567890');
   const [accountName,  setAccountName]  = useState<string>(_saved.current?.accountName  ?? 'LOP TOAN NK');
-  const [accentColor,  setAccentColor]  = useState<'teal'|'indigo'|'rose'|'orange'>(_saved.current?.accentColor ?? 'teal');
-  const [showId,       setShowId]       = useState<boolean>(_saved.current?.showId       ?? true);
   const [caDayOptions, setCaDayOptions] = useState<string[]>(_saved.current?.caDayOptions ?? CA_DAY_DEFAULT);
   const [teacherList,  setTeacherList]  = useState<string[]>(_saved.current?.teacherList  ?? TEACHER_LIST_DEFAULT);
 
@@ -133,11 +142,11 @@ export default function App() {
   }, [d.setEditDiary]); // stable: useState setter không thay đổi
 
   const commands = useCommands({
-    students, uClasses, goScreen,
-    onAddStudent: () => { d.setEditStudent(null); setShowStudent(true); },
-    onAddClass:   () => { d.setEditClass(null);   setShowClass(true);  },
-    onAddDiary:   handleAddDiary,
-    onAddPayment: () => { d.setEditPayment(null); d.setEditExpense(null); setShowFAB(true); },
+    students, uClasses, goScreen, goTraining,
+    onAddStudent: () => { goTraining('students'); d.setEditStudent(null); setShowStudent(true); },
+    onAddClass:   () => { goTraining('classes'); d.setEditClass(null); setShowClass(true); },
+    onAddDiary:   (classId?: string) => { goOperations('schedule'); handleAddDiary(classId); },
+    onAddPayment: () => { goFinance('ledger'); setFabInitialTab('income'); d.setEditPayment(null); d.setEditExpense(null); setShowFAB(true); },
   });
 
   /* ── Prev-month deltas ── */
@@ -186,15 +195,13 @@ export default function App() {
               <ErrorBoundary fallbackLabel="Tổng quan">
                 <OverviewTab
                   students={students} payments={payments} expenses={expenses}
-                  tlogs={tlogs} uClasses={uClasses} summary={summary}
-                  curMo={d.curMo} curYr={d.curYr} paidNow={d.paidNow}
-                  goScreen={goScreen} isPaid={d.isPaid}
-                  onAddDiary={handleAddDiary}
-                  onAddPayment={() => { setFabInitialTab('income'); d.setEditPayment(null); d.setEditExpense(null); setShowFAB(true); }}
-                  onAddStudent={() => { d.setEditStudent(null); setShowStudent(true); }}
-                  onViewMaterials={() => goScreen('materials')}
-                  materialCount={materials.length}
-                  prevPaidNow={d.prevPaidNow} prevStudentCount={prevStudentCount} prevTlogCount={prevTlogCount}
+                  tlogs={tlogs} uClasses={uClasses}
+                  curMo={d.curMo} curYr={d.curYr}
+                  goTraining={goTraining} goOperations={goOperations} goFinance={goFinance} isPaid={d.isPaid}
+                  onAddStudent={() => { goTraining('students'); d.setEditStudent(null); setShowStudent(true); }}
+                  onAddDiary={(classId, date, caDay) => { goOperations('schedule'); handleAddDiary(classId, date, caDay); }}
+                  onAddIncome={() => { goFinance('ledger'); setFabInitialTab('income'); d.setEditPayment(null); d.setEditExpense(null); setShowFAB(true); }}
+                  onAddExpense={() => { goFinance('expense'); setFabInitialTab('expense'); d.setEditPayment(null); d.setEditExpense(null); setShowFAB(true); }}
                 />
               </ErrorBoundary>
             )}
@@ -202,10 +209,12 @@ export default function App() {
             {screen === 'operations' && (
               <ErrorBoundary fallbackLabel="Vận hành">
                 <OperationsTab
+                  sub={operationsSubtab} setSub={setOperationsSubtab}
                   filtD={d.filtD} pgD={d.pgD} setPgD={d.setPgD} qD={d.qD} setQD={d.setQD}
                   dCls={d.dCls} setDCls={d.setDCls} uClasses={uClasses}
                   IPP={RULES.pagination.defaultIPP}
                   students={students} tlogs={tlogs} leaveRequests={leaveRequests}
+                  teachers={teachers} payments={payments} curMo={d.curMo} curYr={d.curYr} isPaid={d.isPaid}
                   onViewDiary={log => setVDiary(log)}
                   onEditDiary={log => { d.setEditDiary(log); setShowDiary(true); }}
                   onAddDiary={handleAddDiary}
@@ -214,48 +223,32 @@ export default function App() {
               </ErrorBoundary>
             )}
 
-            {screen === 'teachers' && (
-              <ErrorBoundary fallbackLabel="Giáo viên">
-                <TeachersTab teachers={teachers} uClasses={uClasses} tlogs={tlogs} onSave={d.handleSaveTeacher} isSaving={d.saving} />
-              </ErrorBoundary>
-            )}
-
-            {screen === 'classes' && (
-              <ErrorBoundary fallbackLabel="Lớp học">
-                <ClassesTab
+            {screen === 'training' && (
+              <ErrorBoundary fallbackLabel="Đào tạo">
+                <LearningTab
+                  trainingSubtab={trainingSubtab}
+                  setTrainingSubtab={setTrainingSubtab}
                   uClasses={uClasses} students={students}
+                  teachers={teachers} payments={payments} tlogs={tlogs}
                   curMo={d.curMo} curYr={d.curYr}
-                  qCls={d.qCls} setQCls={d.setQCls} fClsTeacher={d.fClsTeacher} setFClsTeacher={d.setFClsTeacher}
+                  qCls={d.qCls} setQCls={d.setQCls}
+                  fClsTeacher={d.fClsTeacher} setFClsTeacher={d.setFClsTeacher}
                   isPaid={d.isPaid}
                   onEditClass={c => { d.setEditClass(c); setShowClass(true); }}
                   onAddClass={() => { d.setEditClass(null); setShowClass(true); }}
                   uniqueBranches={d.uniqueBranches}
-                />
-              </ErrorBoundary>
-            )}
-
-            {screen === 'students' && (
-              <ErrorBoundary fallbackLabel="Học sinh">
-                <StudentsTab
-                  filtS={d.filtS} pgS={d.pgS} setPgS={d.setPgS} students={students}
-                  qS={d.qS} setQS={d.setQS} fCls={d.fCls} setFCls={d.setFCls} uClasses={uClasses}
+                  filtS={d.filtS} pgS={d.pgS} setPgS={d.setPgS}
+                  qS={d.qS} setQS={d.setQS}
+                  fCls={d.fCls} setFCls={d.setFCls}
                   hideInactive={d.hideInactive} setHideInactive={d.setHideInactive}
                   onViewStudent={s => setVStudent(s)}
                   onEditStudent={s => { d.setEditStudent(s); setShowStudent(true); }}
                   onDeleteStudent={t => setDelTarget(t)}
                   onAddStudent={() => { d.setEditStudent(null); setShowStudent(true); }}
                   onBulkTransfer={ss => { d.setBulkStudents(ss); setShowBulkXfer(true); }}
-                />
-              </ErrorBoundary>
-            )}
-
-            {screen === 'materials' && (
-              <ErrorBoundary fallbackLabel="Học liệu">
-                <MaterialsTab
-                  materials={materials} uClasses={uClasses}
-                  onSave={d.handleSaveMaterial}
-                  onDelete={d.handleDeleteMaterial}
+                  onSaveTeacher={d.handleSaveTeacher}
                   isSaving={d.saving}
+                  onAddDiary={handleAddDiary}
                 />
               </ErrorBoundary>
             )}
@@ -263,6 +256,8 @@ export default function App() {
             {screen === 'finance' && (
               <ErrorBoundary fallbackLabel="Tài chính">
                 <FinanceTab
+                  financeSubtab={financeSubtab}
+                  setFinanceSubtab={setFinanceSubtab}
                   summary={summary} payments={payments} expenses={expenses}
                   students={students} uClasses={uClasses} tlogs={tlogs}
                   curMo={d.curMo} curYr={d.curYr}
@@ -283,16 +278,6 @@ export default function App() {
               </ErrorBoundary>
             )}
 
-            {screen === 'reports' && (
-              <ErrorBoundary fallbackLabel="Báo cáo">
-                <ReportsTab
-                  students={students} payments={payments} expenses={expenses}
-                  tlogs={tlogs} uClasses={uClasses} summary={summary}
-                  curMo={d.curMo} curYr={d.curYr} isPaid={d.isPaid}
-                />
-              </ErrorBoundary>
-            )}
-
             {screen === 'settings' && (
               <ErrorBoundary fallbackLabel="Cài đặt">
                 <SettingsTab
@@ -308,7 +293,6 @@ export default function App() {
                   addr1={addr1}             setAddr1={setAddr1}
                   addr2={addr2}             setAddr2={setAddr2}
                   phone={phone}             setPhone={setPhone}
-                  showId={showId}           setShowId={setShowId}
                   hideInactive={d.hideInactive} setHideInactive={d.setHideInactive}
                   caDayOptions={caDayOptions}   setCaDayOptions={setCaDayOptions}
                   teacherList={teacherList}     setTeacherList={setTeacherList}
@@ -334,14 +318,14 @@ export default function App() {
         open={showStudent}
         onClose={() => { setShowStudent(false); d.setEditStudent(null); }}
         editing={d.editStudent} uniqueClasses={uClasses} uniqueBranches={d.uniqueBranches}
-        isSaving={d.saving} onSave={(f) => { setShowStudent(false); d.setEditStudent(null); d.handleSaveStudent(f); }}
+        isSaving={d.saving} onSave={(f) => { setShowStudent(false); d.setEditStudent(null); return d.handleSaveStudent(f); }}
         existingIds={students.map(s => s.id)}
       />
       <ClassModal
         open={showClass}
         onClose={() => { setShowClass(false); d.setEditClass(null); }}
         editing={d.editClass} isSaving={d.saving}
-        onSave={(f) => { setShowClass(false); d.setEditClass(null); d.handleSaveClass(f); }}
+        onSave={(f) => { setShowClass(false); d.setEditClass(null); return d.handleSaveClass(f); }}
         uniqueBranches={d.uniqueBranches} teacherList={teacherList}
       />
       <FABModal
@@ -362,7 +346,7 @@ export default function App() {
           setPreselectedDiaryClass('');
           setPreselectedDiaryDate('');
           setPreselectedDiaryCaDay('');
-          d.handleSaveDiary(f);
+          return d.handleSaveDiary(f);
         }}
         editingLog={d.editDiary} caDayOptions={caDayOptions}
         preselectedClassId={preselectedDiaryClass}

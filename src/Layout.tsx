@@ -1,27 +1,23 @@
-import React, { memo, useState, useEffect, useRef } from 'react';
-import { BarChart3, BookOpen, ChevronLeft, ChevronRight, GraduationCap, LayoutDashboard, Library, Menu, School, Settings, Users, Wallet, X } from 'lucide-react';
+import React, { memo, useState, useEffect } from 'react';
+import { Activity, ChevronLeft, ChevronRight, GraduationCap, LayoutDashboard, Menu, Settings, Wallet, X } from 'lucide-react';
 import type { Screen } from './types';
 
 export const NAV_ITEMS: {
   id: Screen;
   label: string;
   shortLabel: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon: React.ComponentType<{ size?: number; className?: string; color?: string }>;
   color: string;
 }[] = [
   { id: 'overview',    label: 'Tổng quan',  shortLabel: 'Tổng quan', icon: LayoutDashboard, color: 'text-indigo-400' },
-  { id: 'operations',  label: 'Vận hành',   shortLabel: 'Vận hành',  icon: BookOpen,        color: 'text-violet-400' },
-  { id: 'teachers',    label: 'Giáo viên',  shortLabel: 'GV',        icon: Users,           color: 'text-amber-400' },
-  { id: 'classes',     label: 'Lớp học',    shortLabel: 'Lớp học',   icon: School,          color: 'text-sky-400' },
-  { id: 'students',    label: 'Học sinh',   shortLabel: 'Học sinh',  icon: GraduationCap,   color: 'text-teal-400' },
-  { id: 'materials',   label: 'Học liệu',   shortLabel: 'Học liệu',  icon: Library,         color: 'text-emerald-400' },
+  { id: 'training',    label: 'Đào tạo',    shortLabel: 'Đào tạo',   icon: GraduationCap,   color: 'text-sky-400' },
+  { id: 'operations',  label: 'Vận hành',   shortLabel: 'Vận hành',  icon: Activity,        color: 'text-violet-400' },
   { id: 'finance',     label: 'Tài chính',  shortLabel: 'Tài chính', icon: Wallet,          color: 'text-orange-400' },
-  { id: 'reports',     label: 'Báo cáo',    shortLabel: 'Báo cáo',   icon: BarChart3,       color: 'text-rose-400' },
   { id: 'settings',    label: 'Cài đặt',    shortLabel: 'Cài đặt',   icon: Settings,        color: 'text-slate-400' },
 ];
 
-// Bottom nav chỉ hiển thị 5 tab quan trọng nhất trên mobile
-export const BOTTOM_NAV_IDS: Screen[] = ['operations','materials','finance','reports','settings'];
+// Bottom nav giữ cùng 5 mục với sidebar.
+export const BOTTOM_NAV_IDS: Screen[] = ['overview','training','operations','finance','settings'];
 
 // Export để App.tsx gọi 1 lần duy nhất, truyền xuống props
 export function useIsDesktop() {
@@ -139,7 +135,7 @@ const SidebarContent = memo(({
     {/* Footer version */}
     {!collapsed && (
       <div style={{ padding: '8px 10px', borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: 8, fontWeight: 700, color: 'rgba(255,255,255,0.15)', letterSpacing: '0.1em', textTransform: 'uppercase', textAlign: 'center' }}>
-        v27.1
+        v29.2
       </div>
     )}
   </div>
@@ -219,10 +215,7 @@ export const MobileHeader = memo(({ active, set, centerName, isDesktop }: {
   );
 });
 
-// Bottom nav 5 tab thực dụng nhất — Báo cáo thay Cài đặt (Cài đặt vẫn có trong sidebar)
-const BOTTOM_NAV_ITEMS = NAV_ITEMS.filter(n =>
-  ['overview','operations','students','classes','finance','reports'].includes(n.id)
-);
+const BOTTOM_NAV_ITEMS = NAV_ITEMS.filter(n => BOTTOM_NAV_IDS.includes(n.id));
 
 export const BottomNav = memo(({ active, set, isDesktop }: {
   active: Screen; set: (s: Screen) => void; isDesktop: boolean;

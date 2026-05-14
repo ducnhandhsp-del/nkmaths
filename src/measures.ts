@@ -145,6 +145,7 @@ export interface AttendanceSummary {
   present: number;
   absent:  number;
   late:    number;
+  excused: number;
   total:   number;
   pct:     number | null;
 }
@@ -154,7 +155,7 @@ export const calcStudentAttendance = (
   tlogs: TeachingLog[],
   studentId: string,
 ): AttendanceSummary => {
-  let present = 0, absent = 0, late = 0;
+  let present = 0, absent = 0, late = 0, excused = 0;
   tlogs.forEach(log =>
     (log.attendanceList || []).forEach((a: any) => {
       // Support both GAS v29 camelCase and legacy Vietnamese keys
@@ -163,12 +164,13 @@ export const calcStudentAttendance = (
       const st = a.trangThai || a['Trạng thái'] || a.TrangThai || '';
       if (st === 'Có mặt') present++;
       else if (st === 'Vắng') absent++;
-      else if (st === 'Muộn') late++;
+      else if (st === 'Có phép' || st === 'Nghỉ có phép') excused++;
+      else if (st === 'Muộn') present++;
     })
   );
-  const total = present + absent + late;
+  const total = present + absent + late + excused;
   const pct   = total > 0 ? Math.round((present / total) * 100) : null;
-  return { present, absent, late, total, pct };
+  return { present, absent, late, excused, total, pct };
 };
 
 /** Màu chuyên cần dựa trên % */

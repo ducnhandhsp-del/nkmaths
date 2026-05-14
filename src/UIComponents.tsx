@@ -82,10 +82,10 @@ export function SectionTitle({ children, action }: { children:React.ReactNode; a
   );
 }
 
-export function EmptyState({ emoji='📭', title, subtitle }: { emoji?:string; title:string; subtitle?:string }) {
+export function EmptyState({ emoji='', title, subtitle }: { emoji?:string; title:string; subtitle?:string }) {
   return (
     <div style={{ padding:'48px 24px', textAlign:'center', color:DS.textLight }}>
-      <div style={{ fontSize:40, marginBottom:12 }}>{emoji}</div>
+      {emoji && <div style={{ fontSize:40, marginBottom:12 }}>{emoji}</div>}
       <p style={{ fontSize:15, fontWeight:700, color:DS.textMuted, margin:0 }}>{title}</p>
       {subtitle && <p style={{ fontSize:13, color:DS.textLight, margin:'6px 0 0' }}>{subtitle}</p>}
     </div>
@@ -265,7 +265,7 @@ export function ConfirmDialog({ isOpen, onClose, onConfirm, title, message, conf
 }) {
   if (!isOpen) return null;
   const VC = { danger:'bg-red-600 hover:bg-red-700', warning:'bg-amber-600 hover:bg-amber-700', info:'bg-indigo-600 hover:bg-indigo-700' };
-  const VI = { danger:'⚠️', warning:'⚡', info:'ℹ️' };
+  const VI = { danger:'!', warning:'!', info:'i' };
   return (
     <ModalWrap onClose={onClose} size="sm">
       <div className="p-6 space-y-5 text-center">
@@ -273,7 +273,7 @@ export function ConfirmDialog({ isOpen, onClose, onConfirm, title, message, conf
         <div><h3 className="text-xl font-bold text-slate-900 mb-2">{title}</h3><p className="text-slate-500 text-base">{message}</p></div>
         <div className="flex gap-3">
           <button onClick={onClose} className="flex-1 px-5 py-3 bg-white hover:bg-slate-50 text-slate-700 rounded-xl font-semibold text-base border border-slate-200 transition-all">{cancelText}</button>
-          <button onClick={()=>{onConfirm();onClose();}} className={cn('flex-1 px-5 py-3 text-white rounded-xl font-semibold text-base transition-all active:scale-95',VC[variant])}>{confirmText}</button>
+          <button onClick={onConfirm} className={cn('flex-1 px-5 py-3 text-white rounded-xl font-semibold text-base transition-all active:scale-95',VC[variant])}>{confirmText}</button>
         </div>
       </div>
     </ModalWrap>

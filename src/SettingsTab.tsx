@@ -9,8 +9,9 @@
  * ✅ [v28.2] Fix: teacher1/phone1 sync khi props thay đổi từ ngoài
  * ✅ [v28.2] gradeFees: note rõ cần wire vào App.tsx, thêm warning khi có custom fees
  * ✅ [v28.2] Xóa accentColor + uniqueBranches khỏi props (accepted nhưng không dùng)
+ * ✅ [v28.3] Ẩn cài đặt chưa có tác dụng thật: showId, darkMode
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 
 /* ─── useIsMobile ────────────────────────────────────────────────── */
 function useIsMobile(bp = 640) {
@@ -27,10 +28,10 @@ import {
   RefreshCw, CheckCircle, XCircle, Loader2, Save,
   Plus, X, Edit3, Check, Eye, Trash2,
   Plug, School, DollarSign, Landmark, MessageSquare,
-  Paintbrush, Database, Clock, ExternalLink,
+  Database, Clock, ExternalLink,
 } from 'lucide-react';
-import { saveSettings, makeVietQR, getCacheSize } from './helpers';
-import { ModalWrap } from './UIComponents';
+import { saveSettings, makeVietQR, getCacheSize, fmtVND, formatDate } from './helpers';
+import { ModalWrap, useConfirm } from './UIComponents';
 import { Button, IconButton, Input } from './dsComponents';
 
 interface Props {
@@ -47,9 +48,6 @@ interface Props {
   addr1: string;         setAddr1: (v: string) => void;
   addr2: string;         setAddr2: (v: string) => void;
   phone: string;         setPhone: (v: string) => void;
-  // FIX: xóa accentColor + uniqueBranches — props được truyền vào nhưng không có UI
-  // nào sử dụng trong SettingsTab; giữ lại sẽ gây nhầm lẫn
-  showId: boolean;       setShowId: (v: boolean) => void;
   hideInactive: boolean; setHideInactive: (v: boolean) => void;
   caDayOptions: string[];setCaDayOptions: (v: string[]) => void;
   teacherList: string[]; setTeacherList: (v: string[]) => void;
@@ -59,11 +57,9 @@ interface ZaloTemplate { id: string; name: string; content: string; }
 const TEMPLATE_KEY = 'ltn-message-templates';
 const DEFAULT_TEMPLATE: ZaloTemplate = {
   id: 'default', name: 'Thông báo học phí',
-  content: 'Chào anh/chị, học phí tháng [Thang] của cháu [Ten] là [SoTien]. Vui lòng đóng trước ngày 10. Cảm ơn!',
+  content: 'Chào anh/chị, học phí tháng [Thang]/[Nam] của cháu [Ten] là [SoTien]. Vui lòng đóng trước ngày 10. Cảm ơn!',
 };
-const VARS = ['[Ten]','[Lop]','[Thang]','[SoTien]','[Ngay]'];
-const FONT_SIZES = [{ id:'sm',label:'Nhỏ',px:'14px' },{ id:'md',label:'Vừa',px:'16px' },{ id:'lg',label:'To',px:'18px' },{ id:'xl',label:'Rất to',px:'20px' }] as const;
-
+const VARS = ['[Ten]','[Lop]','[Thang]','[Nam]','[SoTien]','[Ngay]'];
 /* ─── Grade Fees ──────────────────────────────────────────────────── */
 // FIX: khai báo type GradeFees — trước đây bị thiếu gây TypeScript error
 type GradeFees = Record<string, number>;
@@ -84,6 +80,22 @@ function loadTemplates(): ZaloTemplate[] {
 }
 function saveTemplates(ts: ZaloTemplate[]) {
   try { localStorage.setItem(TEMPLATE_KEY, JSON.stringify(ts)); } catch {}
+}
+
+const ZALO_PREVIEW_DATA: Record<string, string> = {
+  '[Ten]': 'Nguyễn An',
+  '[Lop]': '6A1',
+  '[Thang]': '5',
+  '[Nam]': '2026',
+  '[SoTien]': fmtVND(600_000),
+  '[Ngay]': formatDate(new Date().toISOString()),
+};
+
+function renderZaloPreview(content: string): string {
+  return Object.entries(ZALO_PREVIEW_DATA).reduce(
+    (msg, [key, value]) => msg.split(key).join(value),
+    content || DEFAULT_TEMPLATE.content
+  );
 }
 
 /* ─── Design tokens ──────────────────────────────────────────────── */
@@ -287,7 +299,7 @@ function TemplateModal({ open, onClose, initial, onSave }: {
           <div style={{ display: 'flex', gap: 10, paddingTop: 8, borderTop: '1px solid #f1f5f9' }}>
             <Button variant="outline" intent="neutral" fullWidth onClick={onClose}>Hủy</Button>
             <Button intent="primary" fullWidth onClick={() => {
-              if (!name.trim()) { toast.error('Nhập tên mẫu!'); return; }
+              if (!name.trim()) { toast.error('Nhập tên mẫu Zalo'); return; }
               onSave({ id: initial?.id || Date.now().toString(), name: name.trim(), content: content.trim() });
             }}>
               {initial ? 'Cập nhật' : 'Thêm mẫu'}
@@ -307,9 +319,10 @@ export default function SettingsTab({
   scriptUrl, setScriptUrl, gsOk, saving, loadData,
   baseTuition, setBaseTuition, schoolYear, setSchoolYear, zaloTpl, setZaloTpl,
   centerName, setCenterName, teacher, setTeacher, addr1, setAddr1, addr2, setAddr2,
-  phone, setPhone, showId, setShowId, hideInactive, setHideInactive,
+  phone, setPhone, hideInactive, setHideInactive,
   caDayOptions, setCaDayOptions, teacherList, setTeacherList,
 }: Props) {
+  const { confirm, ConfirmDialog } = useConfirm();
 
   // FIX: teacher1/phone1 cần sync với props khi parent cập nhật (e.g. sau reload dữ liệu)
   // Dùng useEffect để sync thay vì chỉ dùng useState(initialValue)
@@ -328,8 +341,6 @@ export default function SettingsTab({
   const [sheetsUrl, setSheetsUrl] = useState(() => { try { return localStorage.getItem('ltn-sheetsUrl') || ''; } catch { return ''; } });
   const [docUrl,    setDocUrl]    = useState(() => { try { return localStorage.getItem('ltn-docUrl') || ''; } catch { return ''; } });
   const [showQR,   setShowQR]   = useState(false);
-  const [fontSize, setFontSize] = useState<string>(() => { try { return localStorage.getItem('ltn-fontSize') || 'md'; } catch { return 'md'; } });
-  const [darkMode, setDarkMode] = useState<boolean>(() => { try { return localStorage.getItem('ltn-darkMode') === 'true'; } catch { return false; } });
   const [cacheSize, setCacheSize] = useState('');
   const [templates, setTemplates]         = useState<ZaloTemplate[]>(() => loadTemplates());
   const [activeTplId, setActiveTplId]     = useState<string>(templates[0]?.id || 'default');
@@ -338,64 +349,50 @@ export default function SettingsTab({
   const [tplContent, setTplContent]       = useState<string>(templates[0]?.content || DEFAULT_TEMPLATE.content);
   const [copiedVar, setCopiedVar]         = useState('');
   const [showDeleteTpl, setShowDeleteTpl] = useState(false);
-  const [activeSection, setActiveSection] = useState('connection');
+  const [activeSection, setActiveSection] = useState('center');
   const [gradeFees, setGradeFees] = useState<GradeFees>(() => loadGradeFees());
   const isMobile = useIsMobile();
 
   useEffect(() => { setCacheSize(getCacheSize()); }, []);
   useEffect(() => { const t = templates.find(t => t.id === activeTplId); if (t) setTplContent(t.content); }, [activeTplId, templates]);
 
-  /**
-   * FIX: font size useEffect cần chạy cả lần mount để apply font size đã lưu.
-   * Bug cũ: chỉ chạy khi fontSize thay đổi → nếu user không vào Settings,
-   * font size từ localStorage không bao giờ được áp dụng.
-   * Fix: thêm [] vào dependency để effect cũng chạy lần mount.
-   * Note: vẫn cần apply sớm hơn trong main.tsx để tránh FOUC.
-   */
-  useEffect(() => {
-    const px = FONT_SIZES.find(f => f.id === fontSize)?.px || '16px';
-    document.documentElement.style.setProperty('--app-font-size', px);
-    document.documentElement.style.fontSize = px;
-    document.body.style.fontSize = px;
-    try { localStorage.setItem('ltn-fontSize', fontSize); } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fontSize]);
-
-  useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark');
-      document.body.style.background = '#0f172a';
-      document.body.style.color = '#f1f5f9';
-    } else {
-      document.documentElement.classList.remove('dark');
-      document.body.style.background = '';
-      document.body.style.color = '';
-    }
-    try { localStorage.setItem('ltn-darkMode', String(darkMode)); } catch {}
-  }, [darkMode]);
-
   /* ── Handlers ─────────────────────────────────────────────────── */
   const handleLoadData = () => {
-    if (!scriptUrl.trim().startsWith('https://script.google.com/macros/s/')) { toast.error('⚠️ Script URL không hợp lệ!'); return; }
+    if (!scriptUrl.trim().startsWith('https://script.google.com/macros/s/')) { toast.error('Script URL không hợp lệ'); return; }
     loadData();
   };
-  const handleClearCache = () => {
-    try { localStorage.removeItem('ltn-cache'); setCacheSize(getCacheSize()); toast.success('✅ Đã xóa cache!'); loadData(); }
-    catch { toast.error('Lỗi xóa cache'); }
+  const handleClearCache = async () => {
+    if (!(await confirm('Xóa cache offline?', 'Dữ liệu tạm trong trình duyệt sẽ bị xóa, sau đó app tải lại từ Google Sheets.', 'warning'))) return;
+    try { localStorage.removeItem('ltn-cache'); setCacheSize(getCacheSize()); toast.success('Đã xóa cache offline'); loadData(); }
+    catch { toast.error('Không xóa được cache'); }
+  };
+  const handleResetSettings = async () => {
+    if (!(await confirm('Reset cài đặt ứng dụng?', 'Chỉ xóa cài đặt lưu trên trình duyệt này. Dữ liệu Google Sheets không bị ảnh hưởng.', 'danger'))) return;
+    try {
+      localStorage.removeItem('ltn-settings');
+      toast.success('Đã reset cài đặt đã lưu. Tải lại trang để dùng mặc định.');
+    } catch {
+      toast.error('Không reset được cài đặt');
+    }
+  };
+  const handleClearGradeFees = async () => {
+    if (Object.keys(gradeFees).length === 0) return;
+    if (!(await confirm('Xóa học phí theo khối?', 'Toàn bộ cấu hình học phí theo khối trong trình duyệt sẽ bị xóa.', 'warning'))) return;
+    setGradeFees({});
+    toast.success('Đã xóa học phí theo khối');
   };
   // FIX: xoá silentLoadData — dead code (useCallback bao bọc loadData nhưng không dùng ở đâu)
 
   const handleSaveAll = () => {
-    if (!scriptUrl.trim()) { toast.error('⚠️ Script URL không được để trống!'); return; }
-    if (baseTuition <= 0)  { toast.error('⚠️ Học phí phải lớn hơn 0!'); return; }
+    if (!scriptUrl.trim()) { toast.error('Script URL không được để trống'); return; }
+    if (baseTuition <= 0)  { toast.error('Học phí phải lớn hơn 0'); return; }
     // FIX: validate schoolYear format YYYY-YYYY trước khi lưu
     if (!/^\d{4}-\d{4}$/.test(schoolYear.trim())) {
-      toast.error('⚠️ Niên khóa phải có định dạng YYYY-YYYY (VD: 2025-2026)!'); return;
+      toast.error('Niên khóa phải có định dạng YYYY-YYYY, ví dụ 2025-2026'); return;
     }
     const newTeacherList = [teacher1, teacher2].filter(Boolean);
     setTeacherList(newTeacherList); setTeacher(teacher1); setPhone(phone1); setZaloTpl(tplContent);
-    // FIX: bỏ accentColor — không có UI để thay đổi trong SettingsTab
-    saveSettings({ baseTuition, schoolYear, zaloTpl: tplContent, bankId, accountNo, accountName, scriptUrl, centerName, teacher: teacher1, addr1, addr2, phone: phone1, showId, hideInactive, caDayOptions, teacherList: newTeacherList, fontSize, darkMode });
+    saveSettings({ baseTuition, schoolYear, zaloTpl: tplContent, bankId, accountNo, accountName, scriptUrl, centerName, teacher: teacher1, addr1, addr2, phone: phone1, hideInactive, caDayOptions, teacherList: newTeacherList });
     saveTemplates(templates);
     // NOTE: gradeFees lưu localStorage nhưng CHƯA được wire vào App.tsx → FinanceTab.
     // Hiện tại isMonthBillable chỉ dùng baseTuition. Cần thêm prop gradeFees vào
@@ -403,18 +400,18 @@ export default function SettingsTab({
     saveGradeFees(gradeFees);
     try { localStorage.setItem('ltn-sheetsUrl', sheetsUrl); } catch {}
     try { localStorage.setItem('ltn-docUrl', docUrl); } catch {}
-    toast.success('✅ Đã lưu tất cả cài đặt!');
+    toast.success('Đã lưu cài đặt');
   };
 
   const handleSaveTpl = (t: ZaloTemplate) => {
     const exists = templates.find(x => x.id === t.id);
     const next = exists ? templates.map(x => x.id === t.id ? t : x) : [...templates, t];
-    setTemplates(next); setActiveTplId(t.id); setTplContent(t.content); setShowTplModal(false); setEditingTpl(null); toast.success('✅ Đã lưu mẫu!');
+    setTemplates(next); setActiveTplId(t.id); setTplContent(t.content); setShowTplModal(false); setEditingTpl(null); toast.success('Đã lưu mẫu Zalo');
   };
   const handleDeleteTpl = () => {
-    if (templates.length <= 1) { toast.error('Cần ít nhất 1 mẫu!'); return; }
+    if (templates.length <= 1) { toast.error('Cần ít nhất 1 mẫu Zalo'); return; }
     const next = templates.filter(t => t.id !== activeTplId);
-    setTemplates(next); setActiveTplId(next[0].id); setTplContent(next[0].content); setShowDeleteTpl(false); toast.success('Đã xóa mẫu!');
+    setTemplates(next); setActiveTplId(next[0].id); setTplContent(next[0].content); setShowDeleteTpl(false); toast.success('Đã xóa mẫu Zalo');
   };
 
   /**
@@ -435,13 +432,11 @@ export default function SettingsTab({
 
   /* ── Nav config ───────────────────────────────────────────────── */
   const navItems = [
-    { id: 'connection', icon: Plug,         label: 'Kết nối',    accent: '#6366f1' },
-    { id: 'center',     icon: School,        label: 'Trung tâm',  accent: '#0ea5e9' },
-    { id: 'tuition',    icon: DollarSign,    label: 'Học phí',    accent: '#059669' },
-    { id: 'bank',       icon: Landmark,      label: 'Ngân hàng',  accent: '#d97706' },
-    { id: 'zalo',       icon: MessageSquare, label: 'Zalo',       accent: '#06b6d4' },
-    { id: 'display',    icon: Paintbrush,    label: 'Giao diện',  accent: '#8b5cf6' },
-    { id: 'data',       icon: Database,      label: 'Dữ liệu',    accent: '#dc2626' },
+    { id: 'center',        icon: School,        label: 'Trung tâm',  accent: '#0ea5e9' },
+    { id: 'finance',       icon: DollarSign,    label: 'Tài chính',  accent: '#059669' },
+    { id: 'operations',    icon: Clock,         label: 'Vận hành',   accent: '#d97706' },
+    { id: 'notifications', icon: MessageSquare, label: 'Thông báo',  accent: '#06b6d4' },
+    { id: 'system',        icon: Plug,          label: 'Hệ thống',   accent: '#6366f1' },
   ];
 
   const connColor = gsOk === true ? '#059669' : gsOk === false ? '#e11d48' : '#64748b';
@@ -477,7 +472,7 @@ export default function SettingsTab({
                 >
                   <div style={{ position: 'relative' }}>
                     <item.icon size={16} color={isActive ? item.accent : '#94a3b8'} />
-                    {item.id === 'connection' && (
+                    {item.id === 'system' && (
                       <span style={{ position: 'absolute', top: -2, right: -3, width: 6, height: 6, borderRadius: '50%', background: connColor, border: '1px solid white' }} />
                     )}
                   </div>
@@ -520,7 +515,7 @@ export default function SettingsTab({
                 >
                   <item.icon size={13} color={isActive ? item.accent : '#94a3b8'} />
                   <span style={{ flex: 1 }}>{item.label}</span>
-                  {item.id === 'connection' && (
+                  {item.id === 'system' && (
                     <span style={{ width: 7, height: 7, borderRadius: '50%', background: connColor, flexShrink: 0 }} />
                   )}
                 </button>
@@ -536,14 +531,14 @@ export default function SettingsTab({
       {/* ── Main content ─────────────────────────────────────────── */}
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14, paddingBottom: isMobile ? 80 : 0 }}>
 
-        {/* ── KẾT NỐI ── */}
-        {activeSection === 'connection' && (
-          <SCard icon={Plug} title="Kết nối & Dữ liệu" accent="#6366f1">
+        {/* ── HỆ THỐNG ── */}
+        {activeSection === 'system' && (
+          <SCard icon={Plug} title="Kết nối dữ liệu" accent="#6366f1">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
               <LField
                 label="Google Apps Script URL"
-                hint="URL triển khai của Google Apps Script — dùng để kết nối dữ liệu với Google Sheets"
+                hint="Dùng để đồng bộ dữ liệu với Google Sheets. Chỉ chỉnh khi thay đổi nguồn dữ liệu."
               >
                 <input value={scriptUrl} onChange={e => setScriptUrl(e.target.value)} placeholder="https://script.google.com/macros/s/..." style={INP} />
               </LField>
@@ -562,7 +557,7 @@ export default function SettingsTab({
                   <span style={{ fontSize: 12, fontWeight: 700, color: connColor }}>{connText}</span>
                 </div>
                 <div style={{ display: 'flex', gap: 7 }}>
-                  <Button intent="primary" size="sm" icon={<RefreshCw size={13} />} loading={saving} onClick={handleLoadData}>Tải lại</Button>
+                  <Button intent="primary" size="sm" icon={<RefreshCw size={13} />} loading={saving} onClick={handleLoadData}>Tải lại dữ liệu</Button>
                   <Button intent="danger" variant="outline" size="sm" icon={<Trash2 size={13} />} onClick={handleClearCache}>Xóa cache</Button>
                 </div>
               </div>
@@ -601,14 +596,26 @@ export default function SettingsTab({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <FormGrid>
                 <LField label="Tên trung tâm"><input value={centerName} onChange={e => setCenterName(e.target.value)} placeholder="Lớp Toán NK" style={INP} /></LField>
-                <LField label="Giáo viên 1"><input value={teacher1} onChange={e => setTeacher1(e.target.value)} placeholder="Lê Đức Nhân" style={INP} /></LField>
-                <LField label="Giáo viên 2"><input value={teacher2} onChange={e => setTeacher2(e.target.value)} placeholder="Nguyễn Thị Kiên" style={INP} /></LField>
                 <LField label="SĐT liên hệ"><input value={phone1} onChange={e => setPhone1(e.target.value)} placeholder="0383634949" style={INP} /></LField>
                 <LField label="Địa chỉ cơ sở 1"><input value={addr1} onChange={e => setAddr1(e.target.value)} placeholder="15/80 Đào Tấn" style={INP} /></LField>
                 <LField label="Địa chỉ cơ sở 2"><input value={addr2} onChange={e => setAddr2(e.target.value)} placeholder="30 Nguyễn Quang Bích" style={INP} /></LField>
               </FormGrid>
+            </div>
+          </SCard>
+        )}
 
-              {/* Divider */}
+        {/* ── VẬN HÀNH ── */}
+        {activeSection === 'operations' && (
+          <SCard icon={Clock} title="Vận hành buổi học" accent="#d97706">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+              <FormGrid>
+                <LField label="GV mặc định 1" hint="Fallback/legacy khi dữ liệu cũ chưa có MaGV rõ ràng.">
+                  <input value={teacher1} onChange={e => setTeacher1(e.target.value)} placeholder="Lê Đức Nhân" style={INP} />
+                </LField>
+                <LField label="GV mặc định 2" hint="Không thay thế danh sách giáo viên trong sheet GiaoVien.">
+                  <input value={teacher2} onChange={e => setTeacher2(e.target.value)} placeholder="Nguyễn Thị Kiên" style={INP} />
+                </LField>
+              </FormGrid>
               <div style={{ borderTop: '1px dashed #e2e8f0', paddingTop: 14 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
                   <Clock size={12} color="#64748b" />
@@ -616,16 +623,20 @@ export default function SettingsTab({
                 </div>
                 <TagList items={caDayOptions} setItems={setCaDayOptions} placeholder="Thêm ca (VD: 7h30, 19h30)..." />
               </div>
+              <div style={{ borderTop: '1px dashed #e2e8f0', paddingTop: 14 }}>
+                <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 10px' }}>Tùy chọn dữ liệu</p>
+                <ToggleRow label="Ẩn học sinh đã nghỉ học theo mặc định" sub="Áp dụng cho các danh sách có lọc trạng thái học sinh." val={hideInactive} onChange={setHideInactive} />
+              </div>
             </div>
           </SCard>
         )}
 
-        {/* ── HỌC PHÍ ── */}
-        {activeSection === 'tuition' && (
+        {/* ── TÀI CHÍNH ── */}
+        {activeSection === 'finance' && (
           <SCard icon={DollarSign} title="Học phí & Niên khóa" accent="#059669">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               <FormGrid>
-                <LField label="Học phí cơ bản (đ/tháng)" hint={`Hiện tại: ${baseTuition.toLocaleString('vi-VN')}đ/tháng`}>
+                <LField label="Học phí cơ bản (đ/tháng)" hint={`Hiện tại: ${fmtVND(baseTuition)}/tháng`}>
                   <input type="number" value={baseTuition} onChange={e => setBaseTuition(Number(e.target.value))} placeholder="600000" style={INP} min={0} />
                 </LField>
                 <LField label="Niên khóa" hint="Định dạng: YYYY-YYYY">
@@ -637,22 +648,19 @@ export default function SettingsTab({
               <div style={{ borderTop: '1px dashed #e2e8f0', paddingTop: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                   <div>
-                    <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Học phí theo khối</p>
-                    <p style={{ fontSize: 11, color: '#94a3b8', margin: '3px 0 0', fontStyle: 'italic' }}>Để trống = dùng học phí cơ bản ({baseTuition.toLocaleString('vi-VN')}đ)</p>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Học phí theo khối (chưa áp dụng công nợ)</p>
+                    <p style={{ fontSize: 11, color: '#94a3b8', margin: '3px 0 0', fontStyle: 'italic' }}>Để trống = dùng học phí cơ bản ({fmtVND(baseTuition)}). Hiện chỉ lưu cấu hình để dùng sau.</p>
                   </div>
                   <button
-                    onClick={() => setGradeFees({})}
+                    onClick={handleClearGradeFees}
                     style={{ fontSize: 11, color: '#e11d48', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
                   >
                     Xóa hết
                   </button>
                 </div>
-                {/* NOTE: warning khi có custom grade fees nhưng chưa wired */}
-                {Object.keys(gradeFees).length > 0 && (
-                  <div style={{ padding: '8px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 7, marginBottom: 12, fontSize: 11, color: '#92400e', fontWeight: 600 }}>
-                    ⚠️ Học phí theo khối hiện đang được lưu nhưng <strong>chưa ảnh hưởng đến tính toán công nợ</strong>. Tính năng này đang phát triển.
-                  </div>
-                )}
+                <div style={{ padding: '8px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 7, marginBottom: 12, fontSize: 11, color: '#92400e', fontWeight: 600 }}>
+                  Học phí theo khối hiện đang được lưu trong trình duyệt nhưng <strong>chưa ảnh hưởng đến tính toán công nợ</strong>. Công nợ vẫn dùng học phí cơ bản.
+                </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))', gap: 10 }}>
                   {ALL_GRADES.map(grade => {
                     const val = gradeFees[grade];
@@ -666,7 +674,7 @@ export default function SettingsTab({
                         <input
                           type="number"
                           value={val || ''}
-                          placeholder={baseTuition.toLocaleString('vi-VN')}
+                          placeholder={String(baseTuition || '')}
                           onChange={e => {
                             const n = Number(e.target.value);
                             setGradeFees(prev => {
@@ -692,7 +700,7 @@ export default function SettingsTab({
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                       {Object.entries(gradeFees).sort((a,b) => Number(a[0])-Number(b[0])).map(([g, fee]) => (
                         <span key={g} style={{ fontSize: 12, fontWeight: 700, background: 'white', border: '1px solid #a7f3d0', color: '#065f46', padding: '3px 10px', borderRadius: 6 }}>
-                          Khối {g}: {(fee as number).toLocaleString('vi-VN')}đ
+                          Khối {g}: {fmtVND(fee as number)}
                         </span>
                       ))}
                     </div>
@@ -704,7 +712,7 @@ export default function SettingsTab({
         )}
 
         {/* ── NGÂN HÀNG ── */}
-        {activeSection === 'bank' && (
+        {activeSection === 'finance' && (
           <SCard icon={Landmark} title="Ngân hàng (VietQR)" accent="#d97706">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <FormGrid>
@@ -728,8 +736,8 @@ export default function SettingsTab({
           </SCard>
         )}
 
-        {/* ── ZALO ── */}
-        {activeSection === 'zalo' && (
+        {/* ── THÔNG BÁO ── */}
+        {activeSection === 'notifications' && (
           <SCard icon={MessageSquare} title="Mẫu tin nhắn Zalo" accent="#06b6d4">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
@@ -779,6 +787,15 @@ export default function SettingsTab({
                 ))}
               </div>
 
+              <div style={{ padding: 12, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                <p style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 8px' }}>
+                  Xem trước
+                </p>
+                <p style={{ fontSize: 13, lineHeight: 1.6, color: '#334155', margin: 0, whiteSpace: 'pre-wrap' }}>
+                  {renderZaloPreview(tplContent)}
+                </p>
+              </div>
+
               {/* Delete confirm */}
               {showDeleteTpl && (
                 <div style={{ padding: 14, background: '#fff1f2', border: '1px solid #fecaca', borderRadius: 8 }}>
@@ -790,77 +807,17 @@ export default function SettingsTab({
                 </div>
               )}
 
-              <p style={{ fontSize: 12, color: '#94a3b8', margin: 0 }}>Biến sẽ được thay thế tự động khi gửi cho từng học sinh.</p>
+              <p style={{ fontSize: 12, color: '#94a3b8', margin: 0 }}>
+                Biến hỗ trợ: [Ten], [Lop], [Thang], [Nam], [SoTien], [Ngay]. Nội dung chỉ được copy/mở Zalo ở tab Tài chính, chưa gửi hàng loạt tự động.
+              </p>
               <TemplateModal open={showTplModal} onClose={() => { setShowTplModal(false); setEditingTpl(null); }} initial={editingTpl} onSave={handleSaveTpl} />
             </div>
           </SCard>
         )}
 
-        {/* ── GIAO DIỆN ── */}
-        {activeSection === 'display' && (
-          <SCard icon={Paintbrush} title="Giao diện" accent="#8b5cf6">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-
-              {/* Cỡ chữ */}
-              <div>
-                <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 10px' }}>Cỡ chữ</p>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 }}>
-                  {FONT_SIZES.map(f => (
-                    <button
-                      key={f.id}
-                      onClick={() => setFontSize(f.id)}
-                      style={{
-                        padding: '12px 8px', border: `1.5px solid ${fontSize === f.id ? '#8b5cf6' : '#e2e8f0'}`,
-                        borderRadius: 9, fontWeight: 700, cursor: 'pointer',
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-                        background: fontSize === f.id ? '#f5f3ff' : 'white',
-                        color: fontSize === f.id ? '#7c3aed' : '#475569',
-                        transition: 'all 0.15s',
-                      }}
-                    >
-                      <span style={{ fontSize: f.px, lineHeight: 1 }}>A</span>
-                      <span style={{ fontSize: 10, fontWeight: 600 }}>{f.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Chế độ */}
-              <div>
-                <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 10px' }}>Chế độ hiển thị</p>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {[{ id: false, label: '🌞 Sáng' }, { id: true, label: '🌙 Tối' }].map(m => (
-                    <button
-                      key={String(m.id)}
-                      onClick={() => setDarkMode(m.id)}
-                      style={{
-                        flex: 1, padding: '11px 14px',
-                        border: `1.5px solid ${darkMode === m.id ? '#8b5cf6' : '#e2e8f0'}`,
-                        borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: 'pointer',
-                        background: darkMode === m.id ? '#f5f3ff' : 'white',
-                        color: darkMode === m.id ? '#7c3aed' : '#475569',
-                        transition: 'all 0.15s',
-                      }}
-                    >
-                      {m.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Toggles */}
-              <div>
-                <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 10px' }}>Tuỳ chọn hiển thị</p>
-                <ToggleRow label="Hiển thị Mã HS trong danh sách" val={showId} onChange={setShowId} />
-                <ToggleRow label="Ẩn học sinh đã nghỉ học theo mặc định" val={hideInactive} onChange={setHideInactive} />
-              </div>
-            </div>
-          </SCard>
-        )}
-
         {/* ── DỮ LIỆU ── */}
-        {activeSection === 'data' && (
-          <SCard icon={Database} title="Dữ liệu & Cache" accent="#dc2626">
+        {activeSection === 'system' && (
+          <SCard icon={Database} title="Dữ liệu hệ thống" accent="#dc2626">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
 
               {/* Cache row */}
@@ -895,7 +852,7 @@ export default function SettingsTab({
                   <p style={{ fontSize: 11, color: '#94a3b8', margin: '3px 0 0' }}>Lưu trong localStorage của trình duyệt</p>
                 </div>
                 <button
-                  onClick={() => { try { localStorage.removeItem('ltn-settings'); toast.success('✅ Đã xóa cài đặt!'); } catch { toast.error('Lỗi'); } }}
+                  onClick={handleResetSettings}
                   style={{ fontSize: 12, color: '#e11d48', fontWeight: 700, background: '#fff1f2', border: '1px solid #fecaca', padding: '6px 14px', cursor: 'pointer', borderRadius: 7 }}
                 >
                   Reset cài đặt
@@ -924,6 +881,7 @@ export default function SettingsTab({
         </div>
       )}
 
+      <ConfirmDialog />
     </div>
   );
 }

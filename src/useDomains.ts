@@ -123,10 +123,15 @@ export function useDomains(cfg: DomainConfig) {
     withSave(async () => {
       if (!form.id?.trim() || !form.name?.trim())
         throw new Error('⚠️ Mã HS và Tên là bắt buộc!');
-      const normalizedId = form.id.trim().replace(/\s+/g, '');
-      if (!editStudent && students.some(s => s.id === normalizedId))
+      const normalizedId = form.id.trim().replace(/\s+/g, '').toUpperCase();
+      if (!editStudent && students.some(s => s.id.toUpperCase() === normalizedId))
         throw new Error(`⚠️ Mã HS "${normalizedId}" đã tồn tại!`);
-      form = { ...form, id: normalizedId };
+      form = {
+        ...form,
+        id: normalizedId,
+        parentPhone: String(form.parentPhone ?? '').trim(),
+        studentPhone: String(form.studentPhone ?? '').trim(),
+      };
 
       // Optimistic update CHỈ sau khi validate xong
       const optimistic: Student = {
@@ -134,7 +139,7 @@ export function useDomains(cfg: DomainConfig) {
         dob: form.dob || '', branch: form.branch || '',
         grade: form.grade || '', school: form.school || '',
         teacher: form.teacher || '---', parentName: form.parentName || '',
-        parentPhone: form.parentPhone || '', studentPhone: form.studentPhone || '',
+        parentPhone: String(form.parentPhone ?? ''), studentPhone: String(form.studentPhone ?? ''),
         address: form.address || '', academicLevel: form.academicLevel || '',
         goal: form.goal || '', supportNeeded: form.supportNeeded || '',
         classId: form.classId || '',
@@ -242,6 +247,7 @@ export function useDomains(cfg: DomainConfig) {
         'Ma Lop': form['Mã Lớp']    || '',  // backup key GAS cũng check
         TenLop:   form['Tên Lớp']   || '',
         Khoi:     form['Khối']      || '',
+        MaGV:     form.MaGV || form.teacherId || '',
         GiaoVien: form['Giáo viên'] || '',
         CoSo:     form['Cơ sở']     || '',
         Buoi1:    form['Buổi 1']    || '',
@@ -374,8 +380,15 @@ export function useDomains(cfg: DomainConfig) {
     /* ── Optimistic update: hiện entry ngay lập tức, không chờ GAS ── */
     const attList = sanitizeAttendance(form.attendance || []);
     const present = attList.filter((a: any) => (a.trangThai || a['Trạng thái']) === 'Có mặt').length;
-    const absent  = attList.filter((a: any) => (a.trangThai || a['Trạng thái']) === 'Vắng').length;
-    const late    = attList.filter((a: any) => (a.trangThai || a['Trạng thái']) === 'Muộn').length;
+    const absent  = attList.filter((a: any) => {
+      const st = a.trangThai || a['Trạng thái'];
+      return st === 'Vắng';
+    }).length;
+    const late    = 0;
+    const excused = attList.filter((a: any) => {
+      const st = a.trangThai || a['Trạng thái'];
+      return st === 'Có phép' || st === 'Nghỉ có phép';
+    }).length;
     const dateFormatted = formatDate(form.date);
     const optimisticLog = {
       rawDate: form.date, date: dateFormatted,
@@ -383,9 +396,9 @@ export function useDomains(cfg: DomainConfig) {
       originalClassId: form.originalClassId || form.classId,
       originalCaDay: form.originalCaDay || form.caDay || '',
       classId: form.classId, content: form.content || '',
-      homework: form.homework || '---', teacherNote: '',
+      homework: form.homework || '---', teacherNote: form.teacherNote || '',
       teacherName: form.teacherName || '', caDay: form.caDay || '',
-      present, absent, late, attendanceList: attList,
+      present, absent, late, excused, attendanceList: attList,
     };
     if (isEdit) {
       setTlogs(prev => prev.map(l =>
@@ -409,6 +422,7 @@ export function useDomains(cfg: DomainConfig) {
         attendanceList: attList,
         content:        form.content,
         homework:       form.homework || '---',
+        teacherNote:    form.teacherNote || '',
         ...(isEdit && {
           originalDate:     form.originalDate,
           originalClassId:  form.originalClassId,
@@ -469,9 +483,32 @@ export function useDomains(cfg: DomainConfig) {
   ════════════════════════════════════════════ */
   const handleSaveTeacher = useCallback(async (form: any) => {
     const isEdit = !!(form.id?.trim()) && teachers.some(t => t.id === form.id.trim());
+    const nextTeacherId = () => {
+      const used = new Set(teachers.map(t => String(t.id || '').trim().toUpperCase()));
+      const maxNo = teachers.reduce((max, t) => {
+        const m = String(t.id || '').trim().toUpperCase().match(/^GV0*(\d+)$/);
+        return m ? Math.max(max, Number(m[1])) : max;
+      }, 0);
+      let nextNo = maxNo + 1;
+      let nextId = `GV${String(nextNo).padStart(4, '0')}`;
+      while (used.has(nextId)) {
+        nextNo += 1;
+        nextId = `GV${String(nextNo).padStart(4, '0')}`;
+      }
+      return nextId;
+    };
     const payload: Teacher = {
       ...form,
-      id:        isEdit ? form.id.trim() : `GV${Date.now()}`,
+      id:        isEdit ? form.id.trim() : nextTeacherId(),
+      name:      String(form.name || '').trim(),
+      phone:     String(form.phone || '').trim(),
+      email:     String(form.email || '').trim(),
+      specialization: String(form.specialization || '').trim(),
+      qualification:  String(form.qualification || '').trim(),
+      baseSalary: Number(form.baseSalary || 0),
+      hourlyRate: Number(form.hourlyRate || 0),
+      allowance:  Number(form.allowance || 0),
+      notes:      String(form.notes || '').trim(),
       classes:   form.classes  || [],
       status:    form.status   || 'active',
       createdAt: form.createdAt || new Date().toISOString(),
@@ -486,6 +523,16 @@ export function useDomains(cfg: DomainConfig) {
       await api({
         action: isEdit ? 'updateTeacher' : 'saveTeacher',
         ...payload,
+        MaGV:       payload.id,
+        HoTen:      payload.name,
+        SDT:        payload.phone,
+        Email:      payload.email,
+        TrangThai:  payload.status,
+        ChuyenMon:  payload.specialization || '',
+        DonGiaMoiBuoi: payload.hourlyRate || 0,
+        LuongCoBan: payload.baseSalary || 0,
+        PhuCap:     payload.allowance || 0,
+        GhiChu:     payload.notes || '',
         subject:    payload.specialization || '',
         degree:     payload.qualification  || '',
         salary:     payload.baseSalary     || 0,

@@ -47,7 +47,7 @@ export type Intent  = 'primary'|'secondary'|'success'|'warning'|'danger'|'neutra
 export type Variant = 'solid'|'outline'|'ghost'|'text';
 export type Align   = 'left'|'center'|'right';
 export type BadgeColor = 'indigo'|'teal'|'emerald'|'amber'|'rose'|'sky'|'violet'|'slate';
-export type AttendanceStatus = 'present'|'absent'|'late';
+export type AttendanceStatus = 'present'|'absent'|'excused';
 export type ConnectionState = 'connected'|'disconnected'|'loading'|'error';
 
 export interface AttendanceStudent {

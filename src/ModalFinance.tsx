@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import toast from 'react-hot-toast';
 import { X, Save, DollarSign, Printer, Check, TrendingUp, TrendingDown, Calendar, Users, FileText, Wallet } from 'lucide-react';
-import { fmtVND, formatDate, makeVietQR, BANK_DEFAULT, toInputDate, localDateStr } from './helpers';
+import { fmtVND, formatDate, makeVietQR, BANK_DEFAULT, toInputDate, localDateStr, normalizePaymentMethod } from './helpers';
 import { Button, IconButton, FilterTabs } from './dsComponents';
 import type { Student, Payment, Expense } from './types';
 
@@ -96,7 +97,7 @@ export function FABModal({
           maHS: editingPayment.studentId,
           nguoiNop: editingPayment.payer,
           soTien: editingPayment.amount,
-          method: editingPayment.method,
+          method: normalizePaymentMethod(editingPayment.method),
           thangHP: parsedMo,
           namHP: (editingPayment as any).namHP || curYr,
           note: editingPayment.note || '',
@@ -217,7 +218,7 @@ export function FABModal({
                       style={INP} {...focusBorder('#059669')} />
                   </LField>
                   <LField label="Hình thức">
-                    <select value={fee.method || 'Chuyển khoản'} onChange={e => uf('method', e.target.value)}
+                    <select value={normalizePaymentMethod(fee.method || 'Chuyển khoản')} onChange={e => uf('method', e.target.value)}
                       style={SEL} {...focusBorder('#059669')}>
                       {methodOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
@@ -412,7 +413,7 @@ export function InvoiceModal({ payment, onClose, centerName, bankId, accountNo, 
     { l: 'Ngày thu', v: formatDate(r.date) },
     { l: 'Học sinh', v: String(r.studentName || '').toUpperCase() },
     { l: 'Người nộp', v: r.payer || '---' },
-    { l: 'Hình thức', v: r.method || '---' },
+    { l: 'Hình thức', v: normalizePaymentMethod(r.method) },
     { l: 'Nội dung', v: r.description || '---' },
   ];
   return (

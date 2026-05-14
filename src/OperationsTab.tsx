@@ -1,28 +1,39 @@
 /**
  * OperationsTab.tsx — v27.1
- * ✅ Thống kê vắng: filters inline với sub-tab header
- * ✅ AppTable cho tất cả bảng
- * ✅ StatBlock cho Thống kê vắng
+ * Tổng hợp vận hành + các subtab nghiệp vụ gọn.
  */
-import React, { useState, useMemo } from 'react';
-import { BookOpen, Calendar, AlertTriangle, Eye, Edit3, Clock, Phone } from 'lucide-react';
-import { formatDate, parseDMY } from './helpers';
-import { Badge, Pager, FilterTabs, SearchBar, Select, TableActions } from './dsComponents';
-import { FAB } from './AppComponents';
+import React, { useEffect, useState, useMemo } from 'react';
+import { BookOpen, Calendar, AlertTriangle, Eye, Edit3, Clock, Phone, Plus, School, Users } from 'lucide-react';
+import { formatDate, parseDMY, isStudentActive } from './helpers';
+import { Badge, Pager, FilterTabs, Select, TableActions, Button } from './dsComponents';
 import { StatBlock, StatGrid, TABLE_WRAP, TH_SHARED, TD_SHARED, trStyle } from './AppComponents';
-import type { Student, TeachingLog, LeaveRequest } from './types';
+import type { Student, TeachingLog, LeaveRequest, Payment, Teacher, OperationsSub } from './types';
 
-type Sub = 'diary' | 'schedule' | 'absence';
+type Sub = OperationsSub;
 const SUBS = [
+  { id: 'overview' as Sub, label: 'Tổng hợp',           icon: AlertTriangle },
   { id: 'schedule' as Sub, label: 'Lịch dạy',           icon: Calendar   },
-  { id: 'diary'    as Sub, label: 'Nhật ký giảng dạy', icon: BookOpen    },
-  { id: 'absence'  as Sub, label: 'Thống kê vắng',      icon: AlertTriangle },
+  { id: 'lessons'  as Sub, label: 'Buổi học',           icon: BookOpen    },
+  { id: 'attendance' as Sub, label: 'Chuyên cần',       icon: Users },
 ];
 
 const DAYS     = ['T2','T3','T4','T5','T6','T7','CN'];
 const DAY_FULL: Record<string, string> = { T2:'Thứ 2',T3:'Thứ 3',T4:'Thứ 4',T5:'Thứ 5',T6:'Thứ 6',T7:'Thứ 7',CN:'Chủ nhật' };
 const CA_SLOTS = ['7h30','9h','13h30','15h30','17h30','19h30'];
 const CA_MINS  = [7*60+30, 9*60, 13*60+30, 15*60+30, 17*60+30, 19*60+30];
+
+function ScheduleBadge({ status }: { status: 'logged' | 'pending' | 'future' }) {
+  const cfg = status === 'logged'
+    ? { label: 'Đã ghi', bg: '#ecfdf5', border: '#a7f3d0', color: '#047857' }
+    : status === 'pending'
+      ? { label: 'Chưa ghi', bg: '#fffbeb', border: '#fde68a', color: '#92400e' }
+      : { label: 'Sắp tới', bg: '#f8fafc', border: '#e2e8f0', color: '#64748b' };
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '2px 7px', borderRadius: 999, border: `1px solid ${cfg.border}`, background: cfg.bg, color: cfg.color, fontSize: 10, fontWeight: 800, whiteSpace: 'nowrap' }}>
+      {cfg.label}
+    </span>
+  );
+}
 
 function parseBuoi(v: string) {
   if (!v) return null;
@@ -69,6 +80,13 @@ function sameDay(a: Date, b: Date) {
   return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
 }
 
+function isFutureSlot(slot: ScheduledSlot, now: Date) {
+  const mins = CA_MINS[slot.caIdx] ?? 0;
+  const startsAt = new Date(slot.date);
+  startsAt.setHours(Math.floor(mins / 60), mins % 60, 0, 0);
+  return startsAt > now;
+}
+
 function findMatchingTlog(slot: ScheduledSlot, tlogs: TeachingLog[]): TeachingLog | undefined {
   return tlogs.find(l => {
     if (l.classId !== slot.classId) return false;
@@ -92,6 +110,74 @@ function findMatchingTlog(slot: ScheduledSlot, tlogs: TeachingLog[]): TeachingLo
     return true;
   });
 }
+
+type AlertKind = 'class' | 'student' | 'teacher' | 'finance';
+type AlertSeverity = 'high' | 'medium' | 'low';
+
+interface OperationAlert {
+  id: string;
+  kind: AlertKind;
+  severity: AlertSeverity;
+  title: string;
+  detail: string;
+  target: string;
+  action: string;
+}
+
+const norm = (raw: any) =>
+  String(raw || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd');
+const getClassId = (c: Record<string, any>) => String(c['Mã Lớp'] || c['MÃ£ Lá»›p'] || c.MaLop || c['Ma Lop'] || '');
+const getClassTeacherId = (c: Record<string, any>) => String(c.MaGV || c.maGV || c.teacherId || '');
+const getClassTeacherName = (c: Record<string, any>) => String(c.GiaoVien || c['Giáo viên'] || c['GiÃ¡o viÃªn'] || '');
+const getClassSlots = (c: Record<string, any>) => [c['Buổi 1'] || c['Buá»•i 1'], c['Buổi 2'] || c['Buá»•i 2'], c['Buổi 3'] || c['Buá»•i 3']].filter(Boolean).map(String);
+const teacherMatchesClass = (teacher: Teacher, c: Record<string, any>) => {
+  const tid = getClassTeacherId(c);
+  if (tid && teacher.id && norm(tid) === norm(teacher.id)) return true;
+  const tName = getClassTeacherName(c);
+  if (!tName || !teacher.name) return false;
+  return norm(tName) === norm(teacher.name);
+};
+const isMonthBillable = (s: Student, mo: number, yr: number) => {
+  const monthStart = new Date(yr, mo - 1, 1).getTime();
+  const startTs = parseDMY(s.startDate || '');
+  if (startTs) {
+    const d = new Date(startTs);
+    if (monthStart < new Date(d.getFullYear(), d.getMonth(), 1).getTime()) return false;
+  }
+  const endRaw = String(s.endDate || '').trim();
+  const endTs = parseDMY(endRaw);
+  if (endTs && endRaw && endRaw !== '---') {
+    const d = new Date(endTs);
+    if (monthStart >= new Date(d.getFullYear(), d.getMonth(), 1).getTime()) return false;
+  }
+  return true;
+};
+const paymentInTuitionMonth = (p: Payment, mo: number, yr: number) => {
+  const hpMo = Number(p.thangHP || 0);
+  const hpYr = Number(p.namHP || 0);
+  if (hpMo) return hpMo === mo && (hpYr || yr) === yr;
+  const ts = parseDMY(p.date || '');
+  if (!ts) return false;
+  const d = new Date(ts);
+  return d.getMonth() + 1 === mo && d.getFullYear() === yr;
+};
+const getAttendanceStatus = (a: any) => a.trangThai || a['Trạng thái'] || a.TrangThai || '';
+const normalizeAttendanceStatus = (raw: string) => {
+  const s = String(raw || '').trim();
+  if (s === 'Vắng') return 'absent';
+  if (s === 'Có phép' || s === 'Nghỉ có phép') return 'excused';
+  const n = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (n === 'vang' || n === 'absent') return 'absent';
+  if (n === 'co phep' || n === 'nghi co phep' || n === 'excused') return 'excused';
+  return 'present';
+};
+const attendanceIdOf = (a: any) => a.maHS || a['Mã HS'] || a.MaHS || '';
+const logInMonth = (log: TeachingLog, mo: number, yr: number) => {
+  const ts = parseDMY(log.rawDate || log.date || '');
+  if (!ts) return false;
+  const d = new Date(ts);
+  return d.getMonth() + 1 === mo && d.getFullYear() === yr;
+};
 
 function WeeklyCalendar({ uClasses, tlogs, onAddDiary, onViewDiary }: {
   uClasses: Record<string,string>[];
@@ -222,35 +308,35 @@ function WeeklyCalendar({ uClasses, tlogs, onAddDiary, onViewDiary }: {
                     {weekDates.map((d, di) => {
                       const cellSlots = grid[ci][di] || [];
                       const isToday = sameDay(d, today);
-                      const isPast  = d < today && !isToday;
                       return (
                         <td key={di} style={{ ...TD_SHARED, textAlign:'center', padding:'6px 5px', background: isToday ? (cellSlots.length > 0 ? undefined : '#fafbff') : 'transparent', borderLeft: isToday ? '1px solid #c7d2fe' : undefined, borderRight: isToday ? '1px solid #c7d2fe' : undefined, verticalAlign:'top' }}>
                           {cellSlots.length === 0
                             ? <span style={{ color:'#e2e8f0',fontSize:14 }}>—</span>
                             : cellSlots.map((slot, k) => {
                                 const tlog = findMatchingTlog(slot, tlogs);
-                                const isFuture = d > today;
+                                const isFuture = isFutureSlot(slot, today);
+                                const isLockedFuture = isFuture && !tlog;
                                 const bg      = tlog ? '#ecfdf5' : (isFuture ? '#f8fafc' : '#fefce8');
                                 const border  = tlog ? '#a7f3d0' : (isFuture ? '#e2e8f0' : '#fde68a');
                                 const textClr = tlog ? '#065f46' : (isFuture ? '#94a3b8' : '#92400e');
-                                const cursor  = isFuture ? 'default' : 'pointer';
+                                const cursor  = isLockedFuture ? 'default' : 'pointer';
                                 return (
                                   <div key={k}
                                     onClick={() => {
-                                      if (isFuture) return;
+                                      if (isLockedFuture) return;
                                       if (tlog) onViewDiary(tlog);
                                       else onAddDiary(slot.classId, slot.isoDate, slot.caDay);
                                     }}
                                     title={tlog ? `Đã ghi: ${tlog.present} có mặt` : (isFuture ? 'Buổi chưa đến' : 'Chưa ghi — click để ghi')}
                                     style={{ background:bg, border:`1px solid ${border}`, borderRadius:7, padding:'5px 7px', margin:'0 auto 3px', cursor, transition:'opacity 0.15s', maxWidth:100 }}
-                                    onMouseEnter={e => { if (!isFuture) (e.currentTarget as HTMLElement).style.opacity='0.8'; }}
+                                    onMouseEnter={e => { if (!isLockedFuture) (e.currentTarget as HTMLElement).style.opacity='0.8'; }}
                                     onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity='1'; }}
                                   >
                                     <p style={{ fontSize:11,fontWeight:800,color:textClr,margin:0,whiteSpace:'nowrap' }}>{slot.classId}</p>
-                                    {tlog
-                                      ? <p style={{ fontSize:10,color:'#059669',margin:'2px 0 0',fontWeight:600 }}>✓ {tlog.present}/{tlog.present+(tlog.absent||0)+(tlog.late||0)}</p>
-                                      : <p style={{ fontSize:10,color:textClr,margin:'2px 0 0',opacity:0.8 }}>{isFuture ? '—' : '! Chưa ghi'}</p>
-                                    }
+                                    {slot.teacher && <p style={{ fontSize:9,color:'#64748b',margin:'1px 0 0',fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{slot.teacher}</p>}
+                                    <div style={{ marginTop: 4, display: 'flex', justifyContent: 'center' }}>
+                                      <ScheduleBadge status={tlog ? 'logged' : isFuture ? 'future' : 'pending'} />
+                                    </div>
                                   </div>
                                 );
                               })
@@ -269,8 +355,8 @@ function WeeklyCalendar({ uClasses, tlogs, onAddDiary, onViewDiary }: {
       {/* Legend */}
       <div style={{ display:'flex', gap:16, flexWrap:'wrap' }}>
         {[
-          { bg:'#ecfdf5', border:'#a7f3d0', color:'#065f46', label:'Đã ghi nhật ký' },
-          { bg:'#fefce8', border:'#fde68a', color:'#92400e', label:'Chưa ghi (click để ghi)' },
+          { bg:'#ecfdf5', border:'#a7f3d0', color:'#065f46', label:'Đã ghi buổi học' },
+          { bg:'#fefce8', border:'#fde68a', color:'#92400e', label:'Chưa ghi buổi học' },
           { bg:'#f8fafc', border:'#e2e8f0', color:'#94a3b8', label:'Buổi tương lai' },
         ].map(item => (
           <div key={item.label} style={{ display:'flex',alignItems:'center',gap:6 }}>
@@ -284,39 +370,96 @@ function WeeklyCalendar({ uClasses, tlogs, onAddDiary, onViewDiary }: {
 }
 
 interface Props {
+  sub: OperationsSub; setSub: (sub: OperationsSub) => void;
   filtD: TeachingLog[]; pgD: number; setPgD: (p: number) => void;
   qD: string; setQD: (v: string) => void;
   dCls: string; setDCls: (v: string) => void;
   uClasses: Record<string, string>[]; IPP: number; students: Student[]; tlogs: TeachingLog[];
+  teachers: Teacher[]; payments: Payment[]; curMo: number; curYr: number; isPaid: (sid: string, mo: number, yr: number) => boolean;
   leaveRequests: LeaveRequest[];
   onViewDiary: (log: TeachingLog) => void; onEditDiary: (log: TeachingLog) => void;
   onAddDiary: (classId?: string, date?: string, caDay?: string) => void;
   onApproveLeave: (id: string) => void; onRejectLeave: (id: string) => void;
 }
 
-export default function OperationsTab({ filtD, pgD, setPgD, qD, setQD, dCls, setDCls, uClasses, IPP, students, tlogs, onViewDiary, onEditDiary, onAddDiary }: Props) {
-  const [sub, setSub] = useState<Sub>('schedule');
-  const [absSearch, setAbsSearch] = useState('');
+export default function OperationsTab({ sub, setSub, filtD, pgD, setPgD, qD, setQD, dCls, setDCls, uClasses, IPP, students, tlogs, teachers, payments, curMo, curYr, isPaid, onViewDiary, onEditDiary, onAddDiary }: Props) {
   const [absClass, setAbsClass]   = useState('');
-  const [absSort, setAbsSort]     = useState<'absent' | 'late' | 'name'>('absent');
+  const [absFocus, setAbsFocus] = useState<'all' | 'present' | 'absent' | 'excused' | 'streak'>('all');
 
   const paged = filtD.slice((pgD - 1) * IPP, pgD * IPP);
   const [hovIdx, setHovIdx] = useState<number | null>(null);
 
-  const teachers = useMemo(() => { const s = new Set<string>(); uClasses.forEach(c => { if (c['Giáo viên'] && c['Giáo viên'] !== '---') s.add(c['Giáo viên']); }); return [...s]; }, [uClasses]);
+  useEffect(() => {
+    if (sub === 'lessons' && qD) setQD('');
+  }, [sub, qD, setQD]);
+
   const classOptions = [{ value: '', label: 'Tất cả lớp' }, ...uClasses.map(c => ({ value: c['Mã Lớp'], label: c['Mã Lớp'] }))];
+
+  const currentWeekSlots = useMemo(() => {
+    const weekDates = getWeekDates(0);
+    const result: ScheduledSlot[] = [];
+    weekDates.forEach(date => {
+      const dayCode = ['CN','T2','T3','T4','T5','T6','T7'][date.getDay()];
+      uClasses.forEach(c => {
+        getClassSlots(c).forEach(slotRaw => {
+          const p = parseBuoi(slotRaw);
+          if (!p || p.day !== dayCode) return;
+          result.push({ date, isoDate: toISO(date), classId: getClassId(c), caDay: CA_SLOTS[p.caIdx], caIdx: p.caIdx, teacher: getClassTeacherName(c) });
+        });
+      });
+    });
+    return result;
+  }, [uClasses]);
+
+  const todaySlotCount = useMemo(() => {
+    const today = new Date();
+    return currentWeekSlots.filter(s => sameDay(s.date, today)).length;
+  }, [currentWeekSlots]);
+
+  const operationalAlerts = useMemo<OperationAlert[]>(() => {
+    const alerts: OperationAlert[] = [];
+    const activeStudents = students.filter(isStudentActive);
+    const billableStudents = activeStudents.filter(s => isMonthBillable(s, curMo, curYr));
+
+    uClasses.forEach(c => {
+      const classId = getClassId(c);
+      const teacherId = getClassTeacherId(c);
+      const teacherName = getClassTeacherName(c);
+      const slots = getClassSlots(c);
+      if (!teacherId && !teacherName) alerts.push({ id: `class-teacher-${classId}`, kind: 'class', severity: 'high', title: 'Lớp thiếu giáo viên', detail: 'Chưa có MaGV/GiaoVien để điều phối lịch dạy.', target: classId || 'Lớp chưa rõ mã', action: 'Cập nhật giáo viên phụ trách' });
+      if (slots.length === 0) alerts.push({ id: `class-slots-${classId}`, kind: 'class', severity: 'medium', title: 'Lớp thiếu lịch học', detail: 'Chưa có Buổi 1/2/3 nên lịch tuần không hiển thị.', target: classId || 'Lớp chưa rõ mã', action: 'Bổ sung lịch học' });
+    });
+
+    activeStudents.filter(s => !String(s.classId || '').trim()).forEach(s => {
+      alerts.push({ id: `student-class-${s.id}`, kind: 'student', severity: 'high', title: 'HS đang học chưa có lớp', detail: 'Học sinh active nhưng chưa có classId/DangKyLop active.', target: `${s.id} · ${s.name}`, action: 'Gán lớp cho học sinh' });
+    });
+
+    teachers.filter(t => t.status === 'active').forEach(t => {
+      const hasClass = uClasses.some(c => teacherMatchesClass(t, c)) || (t.classes || []).length > 0;
+      if (!hasClass) alerts.push({ id: `teacher-class-${t.id}`, kind: 'teacher', severity: 'low', title: 'GV active chưa phụ trách lớp', detail: 'Giáo viên đang hoạt động nhưng chưa thấy lớp nào gắn MaGV/tên.', target: `${t.id} · ${t.name}`, action: 'Gán lớp nếu đang dạy' });
+    });
+
+    payments.filter(p => paymentInTuitionMonth(p, curMo, curYr)).forEach(p => {
+      const missingStudent = !String(p.studentId || '').trim() || p.studentId === 'X';
+      const missingClass = !String((p as any).maLop || (p as any).MaLop || (p as any).classId || '').trim();
+      if (missingStudent || missingClass) alerts.push({ id: `payment-code-${p.id}`, kind: 'finance', severity: missingStudent ? 'high' : 'medium', title: 'Công nợ thiếu MaHS/MaLop', detail: `${missingStudent ? 'Thiếu MaHS' : ''}${missingStudent && missingClass ? ', ' : ''}${missingClass ? 'thiếu MaLop' : ''}.`, target: p.docNum || p.id, action: 'Kiểm tra phiếu thu' });
+    });
+
+    billableStudents.filter(s => !isPaid(s.id, curMo, curYr) && !String(s.classId || '').trim()).forEach(s => {
+      alerts.push({ id: `billable-class-${s.id}`, kind: 'finance', severity: 'high', title: 'HS billable thiếu MaLop', detail: `Chưa đóng T${curMo}/${curYr} và chưa có lớp để nhắc phí đúng ngữ cảnh.`, target: `${s.id} · ${s.name}`, action: 'Gán lớp hoặc kiểm tra DangKyLop' });
+    });
+
+    return alerts;
+  }, [students, uClasses, teachers, payments, curMo, curYr, isPaid]);
 
   /* Absence stats */
   const absStats = useMemo(() => {
-    const map = new Map<string, { id: string; name: string; classId: string; parentPhone: string; absent: number; late: number; present: number; streak: number }>();
-    students.filter(s => s.status !== 'inactive' && (!s.endDate || s.endDate === '---' || s.endDate === '')).forEach(s => map.set(s.id, { id: s.id, name: s.name, classId: s.classId, parentPhone: s.parentPhone || '', absent: 0, late: 0, present: 0, streak: 0 }));
-    // Support both GAS v29 camelCase (trangThai) and legacy Vietnamese keys ('Trạng thái')
-    const getStatus = (a: any) => a.trangThai || a['Trạng thái'] || a.TrangThai || '';
-    const getId = (a: any) => a.maHS || a['Mã HS'] || a.MaHS || '';
+    const map = new Map<string, { id: string; name: string; classId: string; parentPhone: string; absent: number; excused: number; present: number; streak: number }>();
+    students.filter(s => s.status !== 'inactive' && (!s.endDate || s.endDate === '---' || s.endDate === '')).forEach(s => map.set(s.id, { id: s.id, name: s.name, classId: s.classId, parentPhone: s.parentPhone || '', absent: 0, excused: 0, present: 0, streak: 0 }));
     tlogs.forEach(log => (log.attendanceList || []).forEach((a: any) => {
-      const row = map.get(getId(a)); if (!row) return;
-      const st = getStatus(a);
-      if (st === 'Vắng') row.absent++; else if (st === 'Muộn') row.late++; else if (st === 'Có mặt') row.present++;
+      const row = map.get(attendanceIdOf(a)); if (!row) return;
+      const st = normalizeAttendanceStatus(getAttendanceStatus(a));
+      if (st === 'absent') row.absent++; else if (st === 'excused') row.excused++; else row.present++;
     }));
     const byClass = new Map<string, any[]>();
     [...tlogs].sort((a: any, b: any) => parseDMY(b.rawDate||b.date) - parseDMY(a.rawDate||a.date))
@@ -326,8 +469,8 @@ export default function OperationsTab({ filtD, pgD, setPgD, qD, setQD, dCls, set
       const logs = (byClass.get(s.classId) || []).slice(0, 10);
       let streak = 0;
       for (const log of logs) {
-        const a = (log.attendanceList || []).find((a: any) => getId(a) === s.id);
-        if (a && getStatus(a) === 'Vắng') streak++; else if (a) break;
+        const a = (log.attendanceList || []).find((a: any) => attendanceIdOf(a) === s.id);
+        if (a && normalizeAttendanceStatus(getAttendanceStatus(a)) === 'absent') streak++; else if (a) break;
       }
       row.streak = streak;
     });
@@ -336,48 +479,144 @@ export default function OperationsTab({ filtD, pgD, setPgD, qD, setQD, dCls, set
 
   const absClasses = absStats.map(r => r.classId).filter((v, i, a) => a.indexOf(v) === i).sort();
   const filtAbs = useMemo(() => {
-    const q = absSearch.toLowerCase();
-    return absStats.filter(r => (!q || r.name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q)) && (!absClass || r.classId === absClass)).sort((a, b) => absSort === 'absent' ? b.absent - a.absent : absSort === 'late' ? b.late - a.late : a.name.localeCompare(b.name));
-  }, [absStats, absSearch, absClass, absSort]);
+    return absStats
+      .filter(r => !absClass || r.classId === absClass)
+      .filter(r => absFocus === 'all' || (absFocus === 'present' ? r.present > 0 : absFocus === 'absent' ? r.absent > 0 : absFocus === 'excused' ? r.excused > 0 : r.streak >= 2))
+      .sort((a, b) => absFocus === 'present' ? b.present - a.present : absFocus === 'excused' ? b.excused - a.excused : absFocus === 'streak' ? b.streak - a.streak : b.absent - a.absent);
+  }, [absStats, absClass, absFocus]);
 
   const totalA = absStats.reduce((s, r) => s + r.absent, 0);
-  const totalL = absStats.reduce((s, r) => s + r.late, 0);
-  const withA  = absStats.filter(r => r.absent > 0).length;
+  const totalE = absStats.reduce((s, r) => s + r.excused, 0);
+  const totalP = absStats.reduce((s, r) => s + r.present, 0);
+
+  const monthLessons = useMemo(() => tlogs.filter(l => logInMonth(l, curMo, curYr)), [tlogs, curMo, curYr]);
+  const monthLessonClassCount = useMemo(() => new Set(monthLessons.map(l => l.classId).filter(Boolean)).size, [monthLessons]);
+  const monthAttendance = useMemo(() => {
+    let present = 0, absent = 0, excused = 0;
+    monthLessons.forEach(log => (log.attendanceList || []).forEach((a: any) => {
+      const st = normalizeAttendanceStatus(getAttendanceStatus(a));
+      if (st === 'absent') absent++;
+      else if (st === 'excused') excused++;
+      else present++;
+    }));
+    return { present, absent, excused, total: present + absent + excused };
+  }, [monthLessons]);
+  const monthAttendancePct = monthAttendance.total > 0
+    ? Math.round((monthAttendance.present / monthAttendance.total) * 100)
+    : 0;
+  const unrecordedSlots = useMemo(() => {
+    const now = new Date();
+    return currentWeekSlots.filter(slot => !isFutureSlot(slot, now) && !findMatchingTlog(slot, tlogs));
+  }, [currentWeekSlots, tlogs]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-      {/* ── Header row — sub-tabs + (diary filters) + (absence filters inline) ── */}
-      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-        <h2 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0, flexShrink: 0 }}>Vận hành</h2>
+      {/* ── Header row — sub-tabs + compact filters ── */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: 10,
+        background: 'white',
+        border: '1px solid #e2e8f0',
+        borderRadius: 12,
+        padding: '12px 14px',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+      }}>
+        <div style={{ flexShrink: 0 }}>
+          <h2 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>Vận hành</h2>
+          <p style={{ fontSize: 12, color: '#64748b', margin: '2px 0 0' }}>
+            Theo dõi lịch dạy, buổi học và chuyên cần
+          </p>
+        </div>
         <span style={{ width: 1, height: 22, background: '#e2e8f0', flexShrink: 0 }} />
 
         {/* Sub-tab switcher */}
-        <div style={{ padding: 3, background: '#f1f5f9' }}>
+        <div style={{ padding: 3, background: '#f1f5f9', borderRadius: 12 }}>
           <FilterTabs variant="segment" size="sm" active={sub} onChange={id => setSub(id as Sub)}
             tabs={SUBS.map(s => ({ id: s.id, label: s.label, icon: <s.icon size={12} /> }))} />
         </div>
 
-        {/* Diary filters — search + lớp */}
-        {sub === 'diary' && (<>
+        {/* Buổi học: chỉ filter lớp */}
+        {sub === 'lessons' && (<>
           <span style={{ width: 1, height: 22, background: '#e2e8f0', flexShrink: 0 }} />
-          <SearchBar value={qD} onChange={v => { setQD(v); setPgD(1); }} placeholder="Tìm lớp, nội dung..." width={180} />
           <Select value={dCls} onChange={v => { setDCls(v); setPgD(1); }} options={classOptions} />
-          <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', background: '#f1f5f9', padding: '6px 12px', borderRadius: 6, flexShrink: 0 }}>{filtD.length} buổi</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', background: '#f1f5f9', padding: '6px 12px', borderRadius: 6, flexShrink: 0 }}>
+            Hiển thị {filtD.length} buổi học
+          </span>
         </>)}
 
-        {/* Absence filters — inline with header */}
-        {sub === 'absence' && (<>
+        {/* Chuyên cần: filter lớp */}
+        {sub === 'attendance' && (<>
           <span style={{ width: 1, height: 22, background: '#e2e8f0', flexShrink: 0 }} />
-          <SearchBar value={absSearch} onChange={setAbsSearch} placeholder="Tìm học sinh..." width={180} />
           <Select value={absClass} onChange={setAbsClass} options={[{ value: '', label: 'Tất cả lớp' }, ...absClasses.map(c => ({ value: c, label: c }))]} />
-          <Select value={absSort} onChange={v => setAbsSort(v as any)} options={[{ value: 'absent', label: 'Vắng nhiều nhất' }, { value: 'late', label: 'Muộn nhiều nhất' }, { value: 'name', label: 'Tên A-Z' }]} />
-          <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', background: '#f1f5f9', padding: '6px 10px', borderRadius: 6, flexShrink: 0 }}>{filtAbs.length} HS</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', background: '#f1f5f9', padding: '6px 10px', borderRadius: 6, flexShrink: 0 }}>
+            Hiển thị {filtAbs.length} HS
+          </span>
         </>)}
+        {sub === 'schedule' && <Button
+          intent="secondary"
+          size="sm"
+          icon={<Plus size={13} />}
+          onClick={() => onAddDiary()}
+          style={{ marginLeft: 'auto' }}
+        >
+          Ghi buổi học
+        </Button>}
       </div>
 
-      {/* ── DIARY TABLE ── */}
-      {sub === 'diary' && (
+      {sub === 'overview' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <StatGrid>
+            <StatBlock icon={Calendar} value={todaySlotCount} label="Lớp hôm nay" sub={formatDate(new Date().toISOString())} gradient="linear-gradient(135deg,#6366f1,#4f46e5)" onClick={() => setSub('schedule')} actionLabel="Xem lịch" />
+            <StatBlock icon={BookOpen} value={monthLessons.length} label="Buổi học tháng này" sub={`${monthLessonClassCount} lớp có phát sinh`} gradient="linear-gradient(135deg,#0ea5e9,#0284c7)" onClick={() => setSub('lessons')} actionLabel="Xem buổi" />
+            <StatBlock icon={Users} value={monthAttendance.total > 0 ? `${monthAttendancePct}%` : '---'} label="Tỷ lệ chuyên cần" sub={`${monthAttendance.total} lượt điểm danh`} gradient="linear-gradient(135deg,#10b981,#059669)" onClick={() => { setAbsFocus('all'); setSub('attendance'); }} actionLabel="Xem" />
+            <StatBlock icon={AlertTriangle} value={monthAttendance.absent} label="Lượt vắng" sub={monthAttendance.absent > 0 ? 'Cần theo dõi' : 'Đã ổn'} gradient="linear-gradient(135deg,#f43f5e,#e11d48)" onClick={() => { setAbsFocus('absent'); setSub('attendance'); }} actionLabel="Xem vắng" />
+            <StatBlock icon={Clock} value={monthAttendance.excused} label="Lượt có phép" sub="Không tính là vắng không phép" gradient="linear-gradient(135deg,#f59e0b,#d97706)" onClick={() => { setAbsFocus('excused'); setSub('attendance'); }} actionLabel="Xem có phép" />
+            {unrecordedSlots.length > 0 && (
+              <StatBlock icon={School} value={unrecordedSlots.length} label="Buổi chưa ghi nhận" sub="từ lịch tuần này" gradient="linear-gradient(135deg,#f97316,#ea580c)" onClick={() => setSub('schedule')} actionLabel="Xem lịch" />
+            )}
+          </StatGrid>
+
+          <div style={TABLE_WRAP}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
+                <thead>
+                  <tr>
+                    {['Mức', 'Nhóm', 'Cảnh báo vận hành', 'Đối tượng', 'Gợi ý xử lý'].map((h, i) => (
+                      <th key={h} style={{ ...TH_SHARED, textAlign: i === 0 ? 'center' : 'left' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {operationalAlerts.length === 0 ? (
+                    <tr><td colSpan={5} style={{ padding: '44px 16px', textAlign: 'center', color: '#94a3b8', fontStyle: 'italic' }}>Không có cảnh báo vận hành quan trọng</td></tr>
+                  ) : operationalAlerts.slice(0, 8).map((a, i) => {
+                    const sevColor = a.severity === 'high' ? 'rose' : a.severity === 'medium' ? 'amber' : 'slate';
+                    const kindLabel = a.kind === 'class' ? 'Lớp' : a.kind === 'student' ? 'Học sinh' : a.kind === 'teacher' ? 'Giáo viên' : 'Công nợ';
+                    return (
+                      <tr key={a.id} style={trStyle(i, false)}>
+                        <td style={{ ...TD_SHARED, textAlign: 'center' }}><Badge color={sevColor as any}>{a.severity === 'high' ? 'Cao' : a.severity === 'medium' ? 'Vừa' : 'Nhẹ'}</Badge></td>
+                        <td style={TD_SHARED}><Badge color={a.kind === 'finance' ? 'emerald' : a.kind === 'teacher' ? 'sky' : a.kind === 'student' ? 'amber' : 'indigo'}>{kindLabel}</Badge></td>
+                        <td style={TD_SHARED}>
+                          <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: '#0f172a' }}>{a.title}</p>
+                          <p style={{ margin: '2px 0 0', fontSize: 12, color: '#64748b' }}>{a.detail}</p>
+                        </td>
+                        <td style={{ ...TD_SHARED, fontWeight: 700, color: '#334155' }}>{a.target}</td>
+                        <td style={{ ...TD_SHARED, color: '#475569' }}>{a.action}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── LESSON TABLE ── */}
+      {sub === 'lessons' && (
         <div style={TABLE_WRAP}>
           {/* Desktop table */}
           <div className="diary-desktop-table" style={{ overflowX: 'auto' }}>
@@ -385,18 +624,17 @@ export default function OperationsTab({ filtD, pgD, setPgD, qD, setQD, dCls, set
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
               <thead>
                 <tr>
-                  {['Ngày', 'Lớp', 'Ca dạy', 'Nội dung bài dạy', 'Có mặt', 'Vắng', 'Thao tác'].map((h, i) => (
+                  {['Ngày', 'Lớp', 'Ca dạy', 'Nội dung bài dạy', 'Có mặt', 'Vắng', 'Có phép', 'Thao tác'].map((h, i) => (
                     <th key={h} style={{ ...TH_SHARED, textAlign: i >= 4 ? 'center' : 'left' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {paged.length === 0
-                  ? <tr><td colSpan={7} style={{ padding: '52px 16px', textAlign: 'center' }}>
+                  ? <tr><td colSpan={8} style={{ padding: '52px 16px', textAlign: 'center' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
                         <span style={{ fontSize: 36 }}>📖</span>
-                        <p style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: 14, margin: 0 }}>Chưa có nhật ký nào</p>
-                        <button onClick={() => onAddDiary()} style={{ padding: '7px 18px', background: '#7c3aed', color: 'white', border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer', borderRadius: 6 }}>+ Ghi buổi đầu tiên</button>
+                        <p style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: 14, margin: 0 }}>Chưa có buổi học nào</p>
                       </div>
                     </td></tr>
                   : paged.map((l, i) => (
@@ -412,6 +650,7 @@ export default function OperationsTab({ filtD, pgD, setPgD, qD, setQD, dCls, set
                       </td>
                       <td style={{ ...TD_SHARED, textAlign: 'center' }}><span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, background: '#ecfdf5', fontWeight: 800, color: '#059669', fontSize: 14 }}>{l.present}</span></td>
                       <td style={{ ...TD_SHARED, textAlign: 'center' }}><span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, background: '#fff1f2', fontWeight: 800, color: '#e11d48', fontSize: 14 }}>{l.absent}</span></td>
+                      <td style={{ ...TD_SHARED, textAlign: 'center' }}><span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, background: '#fffbeb', fontWeight: 800, color: '#d97706', fontSize: 14 }}>{l.excused || 0}</span></td>
                       <td style={{ ...TD_SHARED, textAlign: 'center' }}>
                         <TableActions compact actions={[
                           { icon: <Eye size={13} />, label: 'Xem', intent: 'primary', onClick: () => onViewDiary(l) },
@@ -429,8 +668,7 @@ export default function OperationsTab({ filtD, pgD, setPgD, qD, setQD, dCls, set
             {paged.length === 0
               ? <div style={{ padding: '40px 16px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
                   <span style={{ fontSize: 32 }}>📖</span>
-                  <p style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: 13, margin: 0 }}>Chưa có nhật ký nào</p>
-                  <button onClick={() => onAddDiary()} style={{ padding: '8px 18px', background: '#7c3aed', color: 'white', border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer', borderRadius: 8 }}>+ Ghi buổi đầu tiên</button>
+                  <p style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: 13, margin: 0 }}>Chưa có buổi học nào</p>
                 </div>
               : paged.map((l, i) => (
                 <div key={i} style={{ padding: '12px 14px', borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? 'white' : '#f9fafc' }}>
@@ -442,6 +680,7 @@ export default function OperationsTab({ filtD, pgD, setPgD, qD, setQD, dCls, set
                     <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 700, color: '#059669', background: '#ecfdf5', padding: '2px 7px', borderRadius: 4 }}>✓ {l.present}</span>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 700, color: '#e11d48', background: '#fff1f2', padding: '2px 7px', borderRadius: 4 }}>✗ {l.absent}</span>
+                      {(l.excused || 0) > 0 && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 700, color: '#d97706', background: '#fffbeb', padding: '2px 7px', borderRadius: 4 }}>Có phép {l.excused}</span>}
                     </span>
                   </div>
                   {/* Row 2: content */}
@@ -472,15 +711,26 @@ export default function OperationsTab({ filtD, pgD, setPgD, qD, setQD, dCls, set
         />
       )}
 
-      {/* ── ABSENCE ── */}
-      {sub === 'absence' && (
+      {/* ── ATTENDANCE ── */}
+      {sub === 'attendance' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {/* Stat blocks */}
-          <StatGrid>
-            <StatBlock icon={AlertTriangle} value={withA}  label="HS có buổi vắng" sub="trong tổng số HS active"  gradient="linear-gradient(135deg,#f43f5e,#e11d48)" />
-            <StatBlock icon={AlertTriangle} value={totalA} label="Tổng buổi vắng"   sub="toàn bộ ghi nhận"         gradient="linear-gradient(135deg,#f97316,#ea580c)" />
-            <StatBlock icon={Clock}         value={totalL} label="Tổng buổi muộn"   sub="toàn bộ ghi nhận"         gradient="linear-gradient(135deg,#f59e0b,#d97706)" />
-          </StatGrid>
+          <div style={{ ...TABLE_WRAP, padding: 12, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Nhóm chuyên cần
+            </span>
+            <FilterTabs
+              variant="pill"
+              size="sm"
+              active={absFocus}
+              onChange={id => setAbsFocus(id as typeof absFocus)}
+              tabs={[
+                { id: 'all', label: 'Tất cả', count: absStats.length },
+                { id: 'present', label: 'Có mặt', count: totalP },
+                { id: 'absent', label: 'Vắng', count: totalA },
+                { id: 'excused', label: 'Có phép', count: totalE },
+              ]}
+            />
+          </div>
 
           {/* Absence table */}
           <div style={TABLE_WRAP}>
@@ -492,7 +742,7 @@ export default function OperationsTab({ filtD, pgD, setPgD, qD, setQD, dCls, set
                     <th style={TH_SHARED}>Học sinh</th>
                     <th style={{ ...TH_SHARED, textAlign: 'center' }}>Lớp</th>
                     <th style={{ ...TH_SHARED, textAlign: 'center' }}>Vắng</th>
-                    <th style={{ ...TH_SHARED, textAlign: 'center' }}>Muộn</th>
+                    <th style={{ ...TH_SHARED, textAlign: 'center' }}>Có phép</th>
                     <th style={{ ...TH_SHARED, textAlign: 'center' }}>Có mặt</th>
                     <th style={{ ...TH_SHARED, textAlign: 'center' }}>Vắng liên tiếp</th>
                     <th style={{ ...TH_SHARED, textAlign: 'center' }}>Liên hệ PH</th>
@@ -513,7 +763,7 @@ export default function OperationsTab({ filtD, pgD, setPgD, qD, setQD, dCls, set
                           </td>
                           <td style={{ ...TD_SHARED, textAlign: 'center' }}><Badge color="indigo">{r.classId}</Badge></td>
                           <td style={{ ...TD_SHARED, textAlign: 'center' }}><span style={{ fontSize: 14, fontWeight: 800, color: r.absent === 0 ? '#cbd5e1' : isH ? '#e11d48' : isM ? '#f97316' : '#374151' }}>{r.absent || '—'}</span></td>
-                          <td style={{ ...TD_SHARED, textAlign: 'center' }}><span style={{ fontSize: 13, fontWeight: 600, color: r.late > 0 ? '#d97706' : '#cbd5e1' }}>{r.late || '—'}</span></td>
+                          <td style={{ ...TD_SHARED, textAlign: 'center' }}><span style={{ fontSize: 13, fontWeight: 600, color: r.excused > 0 ? '#d97706' : '#cbd5e1' }}>{r.excused || '—'}</span></td>
                           <td style={{ ...TD_SHARED, textAlign: 'center' }}><span style={{ fontSize: 13, fontWeight: 600, color: '#059669' }}>{r.present || '—'}</span></td>
                           <td style={{ ...TD_SHARED, textAlign: 'center' }}>
                             {r.streak >= 2 ? <span style={{ fontSize: 11, fontWeight: 700, background: '#fff1f2', color: '#e11d48', padding: '2px 8px' }}>{r.streak} buổi</span> : <span style={{ color: '#cbd5e1' }}>—</span>}
@@ -534,8 +784,6 @@ export default function OperationsTab({ filtD, pgD, setPgD, qD, setQD, dCls, set
           </div>
         </div>
       )}
-
-      {sub === 'diary' && <FAB onClick={() => onAddDiary()} label="Ghi buổi dạy mới" color="#7c3aed" shadow="0 8px 24px rgba(124,58,237,0.5)" />}
     </div>
   );
 }

@@ -16,6 +16,31 @@ const DIALOG_STYLE: React.CSSProperties = {
   boxShadow:'0 24px 80px rgba(0,0,0,0.28)',
 };
 
+function nextStudentId(existingIds: string[]): string {
+  const used = new Set(existingIds.map(id => String(id || '').trim().toUpperCase()));
+  const maxNo = existingIds.reduce((max, id) => {
+    const m = String(id || '').trim().toUpperCase().match(/^HS0*(\d+)$/);
+    return m ? Math.max(max, Number(m[1])) : max;
+  }, 0);
+  let nextNo = maxNo + 1;
+  let nextId = `HS${String(nextNo).padStart(3, '0')}`;
+  while (used.has(nextId)) {
+    nextNo += 1;
+    nextId = `HS${String(nextNo).padStart(3, '0')}`;
+  }
+  return nextId;
+}
+
+function normalizeAttendanceLabel(raw: string): 'Có mặt' | 'Vắng' | 'Có phép' {
+  const s = (raw || '').trim();
+  if (s === 'Vắng') return 'Vắng';
+  if (s === 'Có phép' || s === 'Nghỉ có phép') return 'Có phép';
+  const n = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (n === 'vang' || n === 'absent') return 'Vắng';
+  if (n === 'co phep' || n === 'nghi co phep' || n === 'excused') return 'Có phép';
+  return 'Có mặt';
+}
+
 export function StudentModal({
   open, onClose, editing, uniqueClasses, uniqueBranches, isSaving, onSave, existingIds = [],
 }: {
@@ -24,10 +49,11 @@ export function StudentModal({
   existingIds?: string[];
 }) {
   const defaultBranch = uniqueBranches[0] || 'Đào Tấn';
+  const generatedId = nextStudentId(existingIds);
   const [f,setF]       = useState<any>({});
   const [errors,setErrors] = useState<Record<string,string>>({});
 
-  useEffect(()=>{ setF(editing??{branch:defaultBranch,academicLevel:'Khá',startDate:new Date().toISOString().split('T')[0]}); setErrors({}); },[editing,open]);
+  useEffect(()=>{ setF(editing??{id:generatedId,branch:defaultBranch,academicLevel:'Khá',startDate:new Date().toISOString().split('T')[0]}); setErrors({}); },[editing,open,defaultBranch,generatedId]);
   if(!open) return null;
 
   const u=(k:string,v:string)=>{ setF((p:any)=>({...p,[k]:v})); if(errors[k]) setErrors(prev=>({...prev,[k]:''})); };
@@ -35,13 +61,15 @@ export function StudentModal({
   const validate=():boolean=>{
     const err:Record<string,string>={};
     const rawId = f.id?.trim() || '';
-    const normalId = rawId.replace(/\s+/g,'');
+    const normalId = rawId.replace(/\s+/g,'').toUpperCase();
     if(!normalId) err.id='Mã HS không được để trống';
-    else if(!/^[A-Z0-9_\-]+$/i.test(normalId)) err.id='Chỉ chứa chữ, số, gạch ngang';
-    else if(!editing && existingIds.includes(normalId)) err.id='Mã HS đã tồn tại trong hệ thống';
+    else if(!editing && !/^HS\d{3}$/.test(normalId)) err.id='Mã HS phải có dạng HS001';
+    else if(editing && !/^[A-Z0-9_\-]+$/i.test(normalId)) err.id='Chỉ chứa chữ, số, gạch ngang';
+    else if(!editing && existingIds.some(id => String(id).trim().toUpperCase() === normalId)) err.id='Mã HS đã tồn tại trong hệ thống';
     if(!f.name?.trim()) err.name='Họ và tên không được để trống';
     else if(f.name.trim().length<3) err.name='Ít nhất 3 ký tự';
     if(f.parentPhone&&!isValidPhone(f.parentPhone)) err.parentPhone='SĐT không hợp lệ';
+    if(f.studentPhone&&!isValidPhone(f.studentPhone)) err.studentPhone='SĐT không hợp lệ';
     if(f.dob&&!isValidDateDMY(f.dob)) err.dob='Dạng DD/MM/YYYY';
     setErrors(err); return Object.keys(err).length===0;
   };
@@ -52,8 +80,13 @@ export function StudentModal({
 
   const handleSave = async () => {
     if(validate()) {
-      const normalId = (f.id||'').trim().replace(/\s+/g,'');
-      await onSave({ ...f, id: normalId });
+      const normalId = (f.id||'').trim().replace(/\s+/g,'').toUpperCase();
+      await onSave({
+        ...f,
+        id: normalId,
+        parentPhone: String(f.parentPhone ?? '').trim(),
+        studentPhone: String(f.studentPhone ?? '').trim(),
+      });
     }
   };
 
@@ -70,7 +103,7 @@ export function StudentModal({
 
         <div style={{ flex:1,minHeight:0,overflowY:'auto',padding:'18px 24px' }}>
           <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:18 }}>
-            <Input label="Mã HS *" value={f.id||''} onChange={v=>u('id',v)} placeholder="HS001" error={errors.id} disabled={!!editing} size="lg"/>
+            <Input label="Mã HS *" value={f.id||''} onChange={v=>u('id',v)} placeholder="HS001" error={errors.id} disabled size="lg"/>
             <Input label="Họ và tên *" value={f.name||''} onChange={v=>u('name',v)} placeholder="Nguyễn Văn A" error={errors.name} size="lg"/>
             <Select label="Mã lớp" value={f.classId||''} onChange={v=>u('classId',v)} options={classOptions} size="lg"/>
             <Input label="Khối lớp" value={f.grade||''} onChange={v=>u('grade',v)} placeholder="9" size="lg"/>
@@ -78,6 +111,7 @@ export function StudentModal({
             <Input label="Ngày bắt đầu học" type="date" value={toInputDate(f.startDate||'')} onChange={v=>u('startDate',v)} size="lg"/>
             <Select label="Học lực" value={f.academicLevel||'Khá'} onChange={v=>u('academicLevel',v)} options={academicOptions} size="lg"/>
             <Input label="SĐT phụ huynh" value={f.parentPhone||''} onChange={v=>u('parentPhone',v)} placeholder="09xxxxxxxx" error={errors.parentPhone} size="lg"/>
+            <Input label="Zalo học sinh / SĐT học sinh" value={f.studentPhone||''} onChange={v=>u('studentPhone',v)} placeholder="09xxxxxxxx" error={errors.studentPhone} size="lg"/>
             <Input label="Tên phụ huynh" value={f.parentName||''} onChange={v=>u('parentName',v)} size="lg"/>
             <Input label="Trường đang học" value={f.school||''} onChange={v=>u('school',v)} size="lg"/>
             <Select label="Cơ sở" value={f.branch||defaultBranch} onChange={v=>u('branch',v)} options={branchOptions} size="lg"/>
@@ -156,19 +190,19 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
     }
   };
 
-  const s=student, ph=String(s.parentPhone||'').replace(/\D/g,'');
+  const s=student, ph=String(s.parentPhone||'').replace(/\D/g,''), sh=String(s.studentPhone||'').replace(/\D/g,'');
   // Không hardcode tên GV — dùng giá trị thật từ student.teacher
   const resolveT=(raw:string)=>raw||'---';
   const isInactive=s.status==='inactive'||(s.endDate&&s.endDate!=='---'&&s.endDate!=='');
-  let present=0,absent=0,late=0;
+  let present=0,absent=0,excused=0;
   // Support both GAS v29 camelCase (trangThai) and legacy Vietnamese keys ('Trạng thái')
   if(tlogs) tlogs.forEach(log=>(log.attendanceList||[]).forEach((a:any)=>{
     const id = a.maHS || a['Mã HS'] || a.MaHS || '';
     if(id !== s.id) return;
-    const st = a.trangThai || a['Trạng thái'] || a.TrangThai || '';
-    if(st==='Có mặt') present++; else if(st==='Vắng') absent++; else if(st==='Muộn') late++;
+    const st = normalizeAttendanceLabel(a.trangThai || a['Trạng thái'] || a.TrangThai || '');
+    if(st==='Có mặt') present++; else if(st==='Vắng') absent++; else if(st==='Có phép') excused++;
   }));
-  const totalSessions=present+absent+late, attendPct=totalSessions>0?Math.round(present/totalSessions*100):null;
+  const totalSessions=present+absent+excused, attendPct=totalSessions>0?Math.round(present/totalSessions*100):null;
   // Tất cả giao dịch, sort mới nhất lên đầu
   const allPayments=(payments||[]).filter(p=>p.studentId===s.id).sort((a,b)=>{
       // B3 FIX: DD/MM/YYYY lexicographic sort is wrong; use timestamp compare
@@ -232,7 +266,7 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
                 {attendPct!==null&&<span style={{ fontSize:20,fontWeight:800,color:attendColor }}>{attendPct}%</span>}
               </div>
               <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:12 }}>
-                {[{label:'Có mặt',val:present,color:'#059669',bg:'#ecfdf5',border:'#a7f3d0'},{label:'Vắng',val:absent,color:'#e11d48',bg:'#fff1f2',border:'#fecaca'},{label:'Muộn',val:late,color:'#d97706',bg:'#fffbeb',border:'#fde68a'}].map(({label,val,color,bg,border})=>(
+                {[{label:'Có mặt',val:present,color:'#059669',bg:'#ecfdf5',border:'#a7f3d0'},{label:'Vắng',val:absent,color:'#e11d48',bg:'#fff1f2',border:'#fecaca'},{label:'Có phép',val:excused,color:'#d97706',bg:'#fffbeb',border:'#fde68a'}].map(({label,val,color,bg,border})=>(
                   <div key={label} style={{ background:bg,border:`1px solid ${border}`,borderRadius:9,padding:'12px 8px',textAlign:'center' }}>
                     <p style={{ fontSize:28,fontWeight:800,color,margin:0,lineHeight:1 }}>{val}</p>
                     <p style={{ fontSize:11,fontWeight:700,color,margin:'4px 0 0',textTransform:'uppercase' }}>{label}</p>
@@ -348,6 +382,13 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
             <a href={`tel:${ph}`} style={{ flex:1 }}><Button variant="outline" intent="success" fullWidth size="lg">📞 Gọi điện</Button></a>
             <a href={`https://zalo.me/${ph}`} target="_blank" rel="noopener noreferrer" style={{ flex:1,textDecoration:'none' }}><Button variant="outline" intent="primary" fullWidth size="lg">💬 Zalo PH</Button></a>
           </>}
+          {sh.length>=9&&(
+            <a href={`https://zalo.me/${sh}`} target="_blank" rel="noopener noreferrer" style={{ flex:1,textDecoration:'none' }}>
+              <Button variant="outline" intent="primary" fullWidth size="lg" style={{ background:'#eef6ff',color:'#0068FF',borderColor:'#bfdbfe' }}>
+                💬 Zalo HS
+              </Button>
+            </a>
+          )}
           {s.facebookUrl && (
             <a href={s.facebookUrl.startsWith('http') ? s.facebookUrl : `https://m.me/${s.facebookUrl}`}
               target="_blank" rel="noopener noreferrer" style={{ flex:1,textDecoration:'none' }}>
