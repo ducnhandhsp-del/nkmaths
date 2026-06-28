@@ -7,7 +7,6 @@
  * ✅ [v28.2] Fix: thêm lại Trash2 + Eye (bị xóa nhầm khỏi import)
  * ✅ [v28.2] Fix: schoolYear validation YYYY-YYYY trước khi lưu
  * ✅ [v28.2] Fix: teacher1/phone1 sync khi props thay đổi từ ngoài
- * ✅ [v28.2] gradeFees: note rõ cần wire vào App.tsx, thêm warning khi có custom fees
  * ✅ [v28.2] Xóa accentColor + uniqueBranches khỏi props (accepted nhưng không dùng)
  * ✅ [v28.3] Ẩn cài đặt chưa có tác dụng thật: showId, darkMode
  */
@@ -42,7 +41,8 @@ interface Props {
   gsOk: boolean | null;  saving: boolean; loadData: () => void;
   baseTuition: number;   setBaseTuition: (v: number) => void;
   schoolYear: string;    setSchoolYear: (v: string) => void;
-  zaloTpl: string;       setZaloTpl: (v: string) => void;
+  tuitionDueDay: number; setTuitionDueDay: (v: number) => void;
+  setZaloTpl: (v: string) => void;
   centerName: string;    setCenterName: (v: string) => void;
   teacher: string;       setTeacher: (v: string) => void;
   addr1: string;         setAddr1: (v: string) => void;
@@ -56,27 +56,33 @@ interface Props {
 interface ZaloTemplate { id: string; name: string; content: string; }
 const TEMPLATE_KEY = 'ltn-message-templates';
 const DEFAULT_TEMPLATE: ZaloTemplate = {
-  id: 'default', name: 'Thông báo học phí',
-  content: 'Chào anh/chị, học phí tháng [Thang]/[Nam] của cháu [Ten] là [SoTien]. Vui lòng đóng trước ngày 10. Cảm ơn!',
+  id: 'tuition', name: 'Nhắc phí Zalo',
+  content: 'Chào phụ huynh em [Ten], LỚP TOÁN NK thông báo học phí tháng [Thang]/[Nam] của em hiện còn [SoTien]. Phụ huynh vui lòng kiểm tra và thanh toán giúp lớp. Em cảm ơn ạ.',
 };
+const DEFAULT_TEMPLATES: ZaloTemplate[] = [
+  DEFAULT_TEMPLATE,
+  {
+    id: 'absence',
+    name: 'Vắng học Zalo',
+    content: 'Chào phụ huynh em [Ten], hôm nay em vắng buổi học lớp [Lop]. Phụ huynh vui lòng phản hồi giúp lớp lý do vắng để giáo viên theo dõi. Em cảm ơn ạ.',
+  },
+  {
+    id: 'schedule',
+    name: 'Thông báo lịch Zalo',
+    content: 'Chào phụ huynh em [Ten], LỚP TOÁN NK nhắc lịch học lớp [Lop] vào ngày [Ngay]. Phụ huynh vui lòng nhắc em đi học đúng giờ. Em cảm ơn ạ.',
+  },
+];
 const VARS = ['[Ten]','[Lop]','[Thang]','[Nam]','[SoTien]','[Ngay]'];
-/* ─── Grade Fees ──────────────────────────────────────────────────── */
-// FIX: khai báo type GradeFees — trước đây bị thiếu gây TypeScript error
-type GradeFees = Record<string, number>;
-const GRADE_FEES_KEY = 'ltn-grade-fees';
-const ALL_GRADES = ['6','7','8','9','10','11','12'];
-
-function loadGradeFees(): GradeFees {
-  try { const s = localStorage.getItem(GRADE_FEES_KEY); if (s) return JSON.parse(s); } catch {}
-  return {};
-}
-function saveGradeFees(fees: GradeFees) {
-  try { localStorage.setItem(GRADE_FEES_KEY, JSON.stringify(fees)); } catch {}
-}
-
 function loadTemplates(): ZaloTemplate[] {
-  try { const s = localStorage.getItem(TEMPLATE_KEY); if (s) return JSON.parse(s); } catch {}
-  return [DEFAULT_TEMPLATE];
+  try {
+    const s = localStorage.getItem(TEMPLATE_KEY);
+    if (s) {
+      const saved = JSON.parse(s) as ZaloTemplate[];
+      const ids = new Set(saved.map(t => t.id));
+      return [...saved, ...DEFAULT_TEMPLATES.filter(t => !ids.has(t.id))];
+    }
+  } catch {}
+  return DEFAULT_TEMPLATES;
 }
 function saveTemplates(ts: ZaloTemplate[]) {
   try { localStorage.setItem(TEMPLATE_KEY, JSON.stringify(ts)); } catch {}
@@ -194,6 +200,20 @@ function ToggleRow({ label, sub, val, onChange }: { label: string; sub?: string;
         }} />
       </button>
     </div>
+  );
+}
+
+function InfoPill({ children, tone = 'slate' }: { children: React.ReactNode; tone?: 'slate' | 'green' | 'amber' | 'blue' }) {
+  const cfg = {
+    slate: { bg: '#f8fafc', border: '#e2e8f0', color: '#475569' },
+    green: { bg: '#ecfdf5', border: '#a7f3d0', color: '#047857' },
+    amber: { bg: '#fffbeb', border: '#fde68a', color: '#92400e' },
+    blue:  { bg: '#eff6ff', border: '#bfdbfe', color: '#1d4ed8' },
+  }[tone];
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', minHeight: 28, padding: '4px 10px', borderRadius: 999, background: cfg.bg, border: `1px solid ${cfg.border}`, color: cfg.color, fontSize: 12, fontWeight: 800 }}>
+      {children}
+    </span>
   );
 }
 
@@ -317,7 +337,7 @@ function TemplateModal({ open, onClose, initial, onSave }: {
 export default function SettingsTab({
   bankId, setBankId, accountNo, setAccountNo, accountName, setAccountName,
   scriptUrl, setScriptUrl, gsOk, saving, loadData,
-  baseTuition, setBaseTuition, schoolYear, setSchoolYear, zaloTpl, setZaloTpl,
+  baseTuition, setBaseTuition, schoolYear, setSchoolYear, tuitionDueDay, setTuitionDueDay, setZaloTpl,
   centerName, setCenterName, teacher, setTeacher, addr1, setAddr1, addr2, setAddr2,
   phone, setPhone, hideInactive, setHideInactive,
   caDayOptions, setCaDayOptions, teacherList, setTeacherList,
@@ -350,7 +370,6 @@ export default function SettingsTab({
   const [copiedVar, setCopiedVar]         = useState('');
   const [showDeleteTpl, setShowDeleteTpl] = useState(false);
   const [activeSection, setActiveSection] = useState('center');
-  const [gradeFees, setGradeFees] = useState<GradeFees>(() => loadGradeFees());
   const isMobile = useIsMobile();
 
   useEffect(() => { setCacheSize(getCacheSize()); }, []);
@@ -375,29 +394,20 @@ export default function SettingsTab({
       toast.error('Không reset được cài đặt');
     }
   };
-  const handleClearGradeFees = async () => {
-    if (Object.keys(gradeFees).length === 0) return;
-    if (!(await confirm('Xóa học phí theo khối?', 'Toàn bộ cấu hình học phí theo khối trong trình duyệt sẽ bị xóa.', 'warning'))) return;
-    setGradeFees({});
-    toast.success('Đã xóa học phí theo khối');
-  };
   // FIX: xoá silentLoadData — dead code (useCallback bao bọc loadData nhưng không dùng ở đâu)
 
   const handleSaveAll = () => {
     if (!scriptUrl.trim()) { toast.error('Script URL không được để trống'); return; }
     if (baseTuition <= 0)  { toast.error('Học phí phải lớn hơn 0'); return; }
+    if (tuitionDueDay < 1 || tuitionDueDay > 31) { toast.error('Hạn đóng phải từ ngày 1 đến 31'); return; }
     // FIX: validate schoolYear format YYYY-YYYY trước khi lưu
     if (!/^\d{4}-\d{4}$/.test(schoolYear.trim())) {
-      toast.error('Niên khóa phải có định dạng YYYY-YYYY, ví dụ 2025-2026'); return;
+      toast.error('Niên khóa phải có định dạng YYYY-YYYY, ví dụ 2026-2027'); return;
     }
     const newTeacherList = [teacher1, teacher2].filter(Boolean);
     setTeacherList(newTeacherList); setTeacher(teacher1); setPhone(phone1); setZaloTpl(tplContent);
-    saveSettings({ baseTuition, schoolYear, zaloTpl: tplContent, bankId, accountNo, accountName, scriptUrl, centerName, teacher: teacher1, addr1, addr2, phone: phone1, hideInactive, caDayOptions, teacherList: newTeacherList });
+    saveSettings({ baseTuition, schoolYear, tuitionDueDay, zaloTpl: tplContent, bankId, accountNo, accountName, scriptUrl, centerName, teacher: teacher1, addr1, addr2, phone: phone1, hideInactive, caDayOptions, teacherList: newTeacherList });
     saveTemplates(templates);
-    // NOTE: gradeFees lưu localStorage nhưng CHƯA được wire vào App.tsx → FinanceTab.
-    // Hiện tại isMonthBillable chỉ dùng baseTuition. Cần thêm prop gradeFees vào
-    // App.tsx và truyền xuống FinanceTab/useDomains để override theo khối lớp.
-    saveGradeFees(gradeFees);
     try { localStorage.setItem('ltn-sheetsUrl', sheetsUrl); } catch {}
     try { localStorage.setItem('ltn-docUrl', docUrl); } catch {}
     toast.success('Đã lưu cài đặt');
@@ -533,12 +543,12 @@ export default function SettingsTab({
 
         {/* ── HỆ THỐNG ── */}
         {activeSection === 'system' && (
-          <SCard icon={Plug} title="Kết nối dữ liệu" accent="#6366f1">
+          <SCard icon={Plug} title="Hệ thống & kết nối" accent="#6366f1">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
               <LField
-                label="Google Apps Script URL"
-                hint="Dùng để đồng bộ dữ liệu với Google Sheets. Chỉ chỉnh khi thay đổi nguồn dữ liệu."
+                label="Apps Script URL"
+                hint="URL triển khai Web App dùng để đọc/ghi dữ liệu. Chỉ chỉnh khi thay đổi nguồn dữ liệu."
               >
                 <input value={scriptUrl} onChange={e => setScriptUrl(e.target.value)} placeholder="https://script.google.com/macros/s/..." style={INP} />
               </LField>
@@ -564,10 +574,10 @@ export default function SettingsTab({
 
               {/* Sheets + Doc links */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <LField label="Google Sheets URL" hint="Link Google Sheets chứa dữ liệu học sinh, lịch học">
+                <LField label="Google Sheet ID / URL" hint="Có thể lưu ID hoặc link Google Sheets gốc để quản lý nhanh. Không ảnh hưởng Apps Script.">
                   <input value={sheetsUrl} onChange={e => setSheetsUrl(e.target.value)} placeholder="https://docs.google.com/spreadsheets/..." style={INP} />
                 </LField>
-                <LField label="Google Doc URL" hint="Link Google Docs dùng để in phiếu, tạo báo cáo">
+                <LField label="Google Doc URL" hint="Tùy chọn, dùng để ghi nhớ mẫu in/báo cáo nếu có.">
                   <input value={docUrl} onChange={e => setDocUrl(e.target.value)} placeholder="https://docs.google.com/document/..." style={INP} />
                 </LField>
               </div>
@@ -595,10 +605,16 @@ export default function SettingsTab({
           <SCard icon={School} title="Thông tin trung tâm" accent="#0ea5e9">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <FormGrid>
-                <LField label="Tên trung tâm"><input value={centerName} onChange={e => setCenterName(e.target.value)} placeholder="Lớp Toán NK" style={INP} /></LField>
-                <LField label="SĐT liên hệ"><input value={phone1} onChange={e => setPhone1(e.target.value)} placeholder="0383634949" style={INP} /></LField>
+                <LField label="Tên"><input value={centerName} onChange={e => setCenterName(e.target.value)} placeholder="LỚP TOÁN NK" style={{ ...INP, textTransform: 'uppercase' }} /></LField>
+                <LField label="SĐT/Zalo"><input value={phone1} onChange={e => setPhone1(e.target.value)} placeholder="0383634949" style={INP} /></LField>
                 <LField label="Địa chỉ cơ sở 1"><input value={addr1} onChange={e => setAddr1(e.target.value)} placeholder="15/80 Đào Tấn" style={INP} /></LField>
                 <LField label="Địa chỉ cơ sở 2"><input value={addr2} onChange={e => setAddr2(e.target.value)} placeholder="30 Nguyễn Quang Bích" style={INP} /></LField>
+                <LField label="Giáo viên/Người quản lý chính" hint="Dùng làm thông tin mặc định trên phiếu/in ấn và dữ liệu legacy.">
+                  <input value={teacher1} onChange={e => setTeacher1(e.target.value)} placeholder="Lê Đức Nhân" style={INP} />
+                </LField>
+                <LField label="Giáo viên/Quản lý phụ" hint="Tùy chọn, chỉ lưu trong cài đặt trình duyệt.">
+                  <input value={teacher2} onChange={e => setTeacher2(e.target.value)} placeholder="Nguyễn Thị Kiên" style={INP} />
+                </LField>
               </FormGrid>
             </div>
           </SCard>
@@ -608,14 +624,17 @@ export default function SettingsTab({
         {activeSection === 'operations' && (
           <SCard icon={Clock} title="Vận hành buổi học" accent="#d97706">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-              <FormGrid>
-                <LField label="GV mặc định 1" hint="Fallback/legacy khi dữ liệu cũ chưa có MaGV rõ ràng.">
-                  <input value={teacher1} onChange={e => setTeacher1(e.target.value)} placeholder="Lê Đức Nhân" style={INP} />
-                </LField>
-                <LField label="GV mặc định 2" hint="Không thay thế danh sách giáo viên trong sheet GiaoVien.">
-                  <input value={teacher2} onChange={e => setTeacher2(e.target.value)} placeholder="Nguyễn Thị Kiên" style={INP} />
-                </LField>
-              </FormGrid>
+              <div>
+                <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 10px' }}>Trạng thái điểm danh</p>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <InfoPill tone="green">Có mặt</InfoPill>
+                  <InfoPill tone="amber">Có phép</InfoPill>
+                  <InfoPill>Vắng</InfoPill>
+                </div>
+                <p style={{ fontSize: 11, color: '#94a3b8', margin: '8px 0 0', fontStyle: 'italic' }}>
+                  Ba trạng thái này là chuẩn nghiệp vụ hiện tại. Chưa hỗ trợ thêm trạng thái mới trong Cài đặt để tránh lệch dữ liệu điểm danh.
+                </p>
+              </div>
               <div style={{ borderTop: '1px dashed #e2e8f0', paddingTop: 14 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
                   <Clock size={12} color="#64748b" />
@@ -636,77 +655,16 @@ export default function SettingsTab({
           <SCard icon={DollarSign} title="Học phí & Niên khóa" accent="#059669">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               <FormGrid>
-                <LField label="Học phí cơ bản (đ/tháng)" hint={`Hiện tại: ${fmtVND(baseTuition)}/tháng`}>
+                <LField label="Mức học phí mặc định">
                   <input type="number" value={baseTuition} onChange={e => setBaseTuition(Number(e.target.value))} placeholder="600000" style={INP} min={0} />
                 </LField>
-                <LField label="Niên khóa" hint="Định dạng: YYYY-YYYY">
-                  <input value={schoolYear} onChange={e => setSchoolYear(e.target.value)} placeholder="2025-2026" style={INP} />
+                <LField label="Niên khóa">
+                  <input value={schoolYear} onChange={e => setSchoolYear(e.target.value)} placeholder="2026-2027" style={INP} />
+                </LField>
+                <LField label="Hạn đóng học phí">
+                  <input type="number" value={tuitionDueDay} onChange={e => setTuitionDueDay(Number(e.target.value))} placeholder="15" style={INP} min={1} max={31} />
                 </LField>
               </FormGrid>
-
-              {/* Học phí theo khối */}
-              <div style={{ borderTop: '1px dashed #e2e8f0', paddingTop: 16 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                  <div>
-                    <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Học phí theo khối (chưa áp dụng công nợ)</p>
-                    <p style={{ fontSize: 11, color: '#94a3b8', margin: '3px 0 0', fontStyle: 'italic' }}>Để trống = dùng học phí cơ bản ({fmtVND(baseTuition)}). Hiện chỉ lưu cấu hình để dùng sau.</p>
-                  </div>
-                  <button
-                    onClick={handleClearGradeFees}
-                    style={{ fontSize: 11, color: '#e11d48', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                  >
-                    Xóa hết
-                  </button>
-                </div>
-                <div style={{ padding: '8px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 7, marginBottom: 12, fontSize: 11, color: '#92400e', fontWeight: 600 }}>
-                  Học phí theo khối hiện đang được lưu trong trình duyệt nhưng <strong>chưa ảnh hưởng đến tính toán công nợ</strong>. Công nợ vẫn dùng học phí cơ bản.
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))', gap: 10 }}>
-                  {ALL_GRADES.map(grade => {
-                    const val = gradeFees[grade];
-                    const isCustom = val !== undefined && val > 0;
-                    return (
-                      <div key={grade} style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                        <label style={{ fontSize: 11, fontWeight: 700, color: isCustom ? '#059669' : '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: 5 }}>
-                          Khối {grade}
-                          {isCustom && <span style={{ fontSize: 9, background: '#dcfce7', color: '#059669', padding: '1px 5px', borderRadius: 3, fontWeight: 800 }}>Tùy chỉnh</span>}
-                        </label>
-                        <input
-                          type="number"
-                          value={val || ''}
-                          placeholder={String(baseTuition || '')}
-                          onChange={e => {
-                            const n = Number(e.target.value);
-                            setGradeFees(prev => {
-                              const next = { ...prev };
-                              if (!n) delete next[grade];
-                              else next[grade] = n;
-                              return next;
-                            });
-                          }}
-                          style={{ ...INP, borderColor: isCustom ? '#a7f3d0' : '#e2e8f0', fontSize: 12 }}
-                          min={0}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-                {/* Tóm tắt */}
-                {Object.keys(gradeFees).length > 0 && (
-                  <div style={{ marginTop: 12, padding: '10px 14px', background: '#f0fdf4', borderRadius: 8, border: '1px solid #a7f3d0' }}>
-                    <p style={{ fontSize: 11, fontWeight: 700, color: '#059669', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                      Tùy chỉnh: {Object.keys(gradeFees).length} khối
-                    </p>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      {Object.entries(gradeFees).sort((a,b) => Number(a[0])-Number(b[0])).map(([g, fee]) => (
-                        <span key={g} style={{ fontSize: 12, fontWeight: 700, background: 'white', border: '1px solid #a7f3d0', color: '#065f46', padding: '3px 10px', borderRadius: 6 }}>
-                          Khối {g}: {fmtVND(fee as number)}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
             </div>
           </SCard>
         )}
@@ -740,6 +698,11 @@ export default function SettingsTab({
         {activeSection === 'notifications' && (
           <SCard icon={MessageSquare} title="Mẫu tin nhắn Zalo" accent="#06b6d4">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <InfoPill tone="blue">Nhắc phí</InfoPill>
+                <InfoPill tone="amber">Vắng học</InfoPill>
+                <InfoPill tone="green">Thông báo lịch</InfoPill>
+              </div>
 
               {/* Template selector */}
               <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center' }}>

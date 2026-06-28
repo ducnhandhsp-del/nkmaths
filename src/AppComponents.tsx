@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Plus } from 'lucide-react';
+import { EmptyState as SystemEmptyState, PageToolbar as SystemPageToolbar } from './uiSystem';
 
 /* ── Định dạng số tiền theo triệu ── */
 export function fmtM(amount: number): string {
@@ -15,38 +16,101 @@ export function fmtM(amount: number): string {
 ═══════════════════════════════════════════ */
 export const TABLE_WRAP: React.CSSProperties = {
   background: 'white',
-  border: '1px solid #E2E8F0',
-  borderRadius: 12,
+  border: '1px solid #E8EAF3',
+  borderRadius: 14,
   overflow: 'hidden',
-  boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+  boxShadow: '0 2px 16px rgba(79,70,229,0.08)',
 };
 
 export const TH_SHARED: React.CSSProperties = {
-  padding: '11px 14px',
+  padding: '9px 14px',
   fontSize: 11,
-  fontWeight: 700,
-  color: '#64748B',
+  fontWeight: 800,
+  color: '#94A3B8',
   textTransform: 'uppercase',
-  letterSpacing: '0.07em',
+  letterSpacing: '0.075em',
   background: '#F8FAFC',
-  borderBottom: '1.5px solid #E2E8F0',
+  borderBottom: '1px solid #E8EAF3',
   whiteSpace: 'nowrap',
   textAlign: 'left',
 };
 
 export const TD_SHARED: React.CSSProperties = {
-  padding: '13px 14px',
+  padding: '9px 14px',
   fontSize: 13,
   color: '#1E293B',
   fontWeight: 500,
-  borderBottom: '1px solid #F1F5F9',
+  borderBottom: '1px solid #EEF2F7',
   verticalAlign: 'middle',
 };
 
-export const trStyle = (idx: number, hov = false): React.CSSProperties => ({
-  background: hov ? '#eef2ff' : idx % 2 === 0 ? 'white' : '#f0f7ff',
-  transition: 'background 0.1s',
+const APP_TABLE_CSS = `
+.ltn-app-table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.ltn-app-table{width:100%;border-collapse:collapse}
+.ltn-app-table-row{transition:background .12s ease}
+@media(max-width:720px){
+  .ltn-app-table-scroll{overflow-x:visible!important}
+  .ltn-app-table{display:block}
+  .ltn-app-table thead{display:none}
+  .ltn-app-table tbody{display:grid;gap:10px;padding:10px;background:#F8FAFC}
+  .ltn-app-table-row{display:block;border:1px solid #E8EAF3;border-radius:12px;background:white!important;overflow:hidden}
+  .ltn-app-table-cell{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:42px;padding:9px 12px!important;border-bottom:1px solid #F1F5F9!important;text-align:right!important}
+  .ltn-app-table-cell:last-child{border-bottom:none!important}
+  .ltn-app-table-cell::before{content:attr(data-label);font-size:10px;font-weight:800;color:#94A3B8;text-transform:uppercase;letter-spacing:.06em;text-align:left;flex:0 0 38%;max-width:38%}
+  .ltn-app-table-cell > *{max-width:62%;justify-content:flex-end}
+}
+`;
+
+export const trStyle = (_idx: number, hov = false): React.CSSProperties => ({
+  background: hov ? '#EEF2FF' : 'white',
+  transition: 'background 0.12s ease',
 });
+
+export const TOOLBAR_WRAP: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  gap: 10,
+  background: 'white',
+  border: '1px solid #E2E8F0',
+  borderRadius: 12,
+  padding: '12px 14px',
+  boxShadow: '0 1px 3px rgba(15,23,42,0.05)',
+};
+
+export const TOOLBAR_TITLE: React.CSSProperties = {
+  fontSize: 22,
+  fontWeight: 800,
+  color: '#0F172A',
+  textTransform: 'uppercase',
+  letterSpacing: '0.04em',
+  margin: 0,
+};
+
+export const TOOLBAR_DIVIDER: React.CSSProperties = {
+  width: 1,
+  height: 22,
+  background: '#E2E8F0',
+  flexShrink: 0,
+};
+
+export function PageToolbar({
+  title,
+  children,
+  actions,
+  embedded = false,
+  style,
+  controlsStyle,
+}: {
+  title?: React.ReactNode;
+  children?: React.ReactNode;
+  actions?: React.ReactNode;
+  embedded?: boolean;
+  style?: React.CSSProperties;
+  controlsStyle?: React.CSSProperties;
+}) {
+  return <SystemPageToolbar title={title} actions={actions} embedded={embedded} style={style} controlsStyle={controlsStyle}>{children}</SystemPageToolbar>;
+}
 
 /* ═══════════════════════════════════════════
    AppTable — reusable table với light header
@@ -64,23 +128,25 @@ export function AppTable({ columns,data,rowKey,emptyIcon='📋',emptyText='Khôn
   const [hovRow, setHovRow] = useState<any>(null);
   return (
     <div style={{ ...TABLE_WRAP, ...style }}>
-      <div style={{ overflowX: scrollX?'auto':undefined }}>
-        <table style={{ width:'100%', borderCollapse:'collapse' }}>
+      <style>{APP_TABLE_CSS}</style>
+      <div className="ltn-app-table-scroll" style={{ overflowX: scrollX?'auto':undefined }}>
+        <table className="ltn-app-table">
           <thead>
             <tr>{columns.map(col=><th key={col.key} style={{ ...TH_SHARED, textAlign:col.align||'left', width:col.width }}>{col.label}</th>)}</tr>
           </thead>
           <tbody>
             {data.length===0 ? (
-              <tr><td colSpan={columns.length} style={{ padding:'52px 16px', textAlign:'center' }}>
-                <div style={{ display:'flex',flexDirection:'column',alignItems:'center',gap:10 }}>
-                  <span style={{ fontSize:36 }}>{emptyIcon}</span>
-                  <p style={{ color:'#94a3b8',fontStyle:'italic',fontSize:14,margin:0 }}>{emptyText}</p>
-                  {emptyAction&&<button onClick={emptyAction.onClick} style={{ padding:'7px 18px',background:'#4F46E5',color:'white',border:'none',borderRadius:8,fontWeight:700,fontSize:13,cursor:'pointer' }}>{emptyAction.label}</button>}
-                </div>
+              <tr><td colSpan={columns.length} style={{ padding:'28px 16px', textAlign:'center' }}>
+                <SystemEmptyState
+                  text={emptyText}
+                  icon={emptyIcon}
+                  compact
+                  action={emptyAction ? { label: emptyAction.label, onClick: emptyAction.onClick, intent: 'primary' } : undefined}
+                />
               </td></tr>
             ) : data.map((row,idx)=>(
-              <tr key={row[rowKey]} onMouseEnter={()=>setHovRow(row[rowKey])} onMouseLeave={()=>setHovRow(null)} style={trStyle(idx,hovRow===row[rowKey])}>
-                {columns.map(col=><td key={col.key} style={{ ...TD_SHARED, textAlign:col.align||'left' }}>{col.render?col.render(row[col.key],row,idx):(row[col.key]??'—')}</td>)}
+              <tr key={row[rowKey]} className="ltn-app-table-row" onMouseEnter={()=>setHovRow(row[rowKey])} onMouseLeave={()=>setHovRow(null)} style={trStyle(idx,hovRow===row[rowKey])}>
+                {columns.map(col=><td key={col.key} className="ltn-app-table-cell" data-label={col.label} style={{ ...TD_SHARED, textAlign:col.align||'left' }}>{col.render?col.render(row[col.key],row,idx):(row[col.key]??'—')}</td>)}
               </tr>
             ))}
           </tbody>
@@ -110,18 +176,18 @@ export function StatBlock({ icon:Icon, value, label, sub, gradient, onClick, act
     <div onClick={onClick} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
       style={{
         background: 'white',
-        border: `1.5px solid ${hov&&clickable ? accent+'44' : '#E2E8F0'}`,
-        borderRadius: 12,
-        padding: '14px 16px',
+        border: `1.5px solid ${hov&&clickable ? accent+'44' : '#E8EAF3'}`,
+        borderRadius: 16,
+        padding: '16px 18px',
         display: 'flex', alignItems: 'center', gap: 12,
         cursor: clickable?'pointer':'default',
-        boxShadow: hov&&clickable ? `0 4px 16px ${accent}22` : '0 1px 3px rgba(0,0,0,0.05)',
+        boxShadow: hov&&clickable ? `0 8px 28px ${accent}22` : '0 2px 16px rgba(79,70,229,0.08)',
         transform: hov&&clickable ? 'translateY(-1px)' : 'none',
         transition: 'all 0.16s ease',
         minWidth: 0, overflow: 'hidden',
       }}>
       {/* Icon circle với màu accent */}
-      <div style={{ width:42,height:42,borderRadius:10,background:`${accent}15`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0 }}>
+      <div style={{ width:42,height:42,borderRadius:12,background:`${accent}15`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0 }}>
         <Icon size={19} color={accent} />
       </div>
       {/* Số và label */}

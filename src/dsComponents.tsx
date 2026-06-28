@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef, memo } from 'react';
+﻿import React, { useState, useMemo, useEffect, useRef, memo } from 'react';
 import type {
   ButtonProps, IconButtonProps, InputProps, SelectProps, RadioGroupProps, SearchBarProps,
   StatCardProps, DataTableProps, TableActionsProps, AttendancePickerProps, AttendanceStatus,
@@ -9,11 +9,11 @@ import { colors, typography, radius, shadows, transition } from './ds';
 
 export type { AttendanceStudent } from './ds';
 
-/* ─── FORM: Button ─── */
+/* â”€â”€â”€ FORM: Button â”€â”€â”€ */
 const BTN_SIZE = {
-  xs:{height:28,px:10,fontSize:11,gap:4,iconSize:12,radius:radius.sm},
-  sm:{height:32,px:12,fontSize:12,gap:5,iconSize:14,radius:radius.sm},
-  md:{height:38,px:16,fontSize:13,gap:6,iconSize:15,radius:radius.md},
+  xs:{height:30,px:10,fontSize:11,gap:4,iconSize:12,radius:radius.sm},
+  sm:{height:36,px:12,fontSize:12,gap:5,iconSize:14,radius:radius.sm},
+  md:{height:40,px:16,fontSize:13,gap:6,iconSize:15,radius:radius.md},
   lg:{height:44,px:20,fontSize:14,gap:7,iconSize:16,radius:radius.lg},
   xl:{height:52,px:24,fontSize:15,gap:8,iconSize:18,radius:radius.lg},
 };
@@ -41,7 +41,7 @@ export function Button({children,intent='primary',variant='solid',size='md',icon
   return <button type={type} onClick={isDisabled?undefined:onClick} disabled={isDisabled} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)} style={{...getStyle(),...style}}>{loading&&<Spinner size={s.iconSize}/>}{!loading&&icon&&iconPosition==='left'&&<span style={{display:'flex',alignItems:'center'}}>{icon}</span>}{children}{!loading&&icon&&iconPosition==='right'&&<span style={{display:'flex',alignItems:'center'}}>{icon}</span>}</button>;
 }
 
-/* ─── FORM: IconButton ─── */
+/* â”€â”€â”€ FORM: IconButton â”€â”€â”€ */
 const IB_SIZE={xs:28,sm:32,md:36,lg:40,xl:46};
 const IB_INTENT:Record<string,{bg:string;hover:string;color:string}>={
   default:{bg:colors.neutral[100],hover:colors.neutral[200],color:colors.neutral[600]},
@@ -61,7 +61,7 @@ export function IconButton({icon,label,intent='default',size='md',onClick,disabl
   );
 }
 
-/* ─── FORM: Input ─── */
+/* â”€â”€â”€ FORM: Input â”€â”€â”€ */
 const INP_SIZE={sm:{height:32,px:10,fs:12},md:{height:38,px:12,fs:13},lg:{height:44,px:14,fs:14}};
 export function Input({label,placeholder,value,onChange,type='text',error,hint,disabled,required,prefix,suffix,clearable=false,size='md',style}:InputProps){
   const [focus,setFocus]=useState(false);const s=INP_SIZE[size];const hasError=!!error;
@@ -80,7 +80,7 @@ export function Input({label,placeholder,value,onChange,type='text',error,hint,d
   );
 }
 
-/* ─── FORM: Select ─── */
+/* â”€â”€â”€ FORM: Select â”€â”€â”€ */
 export function Select({label,value,onChange,options,placeholder,error,disabled,size='md',style}:SelectProps){
   const [focus,setFocus]=useState(false);const s=INP_SIZE[size];
   return(
@@ -98,7 +98,7 @@ export function Select({label,value,onChange,options,placeholder,error,disabled,
   );
 }
 
-/* ─── FORM: RadioGroup ─── */
+/* â”€â”€â”€ FORM: RadioGroup â”€â”€â”€ */
 export function RadioGroup({label,value,onChange,options,direction='horizontal',error}:RadioGroupProps){
   return(
     <div style={{display:'flex',flexDirection:'column',gap:6}}>
@@ -118,7 +118,7 @@ export function RadioGroup({label,value,onChange,options,direction='horizontal',
   );
 }
 
-/* ─── FORM: SearchBar ─── */
+/* â”€â”€â”€ FORM: SearchBar â”€â”€â”€ */
 const SB_SIZE={sm:{h:32,px:10,fs:12,icon:13},md:{h:38,px:12,fs:13,icon:14}};
 export function SearchBar({value,onChange,placeholder='Tìm kiếm...',onClear,width,size='md',style}:SearchBarProps){
   const [focus,setFocus]=useState(false);const s=SB_SIZE[size];
@@ -131,7 +131,7 @@ export function SearchBar({value,onChange,placeholder='Tìm kiếm...',onClear,w
   );
 }
 
-/* ─── DATA DISPLAY: StatCard ─── */
+/* â”€â”€â”€ DATA DISPLAY: StatCard â”€â”€â”€ */
 export function StatCard({label,value,sub,gradient,icon:Icon,trend,trendLabel,onClick,clickable=!!onClick}:StatCardProps){
   const [hov,setHov]=useState(false);const hasDelta=trend!=null;
   return(
@@ -149,22 +149,47 @@ export function StatCard({label,value,sub,gradient,icon:Icon,trend,trendLabel,on
   );
 }
 
-/* ─── DATA DISPLAY: DataTable ─── */
-export function DataTable<T extends Record<string,any>>({columns,data,rowKey,loading=false,emptyIcon='📋',emptyText='Không có dữ liệu',emptyAction,striped=true,hoverable=true,page,perPage=10,total,onPageChange,scrollX=true,style}:DataTableProps<T>){
+/* â”€â”€â”€ DATA DISPLAY: DataTable â”€â”€â”€ */
+const DS_TABLE_CSS = `
+@keyframes dsLoad{0%{transform:translateX(-100%)}100%{transform:translateX(350%)}}
+.ds-data-table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.ds-data-table{width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0}
+.ds-data-table thead th:first-child{padding-left:16px}
+.ds-data-table tbody td:first-child{padding-left:16px}
+.ds-data-table thead th:last-child{padding-right:16px}
+.ds-data-table tbody td:last-child{padding-right:16px}
+.ds-data-table-row{transition:background .14s ease}
+.ds-data-table-row:last-child .ds-data-table-cell{border-bottom:none!important}
+.ds-data-table-cell{line-height:1.35;overflow:hidden}
+.ds-data-table-cell button,.ds-data-table-cell a{white-space:nowrap}
+@media(max-width:720px){
+  .ds-data-table-scroll{overflow-x:visible!important}
+  .ds-data-table{display:block}
+  .ds-data-table thead{display:none}
+  .ds-data-table tbody{display:grid;gap:10px;padding:10px;background:${colors.neutral[50]}}
+  .ds-data-table-row{display:block;border:1px solid ${colors.neutral[200]};border-radius:14px;background:white!important;overflow:hidden;box-shadow:0 1px 8px rgba(15,23,42,.04)}
+  .ds-data-table-cell{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:42px;padding:10px 12px!important;border-bottom:1px solid ${colors.neutral[100]}!important;text-align:right!important}
+  .ds-data-table-cell:last-child{border-bottom:none!important}
+  .ds-data-table-cell::before{content:attr(data-label);font-size:10px;font-weight:800;color:${colors.neutral[400]};text-transform:uppercase;letter-spacing:.06em;text-align:left;flex:0 0 38%;max-width:38%}
+  .ds-data-table-cell > *{max-width:62%;justify-content:flex-end}
+}
+`;
+export function DataTable<T extends Record<string,any>>({columns,data,rowKey,loading=false,emptyIcon='📋',emptyText='Không có dữ liệu',emptyAction,striped=false,hoverable=true,page,perPage=10,total,onPageChange,scrollX=true,style}:DataTableProps<T>){
   const [sortKey,setSortKey]=useState<string|null>(null),[sortDir,setSortDir]=useState<'asc'|'desc'>('asc'),[hovRow,setHovRow]=useState<any>(null);
   const sorted=useMemo(()=>{if(!sortKey) return data;return[...data].sort((a,b)=>{const cmp=String(a[sortKey]).localeCompare(String(b[sortKey]),'vi');return sortDir==='asc'?cmp:-cmp;});},[data,sortKey,sortDir]);
   const handleSort=(key:string)=>{if(sortKey===key)setSortDir(d=>d==='asc'?'desc':'asc');else{setSortKey(key);setSortDir('asc');}};
-  const TH:React.CSSProperties={padding:'11px 14px',fontSize:11,fontWeight:700,color:colors.neutral[500],textTransform:'uppercase',letterSpacing:'0.08em',background:colors.neutral[50],whiteSpace:'nowrap',userSelect:'none',borderBottom:`2px solid ${colors.neutral[200]}`};
-  const TD_B:React.CSSProperties={padding:'13px 14px',fontSize:15,color:colors.neutral[800],fontWeight:500,borderBottom:`1px solid ${colors.neutral[50]}`,fontFamily:typography.fontFamily};
+  const TH:React.CSSProperties={padding:'10px 14px',fontSize:11,fontWeight:900,color:colors.neutral[400],textTransform:'uppercase',letterSpacing:'0.08em',background:colors.neutral[50],whiteSpace:'nowrap',userSelect:'none',borderBottom:`1px solid ${colors.neutral[200]}`,lineHeight:1.25};
+  const TD_B:React.CSSProperties={padding:'10px 14px',fontSize:13,color:colors.neutral[800],fontWeight:700,borderBottom:`1px solid ${colors.neutral[100]}`,fontFamily:typography.fontFamily,lineHeight:1.35};
   return(
-    <div style={{background:'white',borderRadius:radius.lg,border:`1px solid ${colors.neutral[200]}`,boxShadow:shadows.sm,overflow:'hidden',...style}}>
-      {loading&&<div style={{height:4,background:colors.neutral[100],overflow:'hidden',position:'relative'}}><div style={{height:'100%',width:'40%',background:colors.primary[500],animation:'dsLoad 1.2s ease-in-out infinite',borderRadius:4}}/><style>{`@keyframes dsLoad{0%{transform:translateX(-100%)}100%{transform:translateX(350%)}}`}</style></div>}
-      <div style={{overflowX:scrollX?'auto':undefined}}>
-        <table style={{width:'100%',borderCollapse:'collapse'}}>
+    <div style={{background:'white',borderRadius:16,border:`1px solid ${colors.neutral[200]}`,boxShadow:'0 10px 30px rgba(15,23,42,0.055)',overflow:'hidden',...style}}>
+      {loading&&<div style={{height:4,background:colors.neutral[100],overflow:'hidden',position:'relative'}}><div style={{height:'100%',width:'40%',background:colors.primary[500],animation:'dsLoad 1.2s ease-in-out infinite',borderRadius:4}}/></div>}
+      <style>{DS_TABLE_CSS}</style>
+      <div className="ds-data-table-scroll" style={{overflowX:scrollX?'auto':undefined}}>
+        <table className="ds-data-table">
           <thead><tr>{columns.map(col=><th key={String(col.key)} onClick={col.sortable?()=>handleSort(String(col.key)):undefined} style={{...TH,textAlign:col.align||'left',cursor:col.sortable?'pointer':'default',width:col.width,...col.headerStyle}}><span style={{display:'inline-flex',alignItems:'center',gap:4}}>{col.label}{col.sortable&&<span style={{opacity:sortKey===String(col.key)?1:0.4}}>{sortKey===String(col.key)&&sortDir==='asc'?'↑':'↓'}</span>}</span></th>)}</tr></thead>
           <tbody>
-            {sorted.length===0?(<tr><td colSpan={columns.length} style={{padding:'48px 16px',textAlign:'center'}}><div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:12}}><span style={{fontSize:40}}>{emptyIcon}</span><p style={{color:colors.neutral[400],fontStyle:'italic',fontSize:14,margin:0}}>{emptyText}</p>{emptyAction&&<button onClick={emptyAction.onClick} style={{padding:'8px 20px',background:colors.primary[500],color:'white',border:'none',borderRadius:radius.md,fontWeight:700,fontSize:13,cursor:'pointer'}}>{emptyAction.label}</button>}</div></td></tr>):
-            sorted.map((row,idx)=>{const key=row[rowKey];const isHov=hoverable&&hovRow===key;const isStripe=striped&&idx%2!==0;return(<tr key={String(key)} onMouseEnter={()=>hoverable&&setHovRow(key)} onMouseLeave={()=>hoverable&&setHovRow(null)} style={{background:isHov?'#f8f7ff':isStripe?'#fafcff':'white',transition:transition.fast}}>{columns.map(col=>{const val=String(col.key) in row?row[col.key as keyof T]:undefined;return<td key={String(col.key)} style={{...TD_B,textAlign:col.align||'left',...col.cellStyle}}>{col.render?col.render(val,row,idx):String(val??'—')}</td>;})}</tr>);})}
+            {sorted.length===0?(<tr><td colSpan={columns.length} style={{padding:'24px 12px',textAlign:'center'}}><div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8,minHeight:86}}><span style={{width:38,height:38,borderRadius:14,display:'flex',alignItems:'center',justifyContent:'center',background:colors.neutral[50],border:`1px solid ${colors.neutral[200]}`,fontSize:19}}>{emptyIcon}</span><p style={{color:colors.neutral[600],fontSize:13,fontWeight:800,margin:0,lineHeight:1.45}}>{emptyText}</p>{emptyAction&&<button onClick={emptyAction.onClick} style={{minHeight:40,padding:'8px 20px',background:colors.primary[500],color:'white',border:'none',borderRadius:radius.md,fontWeight:700,fontSize:13,cursor:'pointer'}}>{emptyAction.label}</button>}</div></td></tr>):
+            sorted.map((row,idx)=>{const key=row[rowKey];const isHov=hoverable&&hovRow===key;return(<tr key={String(key)} className="ds-data-table-row" onMouseEnter={()=>hoverable&&setHovRow(key)} onMouseLeave={()=>hoverable&&setHovRow(null)} style={{background:isHov?'#f8fafc':'white',transition:transition.fast}}>{columns.map(col=>{const val=String(col.key) in row?row[col.key as keyof T]:undefined;return<td key={String(col.key)} className="ds-data-table-cell" data-label={col.label} style={{...TD_B,textAlign:col.align||'left',...col.cellStyle}}>{col.render?col.render(val,row,idx):String(val??'—')}</td>;})}</tr>);})}
           </tbody>
         </table>
       </div>
@@ -173,89 +198,135 @@ export function DataTable<T extends Record<string,any>>({columns,data,rowKey,loa
   );
 }
 
-/* ─── DATA DISPLAY: TableActions ─── */
-const TA_C={default:{bg:colors.neutral[100],hover:colors.neutral[200],color:colors.neutral[600]},primary:{bg:colors.primary[50],hover:colors.primary[100],color:colors.primary[600]},warning:{bg:colors.warning[50],hover:colors.warning[200],color:colors.warning[600]},danger:{bg:colors.danger[50],hover:colors.danger[200],color:colors.danger[600]}};
+/* â”€â”€â”€ DATA DISPLAY: TableActions â”€â”€â”€ */
+const TA_C={default:{bg:'white',hover:colors.neutral[50],color:colors.neutral[600],border:colors.neutral[200]},primary:{bg:'white',hover:colors.primary[50],color:colors.primary[600],border:colors.primary[200]},warning:{bg:'white',hover:colors.warning[50],color:colors.warning[600],border:colors.warning[200]},danger:{bg:'white',hover:colors.danger[50],color:colors.danger[600],border:colors.danger[200]}};
+function compactActionLabel(label:string){
+  const l=label.toLowerCase();
+  if(l.includes('xem')) return 'Chi tiết';
+  if(l.includes('sửa')||l.includes('sua')) return 'Sửa';
+  if(l.includes('xóa')||l.includes('xoá')||l.includes('xoa')) return 'Xóa';
+  if(l.includes('nhắc')||l.includes('nhac')) return 'Nhắc phí';
+  if(l.includes('thu')) return 'Thu tiền';
+  return label.length > 14 ? label.slice(0, 13).trim() + '…' : label;
+}
 export function TableActions({actions,compact=false}:TableActionsProps){
   const [hovIdx,setHovIdx]=useState<number|null>(null);
   return(
-    <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:compact?4:6}}>
+    <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end',gap:compact?5:6,flexWrap:'wrap'}}>
       {actions.filter(a=>!a.hidden).map((a,i)=>{const c=TA_C[a.intent||'default']||TA_C.default;return(
         <div key={i} style={{position:'relative'}}>
-          <button onClick={a.disabled?undefined:a.onClick} disabled={a.disabled} onMouseEnter={()=>setHovIdx(i)} onMouseLeave={()=>setHovIdx(null)} aria-label={a.label} style={{width:compact?30:34,height:compact?30:34,borderRadius:radius.sm,background:hovIdx===i?c.hover:c.bg,border:'none',cursor:a.disabled?'not-allowed':'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:c.color,opacity:a.disabled?0.4:1,transform:hovIdx===i?'scale(1.08)':'scale(1)',transition:transition.fast}}>{a.icon}</button>
-          {hovIdx===i&&<div style={{position:'absolute',bottom:'calc(100% + 5px)',left:'50%',transform:'translateX(-50%)',background:colors.neutral[900],color:'white',fontSize:11,fontWeight:700,padding:'3px 7px',borderRadius:5,whiteSpace:'nowrap',pointerEvents:'none',zIndex:99}}>{a.label}</div>}
+          <button onClick={a.disabled?undefined:a.onClick} disabled={a.disabled} onMouseEnter={()=>setHovIdx(i)} onMouseLeave={()=>setHovIdx(null)} aria-label={a.label} title={a.label} style={{minHeight:compact?30:32,padding:compact?'5px 10px':'6px 12px',borderRadius:999,background:hovIdx===i?c.hover:c.bg,border:`1px solid ${c.border}`,cursor:a.disabled?'not-allowed':'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',gap:5,color:c.color,opacity:a.disabled?0.4:1,transition:transition.fast,fontSize:compact?11:12,fontWeight:900,fontFamily:typography.fontFamily,whiteSpace:'nowrap',boxShadow:hovIdx===i?'0 4px 12px rgba(15,23,42,.08)':'none'}}>
+            {!compact&&<span style={{display:'flex',alignItems:'center'}}>{a.icon}</span>}
+            {compactActionLabel(a.label)}
+          </button>
         </div>
       );})}
     </div>
   );
 }
 
-/* ─── DATA DISPLAY: AttendancePicker ─── */
+/* â”€â”€â”€ DATA DISPLAY: AttendancePicker â”€â”€â”€ */
 const ST_CFG:Record<AttendanceStatus,{label:string;bg:string;border:string;color:string;activeBg:string}>={
   present:{label:'Có mặt',bg:'#f0fdf4',border:'#86efac',color:'#15803d',activeBg:'#16a34a'},
   absent: {label:'Vắng',  bg:'#fff1f2',border:'#fecaca',color:'#be123c',activeBg:'#e11d48'},
   excused:{label:'Có phép',bg:'#fffbeb',border:'#fcd34d',color:'#b45309',activeBg:'#d97706'},
 };
 const ATTENDANCE_STATUSES: AttendanceStatus[] = ['present','absent','excused'];
+const HOMEWORK_NOTE_TAG = 'Chưa làm BTVN';
+const stripHomeworkNoteTag = (note = '') =>
+  note
+    .replaceAll(HOMEWORK_NOTE_TAG, '')
+    .replace(/\s*;\s*/g, '; ')
+    .replace(/^[\s;,-]+|[\s;,-]+$/g, '')
+    .trim();
+const hasHomeworkNoteTag = (note = '') => note.includes(HOMEWORK_NOTE_TAG);
+const composeAttendanceNote = (note = '', homeworkMissing = false) => {
+  const cleanNote = stripHomeworkNoteTag(note);
+  if (!homeworkMissing) return cleanNote;
+  return cleanNote ? `${HOMEWORK_NOTE_TAG}; ${cleanNote}` : HOMEWORK_NOTE_TAG;
+};
 export function AttendancePicker({students,onChange,readOnly=false}:AttendancePickerProps){
   const update=(id:string,status:AttendanceStatus)=>onChange(students.map(s=>s.id===id?{...s,status}:s));
-  const bulkSet=(status:AttendanceStatus)=>onChange(students.map(s=>({...s,status})));
-  const counts={
-    present:students.filter(s=>s.status==='present').length,
-    absent:students.filter(s=>s.status==='absent').length,
-    excused:students.filter(s=>s.status==='excused').length,
-  };
+  const updateNote=(id:string,note:string)=>onChange(students.map(s=>s.id===id?{...s,note:composeAttendanceNote(note,hasHomeworkNoteTag(s.note))}:s));
+  const updateHomework=(id:string,homeworkMissing:boolean)=>onChange(students.map(s=>s.id===id?{...s,note:composeAttendanceNote(s.note,homeworkMissing)}:s));
   return(
-    <div style={{display:'flex',flexDirection:'column',gap:10}}>
-      {/* Dòng tổng kết + nút chọn tất cả */}
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:6}}>
-        <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-          {ATTENDANCE_STATUSES.map(s=>{const c=ST_CFG[s];return(
-            <span key={s} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 9px',borderRadius:999,background:c.bg,border:`1px solid ${c.border}`,fontSize:12,fontWeight:700,color:c.color}}>
-              {c.label}: {counts[s]}
-            </span>
-          );})}
-        </div>
-        {!readOnly&&(
-          <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
-            {ATTENDANCE_STATUSES.map(s=>{const c=ST_CFG[s];return(
-              <button key={s} onClick={()=>bulkSet(s)} style={{padding:'3px 8px',borderRadius:999,border:`1px solid ${c.border}`,background:c.bg,color:c.color,fontWeight:700,fontSize:10,cursor:'pointer'}}>
-                Tất cả: {c.label}
-              </button>
-            );})}
-          </div>
-        )}
-      </div>
-      {/* Danh sách học sinh — tên KHÔNG bị cắt */}
+    <div style={{display:'flex',flexDirection:'column',gap:8}}>
+      <style>{`
+        @media(max-width:767px){
+          .attendance-row{padding:12px 12px!important}
+          .attendance-edit-line{grid-template-columns:1fr!important;gap:8px!important}
+          .attendance-status-grid{gap:6px!important}
+          .attendance-status-grid button{min-height:38px!important;font-size:12px!important}
+          .attendance-side-controls{grid-template-columns:auto minmax(0,1fr)!important}
+        }
+      `}</style>
+      {/* Danh sÃ¡ch há»c sinh â€” tÃªn KHÃ”NG bá»‹ cáº¯t */}
       <div style={{background:'white',borderRadius:radius.lg,border:`1px solid ${colors.neutral[200]}`,overflow:'hidden'}}>
         {students.map((s,idx)=>{
           const activeStatus=ST_CFG[s.status] || ST_CFG.present;
           return(
-            <div key={s.id} style={{padding:'10px 14px',borderBottom:idx<students.length-1?`1px solid ${colors.neutral[100]}`:'none',background:idx%2===0?'white':colors.neutral[50]}}>
-              {/* Hàng 1: STT + Tên đầy đủ + Mã */}
-              <div style={{display:'flex',alignItems:'flex-start',gap:8,marginBottom:readOnly?0:8}}>
-                <span style={{fontSize:11,fontWeight:700,color:colors.neutral[300],width:18,flexShrink:0,textAlign:'center',paddingTop:2}}>{idx+1}</span>
-                <div style={{flex:1,minWidth:0}}>
-                  <p style={{fontSize:13,fontWeight:700,color:colors.neutral[900],margin:0,lineHeight:1.4,wordBreak:'break-word'}}>{s.name}</p>
-                  <p style={{fontSize:11,color:colors.neutral[400],margin:'1px 0 0'}}>{s.id}</p>
-                </div>
-                {readOnly&&(
+            <div key={s.id} className="attendance-row" style={{padding:'8px 12px',borderBottom:idx<students.length-1?`1px solid ${colors.neutral[100]}`:'none',background:idx%2===0?'white':colors.neutral[50]}}>
+              {readOnly ? (
+                <div style={{display:'flex',alignItems:'center',gap:8}}>
+                  <span style={{fontSize:11,fontWeight:700,color:colors.neutral[300],width:18,flexShrink:0,textAlign:'center'}}>{idx+1}</span>
+                  <div style={{flex:1,minWidth:0}}>
+                    <p style={{fontSize:13,fontWeight:700,color:colors.neutral[900],margin:0,lineHeight:1.35,wordBreak:'break-word'}}>{s.name}</p>
+                    <p style={{fontSize:11,color:colors.neutral[400],margin:'1px 0 0'}}>{s.id}</p>
+                  </div>
                   <span style={{padding:'3px 9px',borderRadius:999,background:activeStatus.bg,border:`1px solid ${activeStatus.border}`,fontSize:11,fontWeight:700,color:activeStatus.color,flexShrink:0,whiteSpace:'nowrap'}}>
                     {activeStatus.label}
                   </span>
-                )}
-              </div>
-              {/* Hàng 2: 3 nút trạng thái — chiều rộng đều nhau */}
-              {!readOnly&&(
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6,paddingLeft:26}}>
-                  {ATTENDANCE_STATUSES.map(st=>{
-                    const c=ST_CFG[st],isActive=s.status===st;
-                    return(
-                      <button key={st} onClick={()=>update(s.id,st)}
-                        style={{padding:'7px 4px',borderRadius:8,border:`1.5px solid ${isActive?c.activeBg:c.border}`,background:isActive?c.activeBg:c.bg,color:isActive?'white':c.color,fontWeight:700,fontSize:12,cursor:'pointer',transition:'all 0.12s',boxShadow:isActive?'0 2px 6px rgba(0,0,0,0.12)':'none',textAlign:'center'}}>
-                        {c.label}
-                      </button>
-                    );
-                  })}
+                </div>
+              ) : (
+                <div className="attendance-edit-line" style={{display:'grid',gridTemplateColumns:'minmax(180px,1.05fr) minmax(260px,1.15fr) minmax(260px,1fr)',gap:8,alignItems:'center'}}>
+                  <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
+                    <span style={{fontSize:11,fontWeight:700,color:colors.neutral[300],width:18,flexShrink:0,textAlign:'center'}}>{idx+1}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <p style={{fontSize:13,fontWeight:800,color:colors.neutral[900],margin:0,lineHeight:1.3,wordBreak:'break-word'}}>{s.name}</p>
+                      <p style={{fontSize:11,color:colors.neutral[400],margin:'1px 0 0'}}>{s.id}</p>
+                    </div>
+                  </div>
+                  <div className="attendance-status-grid" style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:5}}>
+                    {ATTENDANCE_STATUSES.map(st=>{
+                      const c=ST_CFG[st],isActive=s.status===st;
+                      return(
+                        <button key={st} onClick={()=>update(s.id,st)}
+                          style={{minHeight:30,padding:'4px 6px',borderRadius:999,border:`1.5px solid ${isActive?c.activeBg:c.border}`,background:isActive?c.activeBg:c.bg,color:isActive?'white':c.color,fontWeight:800,fontSize:11,cursor:'pointer',transition:'all 0.12s',boxShadow:isActive?'0 2px 6px rgba(0,0,0,0.10)':'none',textAlign:'center'}}>
+                          {c.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="attendance-side-controls" style={{display:'grid',gridTemplateColumns:'auto minmax(0,1fr)',gap:7,alignItems:'center'}}>
+                    <label title="Không tick nghĩa là đã hoàn thành BTVN" style={{display:'inline-flex',alignItems:'center',gap:5,minHeight:30,padding:'4px 8px',borderRadius:999,border:`1px solid ${hasHomeworkNoteTag(s.note)?colors.warning[300]:colors.neutral[200]}`,background:hasHomeworkNoteTag(s.note)?colors.warning[50]:'white',color:hasHomeworkNoteTag(s.note)?colors.warning[700]:colors.neutral[600],fontSize:11,fontWeight:800,whiteSpace:'nowrap',cursor:'pointer'}}>
+                      <input
+                        type="checkbox"
+                        checked={hasHomeworkNoteTag(s.note)}
+                        onChange={event => updateHomework(s.id,event.target.checked)}
+                        style={{width:13,height:13,accentColor:colors.warning[500],margin:0,cursor:'pointer'}}
+                      />
+                      Chưa BTVN
+                    </label>
+                    <input
+                      className="attendance-note-input"
+                      value={stripHomeworkNoteTag(s.note || '')}
+                      onChange={event => updateNote(s.id, event.target.value)}
+                      placeholder="Ghi chú"
+                      style={{
+                        width:'100%',
+                        minHeight:30,
+                        border:`1px solid ${colors.neutral[200]}`,
+                        borderRadius:999,
+                        padding:'5px 10px',
+                        fontSize:12,
+                        fontWeight:600,
+                        color:colors.neutral[700],
+                        background:'white',
+                        outline:'none',
+                        boxSizing:'border-box',
+                      }}
+                    />
+                  </div>
                 </div>
               )}
             </div>
@@ -266,7 +337,7 @@ export function AttendancePicker({students,onChange,readOnly=false}:AttendancePi
   );
 }
 
-/* ─── FEEDBACK: Badge ─── */
+/* â”€â”€â”€ FEEDBACK: Badge â”€â”€â”€ */
 const BC:Record<BadgeColor,{solid:string;text:string;subtle:string;subtleText:string;border:string}>={
   indigo:{solid:colors.primary[500],text:'white',subtle:colors.primary[50],subtleText:colors.primary[700],border:colors.primary[200]},
   teal:{solid:colors.teal[500],text:'white',subtle:colors.teal[50],subtleText:colors.teal[600],border:'#99f6e4'},
@@ -278,7 +349,7 @@ const BC:Record<BadgeColor,{solid:string;text:string;subtle:string;subtleText:st
   slate:{solid:colors.neutral[500],text:'white',subtle:colors.neutral[50],subtleText:colors.neutral[600],border:colors.neutral[200]},
 };
 export function Badge({children,color='indigo',variant='subtle',size='md',dot=false,onRemove}:BadgeProps){
-  const c=BC[color];const fs=size==='sm'?10:12;const py=size==='sm'?'2px':'3px';const px=size==='sm'?'6px':'9px';
+  const c=BC[color];const fs=size==='sm'?10:11;const py=size==='sm'?'2px':'2px';const px=size==='sm'?'6px':'7px';
   let bg:string,textColor:string,border:string;
   if(variant==='solid'){bg=c.solid;textColor=c.text;border='transparent';}
   else if(variant==='outline'){bg='transparent';textColor=c.subtleText;border=c.border;}
@@ -286,7 +357,7 @@ export function Badge({children,color='indigo',variant='subtle',size='md',dot=fa
   return<span style={{display:'inline-flex',alignItems:'center',gap:4,padding:`${py} ${px}`,borderRadius:9999,background:bg,border:`1px solid ${border}`,color:textColor,fontSize:fs,fontWeight:700,fontFamily:typography.fontFamily,whiteSpace:'nowrap',lineHeight:1.4}}>{dot&&<span style={{width:6,height:6,borderRadius:'50%',background:textColor,flexShrink:0}}/>}{children}{onRemove&&<span onClick={onRemove} style={{cursor:'pointer',display:'inline-flex',alignItems:'center',marginLeft:2,opacity:0.7}}><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M18 6 6 18M6 6l12 12"/></svg></span>}</span>;
 }
 
-/* ─── FEEDBACK: Pager ─── */
+/* â”€â”€â”€ FEEDBACK: Pager â”€â”€â”€ */
 export function Pager({page,total,perPage,setPage,showTotal=true}:PagerProps){
   const totalPages=Math.ceil(total/perPage);if(totalPages<=1&&!showTotal) return null;
   const from=(page-1)*perPage+1,to=Math.min(page*perPage,total);
@@ -303,7 +374,7 @@ export function Pager({page,total,perPage,setPage,showTotal=true}:PagerProps){
   );
 }
 
-/* ─── FEEDBACK: ConnectionStatus ─── */
+/* â”€â”€â”€ FEEDBACK: ConnectionStatus â”€â”€â”€ */
 const CONN={
   connected:{label:'Đã kết nối',color:'#059669',bg:'#ecfdf5',border:'#a7f3d0',dot:'#10b981',pulse:false},
   disconnected:{label:'Mất kết nối',color:'#e11d48',bg:'#fff1f2',border:'#fecaca',dot:'#f43f5e',pulse:true},
@@ -320,19 +391,19 @@ export function ConnectionStatus({state,lastSynced,onRetry,onSync,compact=false}
         <div><p style={{fontSize:13,fontWeight:700,color:c.color,margin:0}}>{c.label}</p>{lastSynced&&<p style={{fontSize:11,color:colors.neutral[400],margin:0}}>Cập nhật: {lastSynced}</p>}</div>
       </div>
       <div style={{display:'flex',gap:8}}>
-        {onSync&&state==='connected'&&<button onClick={onSync} style={{padding:'5px 12px',borderRadius:radius.sm,border:`1px solid ${c.border}`,background:'white',color:c.color,fontWeight:700,fontSize:12,cursor:'pointer'}}>🔄 Đồng bộ</button>}
+        {onSync&&state==='connected'&&<button onClick={onSync} style={{padding:'5px 12px',borderRadius:radius.sm,border:`1px solid ${c.border}`,background:'white',color:c.color,fontWeight:700,fontSize:12,cursor:'pointer'}}>Đồng bộ</button>}
         {onRetry&&(state==='disconnected'||state==='error')&&<button onClick={onRetry} style={{padding:'5px 12px',borderRadius:radius.sm,background:c.dot,border:'none',color:'white',fontWeight:700,fontSize:12,cursor:'pointer'}}>Thử lại</button>}
       </div>
     </div>
   );
 }
 
-/* ─── FEEDBACK: QuickActionGroup ─── */
+/* â”€â”€â”€ FEEDBACK: QuickActionGroup â”€â”€â”€ */
 export function QuickActionGroup({actions,columns,minWidth=140}:QuickActionGroupProps){
   return<div style={{display:'grid',gridTemplateColumns:columns?`repeat(${columns},1fr)`:`repeat(auto-fit,minmax(${minWidth}px,1fr))`,gap:12}}>{actions.map((a,i)=>{const [hov,setHov]=useState(false);return<button key={i} onClick={a.onClick} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)} style={{background:a.color,border:'none',cursor:'pointer',borderRadius:radius.xl,padding:'14px 12px',display:'flex',flexDirection:'column',alignItems:'center',gap:8,color:'white',fontWeight:700,fontSize:13,fontFamily:typography.fontFamily,boxShadow:hov?a.shadow:`0 4px 12px rgba(0,0,0,0.15)`,transform:hov?'translateY(-2px) scale(1.02)':'none',transition:transition.normal}}><a.icon size={20} color="white"/><span style={{textAlign:'center',lineHeight:1.3}}>{a.label}</span></button>;})}</div>;
 }
 
-/* ─── NAVIGATION: FilterTabs ─── */
+/* â”€â”€â”€ NAVIGATION: FilterTabs â”€â”€â”€ */
 export function FilterTabs({tabs,active,onChange,variant='pill',size='md'}:FilterTabsProps){
   const fs=size==='sm'?12:13,ph=size==='sm'?'7px 12px':'8px 16px';
   if(variant==='segment') return<div style={{display:'flex',gap:3,padding:3,background:colors.neutral[100],borderRadius:radius.lg,width:'fit-content'}}>{tabs.map(t=>{const isA=t.id===active;return<button key={t.id} onClick={()=>!t.disabled&&onChange(t.id)} disabled={t.disabled} style={{display:'flex',alignItems:'center',gap:6,padding:ph,borderRadius:radius.md,border:'none',cursor:t.disabled?'not-allowed':'pointer',fontWeight:700,fontSize:fs,whiteSpace:'nowrap',transition:transition.fast,opacity:t.disabled?0.4:1,background:isA?'white':'transparent',color:isA?colors.neutral[900]:colors.neutral[500],boxShadow:isA?shadows.sm:'none'}}>{t.icon&&<span style={{display:'flex',alignItems:'center'}}>{t.icon}</span>}{t.label}{t.count!==undefined&&<span style={{fontSize:fs-1,fontWeight:800,background:isA?colors.primary[100]:colors.neutral[200],color:isA?colors.primary[600]:colors.neutral[500],padding:'1px 6px',borderRadius:9999}}>{t.count}</span>}</button>;})}</div>;
@@ -340,7 +411,7 @@ export function FilterTabs({tabs,active,onChange,variant='pill',size='md'}:Filte
   return<div style={{display:'flex',gap:6,flexWrap:'wrap'}}>{tabs.map(t=>{const isA=t.id===active;return<button key={t.id} onClick={()=>!t.disabled&&onChange(t.id)} disabled={t.disabled} style={{display:'flex',alignItems:'center',gap:6,padding:ph,borderRadius:radius.lg,border:`1.5px solid ${isA?colors.primary[500]:colors.neutral[200]}`,background:isA?colors.primary[50]:'white',color:isA?colors.primary[700]:colors.neutral[500],fontWeight:700,fontSize:fs,cursor:t.disabled?'not-allowed':'pointer',whiteSpace:'nowrap',opacity:t.disabled?0.4:1,transition:transition.fast,boxShadow:isA?`0 0 0 1px ${colors.primary[500]}`:'none'}}>{t.icon&&<span style={{display:'flex',alignItems:'center'}}>{t.icon}</span>}{t.label}{t.count!==undefined&&<span style={{fontSize:fs-1,fontWeight:800,background:isA?colors.primary[500]:colors.neutral[100],color:isA?'white':colors.neutral[400],padding:'1px 6px',borderRadius:9999}}>{t.count}</span>}</button>;})}</div>;
 }
 
-/* ─── NAVIGATION: FilterChip ─── */
+/* â”€â”€â”€ NAVIGATION: FilterChip â”€â”€â”€ */
 const CC:Record<string,{bg:string;border:string;color:string;activeBg:string;activeText:string}>={
   indigo:{bg:colors.primary[50],border:colors.primary[200],color:colors.primary[700],activeBg:colors.primary[500],activeText:'white'},
   teal:{bg:colors.teal[50],border:'#99f6e4',color:colors.teal[600],activeBg:colors.teal[500],activeText:'white'},
@@ -356,7 +427,7 @@ export function FilterChip({label,count,active=false,onClick,onRemove,color='ind
   return<button onClick={onClick} style={{display:'inline-flex',alignItems:'center',gap:5,padding:'6px 10px',borderRadius:9999,border:`1.5px solid ${active?c.activeBg:c.border}`,background:active?c.activeBg:c.bg,color:active?c.activeText:c.color,fontWeight:700,fontSize:12,cursor:'pointer',transition:transition.fast,boxShadow:active?shadows.sm:'none'}}>{label}{count!==undefined&&<span style={{fontSize:11,fontWeight:800,background:active?'rgba(255,255,255,0.25)':c.border,color:active?c.activeText:c.color,padding:'1px 6px',borderRadius:9999,lineHeight:1.4}}>{count}</span>}{onRemove&&<span onClick={e=>{e.stopPropagation();onRemove();}} style={{width:14,height:14,borderRadius:'50%',background:'rgba(0,0,0,0.12)',display:'inline-flex',alignItems:'center',justifyContent:'center',cursor:'pointer',marginLeft:2}}><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M18 6 6 18M6 6l12 12"/></svg></span>}</button>;
 }
 
-/* ─── NAVIGATION: NavBar (stub - app uses Layout.tsx directly) ─── */
+/* â”€â”€â”€ NAVIGATION: NavBar (stub - app uses Layout.tsx directly) â”€â”€â”€ */
 export const NavBar = memo(({items,active,onNavigate,centerName='App'}:NavBarProps) => {
   return (
     <nav style={{display:'flex',gap:4}}>
@@ -367,3 +438,5 @@ export const NavBar = memo(({items,active,onNavigate,centerName='App'}:NavBarPro
     </nav>
   );
 });
+
+

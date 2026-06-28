@@ -17,13 +17,14 @@ import toast from 'react-hot-toast';
 import type { Student, Payment, Expense, Teacher, LeaveRequest, Material, DeleteTarget } from './types';
 import {
   fetchWithTimeout, formatDate, sanitizeObject, sanitizeAttendance,
-  parseCaDayToHours, parseDMY, isStudentActive,
+  parseCaDayToHours, parseDMY, isStudentActive, buildSchoolYearMonths,
 } from './helpers';
 import { buildPaidMap, isPaidFn, getActiveStudents, calcPaidPct, countPaidStudents } from './measures';
 import { RULES } from './rules';
 
 interface DomainConfig {
   scriptUrl:   string;
+  schoolYear:  string;
   students:    Student[];
   payments:    Payment[];
   expenses:    Expense[];
@@ -49,7 +50,7 @@ interface DomainConfig {
 
 export function useDomains(cfg: DomainConfig) {
   const {
-    scriptUrl, students, payments, expenses, tlogs, uClasses,
+    scriptUrl, schoolYear, students, payments, expenses, tlogs, uClasses,
     teachers, materials,
     setStudents, setPayments, setExpenses, setTlogs, setUClasses, setTeachers, setMaterials, setLeaveRequests,
     loadData,
@@ -291,6 +292,8 @@ export function useDomains(cfg: DomainConfig) {
       if (!form.thangHP)                      throw new Error('⚠️ Vui lòng chọn tháng học phí!');
       const thangHP      = Number(form.thangHP);
       const namHP        = Number(form.namHP || new Date().getFullYear());
+      const studentForFee = students.find(s => s.id === maHS);
+      const maLop        = String(form.maLop || form.MaLop || form.classId || studentForFee?.classId || '').trim();
       const t            = mkTs(form.date);
       const n            = new Date();
       const yy           = n.getFullYear().toString().slice(2);
@@ -303,15 +306,17 @@ export function useDomains(cfg: DomainConfig) {
         : (form.docNum || `PT-${yy}${mm}${dd}-${maHS.toUpperCase()}-${Date.now().toString(36).slice(-4).toUpperCase()}`);
       const dateFormatted = formatDate(form.date);
       const description  = `Học phí tháng ${thangHP} năm ${namHP}`;
-      const clean        = sanitizeObject({ ...form, maHS, soTien: Number(form.soTien), date: dateFormatted, description, thangHP, namHP });
+      const clean        = sanitizeObject({ ...form, maHS, maLop, MaLop: maLop, classId: maLop, soTien: Number(form.soTien), date: dateFormatted, description, thangHP, namHP });
 
       const previewPayment: Payment = {
         id: soCT, docNum: soCT, date: dateFormatted,
         studentId: maHS,
-        studentName: students.find(s => s.id === maHS)?.name || maHS,
+        studentName: studentForFee?.name || maHS,
         payer: form.nguoiNop || '', method: form.method || 'Chuyển khoản',
         description, amount: Number(form.soTien), note: form.note || '',
-        thangHP, namHP,
+        thangHP, namHP, maLop,
+        collector: form.nguoiThu || studentForFee?.teacher || '',
+        nguoiThu: form.nguoiThu || studentForFee?.teacher || '',
       } as any;
       setEditPayment(null);
       if (!editPayment) {
@@ -448,6 +453,14 @@ export function useDomains(cfg: DomainConfig) {
       }, '✅ Đã xóa giáo viên!');
       return;
     }
+    if (delTarget.type === 'class') {
+      setUClasses(prev => prev.filter(c => String(c['Mã Lớp'] || c.MaLop || c.classId || '') !== delTarget.id));
+      await withSave(async () => {
+        await api({ action: 'deleteClass', id: delTarget.id });
+        setSilent(); loadData();
+      }, '✅ Đã xóa lớp!');
+      return;
+    }
     if (delTarget.type === 'material') {
       setMaterials(prev => prev.filter(m => m.id !== delTarget.id));
       await withSave(async () => {
@@ -482,7 +495,15 @@ export function useDomains(cfg: DomainConfig) {
      TEACHERS DOMAIN
   ════════════════════════════════════════════ */
   const handleSaveTeacher = useCallback(async (form: any) => {
-    const isEdit = !!(form.id?.trim()) && teachers.some(t => t.id === form.id.trim());
+    const normText = (raw: any) => String(raw || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd');
+    const rawId = String(form.id || '').trim();
+    const name = String(form.name || '').trim();
+    const isSyntheticId = rawId.toUpperCase().startsWith('SYN-');
     const nextTeacherId = () => {
       const used = new Set(teachers.map(t => String(t.id || '').trim().toUpperCase()));
       const maxNo = teachers.reduce((max, t) => {
@@ -497,10 +518,22 @@ export function useDomains(cfg: DomainConfig) {
       }
       return nextId;
     };
+    const existingById = !isSyntheticId && rawId
+      ? teachers.find(t => String(t.id || '').trim() === rawId)
+      : undefined;
+    const existingByName = name
+      ? teachers.find(t =>
+          !String(t.id || '').trim().toUpperCase().startsWith('SYN-') &&
+          normText(t.name) === normText(name)
+        )
+      : undefined;
+    const targetTeacher = existingById || existingByName;
+    const isEdit = !!targetTeacher;
+    const teacherId = isEdit ? String(targetTeacher?.id || '').trim() : nextTeacherId();
     const payload: Teacher = {
       ...form,
-      id:        isEdit ? form.id.trim() : nextTeacherId(),
-      name:      String(form.name || '').trim(),
+      id:        teacherId,
+      name,
       phone:     String(form.phone || '').trim(),
       email:     String(form.email || '').trim(),
       specialization: String(form.specialization || '').trim(),
@@ -511,11 +544,11 @@ export function useDomains(cfg: DomainConfig) {
       notes:      String(form.notes || '').trim(),
       classes:   form.classes  || [],
       status:    form.status   || 'active',
-      createdAt: form.createdAt || new Date().toISOString(),
+      createdAt: targetTeacher?.createdAt || form.createdAt || new Date().toISOString(),
     };
     await withSave(async () => {
       if (isEdit) {
-        setTeachers(prev => prev.map(t => t.id === payload.id ? { ...t, ...payload } : t));
+        setTeachers(prev => prev.map(t => String(t.id || '').trim() === teacherId ? { ...t, ...payload } : t));
       } else {
         setTeachers(prev => [payload, ...prev]);
       }
@@ -690,15 +723,11 @@ export function useDomains(cfg: DomainConfig) {
       return true;
     });
     if (fSt === 'unpaid') {
-      // M1 FIX: dùng cửa sổ niên khóa hiện tại thay vì rolling-12-months.
-      // Niên khóa bắt đầu T7 (nếu curMo >= 7 → năm curYr; nếu < 7 → năm curYr-1).
-      const syStartYr = curMo >= 7 ? curYr : curYr - 1;
-      const debtMonths: { m: number; y: number }[] = [];
-      for (let y = syStartYr, m = 7; ; ) {
-        if (y > curYr || (y === curYr && m > curMo)) break;
-        debtMonths.push({ m, y });
-        if (m === 12) { m = 1; y++; } else m++;
-      }
+      const debtMonths = buildSchoolYearMonths(schoolYear).filter(fm => {
+        if (fm.y > curYr) return false;
+        if (fm.y === curYr && fm.m > curMo) return false;
+        return true;
+      });
       return [...filtered].sort((a, b) => {
         const aDebt = debtMonths.filter(fm => isMonthBillableForStudent(a, fm) && !isPaid(a.id, fm.m, fm.y)).length;
         const bDebt = debtMonths.filter(fm => isMonthBillableForStudent(b, fm) && !isPaid(b.id, fm.m, fm.y)).length;
@@ -706,7 +735,7 @@ export function useDomains(cfg: DomainConfig) {
       });
     }
     return filtered;
-  }, [students, qF, fTch, fFC, fSt, fM, fY, isPaid, hideInactive, isMonthBillableForStudent, curMo, curYr]);
+  }, [students, qF, fTch, fFC, fSt, fM, fY, isPaid, hideInactive, isMonthBillableForStudent, curMo, curYr, schoolYear]);
 
   const prevFiltFinLen = useRef(filtFin.length);
   useEffect(() => {

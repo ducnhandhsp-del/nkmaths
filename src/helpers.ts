@@ -303,6 +303,26 @@ export const saveSettings = (obj: object) => {
   try { localStorage.setItem('ltn-settings', JSON.stringify(obj)); } catch {}
 };
 
+export const parseSchoolYear = (schoolYear?: string): { start: number; end: number } => {
+  const match = String(schoolYear || '').trim().match(/^(\d{4})-(\d{4})$/);
+  if (match) {
+    const start = Number(match[1]);
+    const end = Number(match[2]);
+    if (end === start + 1) return { start, end };
+  }
+  const now = new Date();
+  const start = now.getMonth() + 1 >= 7 ? now.getFullYear() : now.getFullYear() - 1;
+  return { start, end: start + 1 };
+};
+
+export const buildSchoolYearMonths = (schoolYear?: string) => {
+  const { start, end } = parseSchoolYear(schoolYear);
+  const months: { m: number; y: number; label: string }[] = [];
+  for (let mo = 7; mo <= 12; mo++) months.push({ m: mo, y: start, label: `T${mo}` });
+  for (let mo = 1; mo <= 6; mo++) months.push({ m: mo, y: end, label: `T${mo}` });
+  return months;
+};
+
 export const getFinanceMonths = () => {
   const now = new Date();
   return Array.from({ length: 12 }, (_, i) => {

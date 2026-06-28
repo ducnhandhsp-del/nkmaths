@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, UserCheck, Activity, UserX } from 'lucide-react';
+import { X, Save, UserCheck, Activity, UserX, Phone, MessageCircle } from 'lucide-react';
 import { fmtVND, formatDate, capitalizeName, isValidPhone, isValidDateDMY, toInputDate } from './helpers';
 import { Button, IconButton, Input, Select } from './dsComponents';
 import type { Student, Payment } from './types';
@@ -91,50 +91,75 @@ export function StudentModal({
   };
 
   return (
-    <div style={MODAL_STYLE}>
-      <div style={DIALOG_STYLE}>
-        <div style={{ padding:'18px 24px',borderBottom:'1px solid #f1f5f9',display:'flex',alignItems:'center',justifyContent:'space-between',background:'white',flexShrink:0 }}>
-          <div>
-            <h3 style={{ fontSize:17,fontWeight:800,color:'#0f172a',margin:0 }}>{editing?'Sửa thông tin học sinh':'Thêm học sinh mới'}</h3>
-            <p style={{ fontSize:12,color:'#64748b',fontWeight:500,margin:'2px 0 0' }}>Điền đầy đủ thông tin bên dưới</p>
-          </div>
-          <IconButton icon={<X size={20}/>} label="Đóng" onClick={onClose}/>
-        </div>
-
-        <div style={{ flex:1,minHeight:0,overflowY:'auto',padding:'18px 24px' }}>
-          <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:18 }}>
-            <Input label="Mã HS *" value={f.id||''} onChange={v=>u('id',v)} placeholder="HS001" error={errors.id} disabled size="lg"/>
-            <Input label="Họ và tên *" value={f.name||''} onChange={v=>u('name',v)} placeholder="Nguyễn Văn A" error={errors.name} size="lg"/>
-            <Select label="Mã lớp" value={f.classId||''} onChange={v=>u('classId',v)} options={classOptions} size="lg"/>
-            <Input label="Khối lớp" value={f.grade||''} onChange={v=>u('grade',v)} placeholder="9" size="lg"/>
-            <Input label="Ngày sinh (DD/MM/YYYY)" value={f.dob||''} onChange={v=>u('dob',v)} placeholder="15/08/2010" error={errors.dob} size="lg"/>
-            <Input label="Ngày bắt đầu học" type="date" value={toInputDate(f.startDate||'')} onChange={v=>u('startDate',v)} size="lg"/>
-            <Select label="Học lực" value={f.academicLevel||'Khá'} onChange={v=>u('academicLevel',v)} options={academicOptions} size="lg"/>
-            <Input label="SĐT phụ huynh" value={f.parentPhone||''} onChange={v=>u('parentPhone',v)} placeholder="09xxxxxxxx" error={errors.parentPhone} size="lg"/>
-            <Input label="Zalo học sinh / SĐT học sinh" value={f.studentPhone||''} onChange={v=>u('studentPhone',v)} placeholder="09xxxxxxxx" error={errors.studentPhone} size="lg"/>
-            <Input label="Tên phụ huynh" value={f.parentName||''} onChange={v=>u('parentName',v)} size="lg"/>
-            <Input label="Trường đang học" value={f.school||''} onChange={v=>u('school',v)} size="lg"/>
-            <Select label="Cơ sở" value={f.branch||defaultBranch} onChange={v=>u('branch',v)} options={branchOptions} size="lg"/>
-            <Input label="Mục tiêu" value={f.goal||''} onChange={v=>u('goal',v)} placeholder="8 điểm học kỳ tới" size="lg"/>
-            <Input label="Facebook / Messenger URL" value={f.facebookUrl||''} onChange={v=>u('facebookUrl',v)} placeholder="https://facebook.com/ten.phu.huynh" size="lg"/>
-            <div style={{ gridColumn:'1/-1', display:'flex', flexDirection:'column', gap:4 }}>
-              <label style={{ fontSize:11,fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.08em' }}>Ghi chú / Nhận xét GV</label>
-              <textarea value={f.notes||''} onChange={e=>u('notes',e.target.value)} rows={3}
-                placeholder="Nhận xét về học lực, thái độ, điểm mạnh/yếu của học sinh..."
-                style={{ width:'100%',padding:'10px 12px',borderRadius:8,border:'1.5px solid #e2e8f0',fontSize:13,fontFamily:'inherit',color:'#0f172a',resize:'vertical',outline:'none',boxSizing:'border-box',lineHeight:1.6 }}/>
+    <div className="ltn-form-modal-overlay" style={MODAL_STYLE}>
+      <div className="ltn-quick-modal">
+        <header className="ltn-quick-head">
+          <div className="ltn-quick-title-row">
+            <div className="ltn-quick-title">
+              <div className="ltn-quick-icon">HS</div>
+              <div>
+                <h2>{editing ? 'Sửa học sinh' : 'Thêm học sinh'}</h2>
+              </div>
             </div>
+            <button className="ltn-quick-close" onClick={onClose} aria-label="Đóng">×</button>
           </div>
+        </header>
+
+        <div className="ltn-quick-body">
+          <section className="ltn-quick-card">
+            <p className="ltn-section-title">Hồ sơ</p>
+            <div className="ltn-grid-12">
+              <div className="span-2"><Input label="Mã HS *" value={f.id||''} onChange={v=>u('id',v)} placeholder="HS001" error={errors.id} disabled size="lg"/></div>
+              <div className="span-4"><Input label="Họ tên học sinh *" value={f.name||''} onChange={v=>u('name',v)} placeholder="Nguyễn Văn A" error={errors.name} size="lg"/></div>
+              <div className="span-3"><Input label="Ngày sinh" value={f.dob||''} onChange={v=>u('dob',v)} placeholder="15/08/2010" error={errors.dob} size="lg"/></div>
+              <div className="span-3"><Input label="Bắt đầu học" type="date" value={toInputDate(f.startDate||'')} onChange={v=>u('startDate',v)} size="lg"/></div>
+            </div>
+
+            <p className="ltn-section-title">Học tập</p>
+            <div className="ltn-grid-12">
+              <div className="span-3"><Select label="Lớp" value={f.classId||''} onChange={v=>u('classId',v)} options={classOptions} size="lg"/></div>
+              <div className="span-2"><Input label="Khối" value={f.grade||''} onChange={v=>u('grade',v)} placeholder="9" size="lg"/></div>
+              <div className="span-4"><Input label="Trường" value={f.school||''} onChange={v=>u('school',v)} size="lg"/></div>
+              <div className="span-3"><Select label="Học lực" value={f.academicLevel||'Khá'} onChange={v=>u('academicLevel',v)} options={academicOptions} size="lg"/></div>
+              <div className="span-3">
+                <Select
+                  label="Trạng thái"
+                  value={f.status || 'active'}
+                  onChange={v=>u('status',v)}
+                  options={[
+                    { value:'active', label:'Đang học' },
+                    { value:'onleave', label:'Tạm nghỉ' },
+                    { value:'inactive', label:'Đã nghỉ' },
+                  ]}
+                  size="lg"
+                />
+              </div>
+              <div className="span-3"><Select label="Cơ sở" value={f.branch||defaultBranch} onChange={v=>u('branch',v)} options={branchOptions} size="lg"/></div>
+            </div>
+
+            <p className="ltn-section-title">Liên hệ & ghi chú</p>
+            <div className="ltn-grid-12">
+              <div className="span-4"><Input label="Phụ huynh" value={f.parentName||''} onChange={v=>u('parentName',v)} size="lg"/></div>
+              <div className="span-4"><Input label="SĐT phụ huynh" value={f.parentPhone||''} onChange={v=>u('parentPhone',v)} placeholder="09xxxxxxxx" error={errors.parentPhone} size="lg"/></div>
+              <div className="span-4"><Input label="SĐT học sinh" value={f.studentPhone||''} onChange={v=>u('studentPhone',v)} placeholder="09xxxxxxxx" error={errors.studentPhone} size="lg"/></div>
+              <div className="span-12 ltn-quick-field">
+                <label>Nhận xét GV</label>
+                <textarea value={f.notes||''} onChange={e=>u('notes',e.target.value)} rows={2} placeholder="Học lực, thái độ, lịch mong muốn..." />
+              </div>
+            </div>
+          </section>
+
           {Object.keys(errors).length>0&&(
-            <div style={{ marginTop:16,display:'flex',alignItems:'center',gap:10,padding:'12px 16px',borderRadius:10,background:'#fff1f2',border:'1px solid #fecaca' }}>
+            <div style={{ display:'flex',alignItems:'center',gap:10,padding:'12px 16px',borderRadius:10,background:'#fff1f2',border:'1px solid #fecaca' }}>
               <span style={{ fontSize:18 }}>⚠️</span>
               <span style={{ fontSize:14,fontWeight:600,color:'#be123c' }}>Vui lòng kiểm tra lại thông tin đã nhập</span>
             </div>
           )}
         </div>
 
-        <div style={{ padding:'14px 24px',borderTop:'1px solid #f1f5f9',display:'flex',justifyContent:'flex-end',gap:10,flexShrink:0 }}>
+        <div className="ltn-quick-foot">
           <Button variant="outline" intent="neutral" size="lg" onClick={onClose}>Hủy</Button>
-          <Button intent="primary" size="lg" loading={isSaving} icon={<Save size={16}/>} onClick={handleSave}>
+          <Button intent={editing ? 'primary' : 'success'} size="lg" loading={isSaving} icon={<Save size={16}/>} onClick={handleSave}>
             {editing?'Cập nhật':'Thêm mới'}
           </Button>
         </div>
@@ -143,11 +168,12 @@ export function StudentModal({
   );
 }
 
-export function StudentDetailModal({ student, onClose, tlogs, payments, onToggleStatus, onSaveNote, onSaveFacebook }: {
+export function StudentDetailModal({ student, onClose, tlogs, payments, onToggleStatus, onSaveNote, onEdit }: {
   student:Student; onClose:()=>void; tlogs?:any[]; payments?:Payment[];
   onToggleStatus?:(student:Student,endDate?:string)=>Promise<void>;
   onSaveNote?:(student:Student,notes:string)=>Promise<void>;
   onSaveFacebook?:(student:Student,facebookUrl:string)=>Promise<void>;
+  onEdit?:(student:Student)=>void;
 }) {
   const [toggling,setToggling]=useState(false);
   const [showEndPicker,setShowEndPicker]=useState(false);
@@ -159,16 +185,6 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
   const [note, setNote] = useState<string>(initialNote);
   const [noteSaving, setNoteSaving] = useState(false);
 
-  // Facebook URL
-  const [fbUrl, setFbUrl] = useState<string>(student.facebookUrl || '');
-  const [fbSaving, setFbSaving] = useState(false);
-  const [fbSaved, setFbSaved] = useState(false);
-  const saveFb = async () => {
-    if (!onSaveFacebook) return;
-    setFbSaving(true);
-    try { await onSaveFacebook(student, fbUrl); setFbSaved(true); setTimeout(()=>setFbSaved(false), 2000); }
-    finally { setFbSaving(false); }
-  };
   const [noteSaved,  setNoteSaved]  = useState(false);
 
   // Reset note khi mở modal cho HS khác
@@ -190,7 +206,7 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
     }
   };
 
-  const s=student, ph=String(s.parentPhone||'').replace(/\D/g,''), sh=String(s.studentPhone||'').replace(/\D/g,'');
+  const s=student, ph=String(s.parentPhone||'').replace(/\D/g,'');
   // Không hardcode tên GV — dùng giá trị thật từ student.teacher
   const resolveT=(raw:string)=>raw||'---';
   const isInactive=s.status==='inactive'||(s.endDate&&s.endDate!=='---'&&s.endDate!=='');
@@ -212,24 +228,39 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
   const totalPaid = allPayments.reduce((sum,p)=>sum+p.amount,0);
   const handleToggle=async(endDate?:string)=>{ if(!onToggleStatus) return; setToggling(true); try{ await onToggleStatus(s,endDate); }finally{ setToggling(false); } };
   const attendColor=(attendPct??0)>=90?'#10b981':(attendPct??0)>=70?'#f97316':'#ef4444';
-  const fields=[
-    {l:'Ngày sinh',v:formatDate(s.dob)},{l:'Bắt đầu học',v:formatDate(s.startDate)},
-    {l:'Khối lớp',v:s.grade},{l:'Học lực',v:s.academicLevel},
-    {l:'Trường HT',v:s.school},{l:'Cơ sở',v:s.branch},
-    {l:'Giáo viên',v:resolveT(s.teacher)},{l:'Phụ huynh',v:s.parentName},
-    {l:'SĐT PH',v:s.parentPhone},{l:'Mục tiêu',v:s.goal},{l:'Cần hỗ trợ',v:s.supportNeeded},
+  const profileFields=[
+    {l:'Mã HS',v:s.id},{l:'Tên HS',v:capitalizeName(s.name)},{l:'Ngày sinh',v:formatDate(s.dob)},{l:'Bắt đầu học',v:formatDate(s.startDate)},
   ];
+  const learningFields=[
+    {l:'Lớp',v:s.classId},{l:'Trường',v:s.school},{l:'Học lực',v:s.academicLevel},{l:'Mục tiêu',v:s.goal},
+  ];
+  const contactFields=[
+    {l:'Phụ huynh',v:s.parentName},{l:'SĐT PH',v:s.parentPhone},{l:'SĐT HS',v:s.studentPhone},
+  ];
+  const renderInfo = (items: {l:string; v:any}[], itemClass = 'ltn-info-cell compact') => (
+    <div className="ltn-info-grid">
+      {items.map(item => (
+        <div key={item.l} className={itemClass}>
+          <p>{item.l}</p>
+          <p>{item.v || '---'}</p>
+        </div>
+      ))}
+    </div>
+  );
 
   return (
-    <div style={MODAL_STYLE}>
-      <div style={{ ...DIALOG_STYLE, maxWidth:720 }}>
-        <div style={{ padding:'18px 24px',borderBottom:'1px solid #f1f5f9',display:'flex',alignItems:'center',gap:14,background:'white',flexShrink:0 }}>
+    <div className="ltn-form-modal-overlay" style={MODAL_STYLE}>
+      <div className="ltn-form-modal-panel" style={{ ...DIALOG_STYLE, maxWidth:720 }}>
+        <div className="ltn-form-modal-header" style={{ padding:'18px 24px',borderBottom:'1px solid #f1f5f9',display:'flex',alignItems:'center',gap:14,background:'white',flexShrink:0 }}>
           <div style={{ flex:1,minWidth:0 }}>
             <h3 style={{ fontSize:17,fontWeight:800,color:'#0f172a',margin:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{capitalizeName(s.name)}</h3>
             <p style={{ fontSize:13,color:'#6366f1',fontWeight:600,margin:'3px 0 0' }}>{s.id} · Lớp {s.classId}</p>
             {isInactive&&<span style={{ display:'inline-block',marginTop:5,fontSize:12,fontWeight:700,color:'#e11d48',background:'#fff1f2',border:'1px solid #fecaca',padding:'3px 10px',borderRadius:6,textTransform:'uppercase' }}>Đã nghỉ học</span>}
           </div>
           <div style={{ display:'flex',alignItems:'center',gap:8,flexShrink:0 }}>
+            {ph.length>=9&&<a href={`tel:${ph}`} style={{ textDecoration:'none' }}><Button variant="outline" intent="success" size="sm" icon={<Phone size={14}/>}>Gọi</Button></a>}
+            {ph.length>=9&&<a href={`https://zalo.me/${ph}`} target="_blank" rel="noopener noreferrer" style={{ textDecoration:'none' }}><Button variant="outline" intent="primary" size="sm" icon={<MessageCircle size={14}/>}>Zalo PH</Button></a>}
+            {onEdit && <Button intent="primary" variant="outline" size="sm" onClick={() => onEdit(student)}>Sửa hồ sơ</Button>}
             {onToggleStatus&&(isInactive
               ? <Button intent="success" variant="outline" size="sm" icon={<UserCheck size={14}/>} loading={toggling} onClick={()=>handleToggle()}>Học lại</Button>
               : showEndPicker
@@ -245,17 +276,56 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
           </div>
         </div>
 
-        <div style={{ flex:1,minHeight:0,overflowY:'auto',padding:'16px 24px' }}>
+        <div className="ltn-form-modal-body" style={{ flex:1,minHeight:0,overflowY:'auto',padding:'16px 24px' }}>
 
-          {/* Thông tin cơ bản */}
-          <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10 }}>
-            {fields.map((item,i)=>(
-              <div key={i} style={{ padding:'11px 14px',borderRadius:8,background:'#f8fafc',border:'1px solid #f1f5f9',gridColumn:(item.l==='Mục tiêu'||item.l==='Cần hỗ trợ')?'1/-1':'auto' }}>
-                <p style={{ fontSize:11,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.08em',margin:'0 0 3px' }}>{item.l}</p>
-                <p style={{ fontWeight:600,color:'#1e293b',fontSize:15,margin:0 }}>{item.v||'---'}</p>
+          <section className="ltn-detail-section">
+            <p className="ltn-section-title">Hồ sơ</p>
+            {renderInfo(profileFields, 'ltn-info-cell quarter')}
+          </section>
+
+          <section className="ltn-detail-section soft" style={{ marginTop: 12 }}>
+            <p className="ltn-section-title">Học tập</p>
+            {renderInfo(learningFields, 'ltn-info-cell quarter')}
+          </section>
+
+          <section className="ltn-detail-section" style={{ marginTop: 12 }}>
+            <p className="ltn-section-title">Liên hệ</p>
+            {renderInfo(contactFields)}
+          </section>
+
+          <section className="ltn-detail-section soft" style={{ marginTop: 12 }}>
+            <p className="ltn-section-title">Giáo viên phụ trách</p>
+            <div className="ltn-info-grid">
+              <div className="ltn-info-cell compact">
+                <p>Giáo viên</p>
+                <p>{resolveT(s.teacher)}</p>
               </div>
-            ))}
-          </div>
+              <div className="ltn-info-cell compact">
+                <p>Cơ sở</p>
+                <p>{s.branch || '---'}</p>
+              </div>
+              <div className="ltn-info-cell wide" style={{ display: 'grid', gap: 7 }}>
+                <p>Nhận xét</p>
+                <textarea
+                  value={note}
+                  onChange={e=>setNote(e.target.value)}
+                  rows={2}
+                  placeholder="Nhận xét về học lực, thái độ..."
+                  style={{ width:'100%', minHeight: 64, padding:'8px 10px', borderRadius:8, border:'1px solid #dbe4f0', fontSize:12, fontFamily:'inherit', color:'#1e293b', resize:'vertical', outline:'none', boxSizing:'border-box', lineHeight:1.45 }}
+                />
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap: 8 }}>
+                  {noteSaved ? <span style={{ fontSize:11,fontWeight:800,color:'#059669' }}>Đã lưu</span> : <span />}
+                  <button
+                    onClick={saveNote}
+                    disabled={noteSaving}
+                    style={{ padding:'5px 10px', borderRadius:7, border:'none', background:noteSaving?'#f1f5f9':'#2563eb', color:noteSaving?'#94a3b8':'white', fontSize:11, fontWeight:800, cursor:noteSaving?'default':'pointer' }}
+                  >
+                    {noteSaving ? 'Đang lưu...' : 'Lưu'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
 
           {/* Chuyên cần */}
           {totalSessions>0&&(
@@ -315,88 +385,9 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
             }
           </div>
 
-          {/* Facebook URL */}
-          <div style={{ marginTop:16 }}>
-            <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8 }}>
-              <p style={{ fontSize:12,fontWeight:700,color:'#2563eb',textTransform:'uppercase',letterSpacing:'0.08em',margin:0 }}>💬 Facebook / Messenger</p>
-              {fbSaved && <span style={{ fontSize:11,fontWeight:700,color:'#059669' }}>✓ Đã lưu</span>}
-            </div>
-            <div style={{ display:'flex',gap:8 }}>
-              <input
-                value={fbUrl}
-                onChange={e=>setFbUrl(e.target.value)}
-                placeholder="https://facebook.com/ten.phu.huynh hoặc https://m.me/username"
-                style={{ flex:1,padding:'9px 12px',borderRadius:8,border:'1.5px solid #e2e8f0',fontSize:13,fontFamily:'inherit',color:'#1e293b',outline:'none',boxSizing:'border-box' as any }}
-                onFocus={e=>e.target.style.borderColor='#2563eb'}
-                onBlur={e=>e.target.style.borderColor='#e2e8f0'}
-              />
-              {onSaveFacebook && (
-                <button onClick={saveFb} disabled={fbSaving}
-                  style={{ padding:'9px 14px',borderRadius:8,border:'none',background:fbSaving?'#f1f5f9':'#2563eb',color:fbSaving?'#94a3b8':'white',fontSize:12,fontWeight:700,cursor:fbSaving?'default':'pointer',whiteSpace:'nowrap',flexShrink:0 }}>
-                  {fbSaving ? '...' : '💾 Lưu'}
-                </button>
-              )}
-            </div>
-            {fbUrl && (
-              <a href={fbUrl.startsWith('http') ? fbUrl : `https://m.me/${fbUrl}`}
-                target="_blank" rel="noopener noreferrer"
-                style={{ display:'inline-flex',alignItems:'center',gap:6,marginTop:8,fontSize:12,fontWeight:700,color:'#2563eb',textDecoration:'none' }}>
-                → Mở Messenger
-              </a>
-            )}
-          </div>
-
-          {/* Ghi chú giáo viên */}
-          <div style={{ marginTop:16 }}>
-            <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8 }}>
-              <p style={{ fontSize:12,fontWeight:700,color:'#7c3aed',textTransform:'uppercase',letterSpacing:'0.08em',margin:0 }}>📝 Nhận xét giáo viên</p>
-              {noteSaved && <span style={{ fontSize:11,fontWeight:700,color:'#059669' }}>✓ Đã lưu lên Sheet</span>}
-            </div>
-            <textarea
-              value={note}
-              onChange={e=>setNote(e.target.value)}
-              placeholder="Nhận xét về học lực, thái độ, điểm mạnh/yếu của học sinh..."
-              rows={3}
-              style={{ width:'100%',padding:'10px 12px',borderRadius:8,border:'1.5px solid #e2e8f0',fontSize:13,fontFamily:'inherit',color:'#1e293b',resize:'vertical',outline:'none',boxSizing:'border-box',lineHeight:1.6 }}
-              onFocus={e=>e.target.style.borderColor='#7c3aed'}
-              onBlur={e=>e.target.style.borderColor='#e2e8f0'}
-            />
-            <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:6 }}>
-              <p style={{ fontSize:11,color:'#94a3b8',margin:0 }}>
-                {onSaveNote ? 'Lưu lên Google Sheet để dùng trên mọi thiết bị' : 'Lưu trên thiết bị này'}
-              </p>
-              <button
-                onClick={saveNote}
-                disabled={noteSaving}
-                style={{ padding:'5px 14px',borderRadius:7,border:'none',background:noteSaving?'#f1f5f9':'#7c3aed',color:noteSaving?'#94a3b8':'white',fontSize:12,fontWeight:700,cursor:noteSaving?'default':'pointer' }}
-              >
-                {noteSaving ? '⏳ Đang lưu...' : '💾 Lưu nhận xét'}
-              </button>
-            </div>
-          </div>
-
         </div>
 
-        <div style={{ padding:'14px 24px',borderTop:'1px solid #f1f5f9',display:'flex',gap:10,flexShrink:0 }}>
-          {ph.length>=9&&<>
-            <a href={`tel:${ph}`} style={{ flex:1 }}><Button variant="outline" intent="success" fullWidth size="lg">📞 Gọi điện</Button></a>
-            <a href={`https://zalo.me/${ph}`} target="_blank" rel="noopener noreferrer" style={{ flex:1,textDecoration:'none' }}><Button variant="outline" intent="primary" fullWidth size="lg">💬 Zalo PH</Button></a>
-          </>}
-          {sh.length>=9&&(
-            <a href={`https://zalo.me/${sh}`} target="_blank" rel="noopener noreferrer" style={{ flex:1,textDecoration:'none' }}>
-              <Button variant="outline" intent="primary" fullWidth size="lg" style={{ background:'#eef6ff',color:'#0068FF',borderColor:'#bfdbfe' }}>
-                💬 Zalo HS
-              </Button>
-            </a>
-          )}
-          {s.facebookUrl && (
-            <a href={s.facebookUrl.startsWith('http') ? s.facebookUrl : `https://m.me/${s.facebookUrl}`}
-              target="_blank" rel="noopener noreferrer" style={{ flex:1,textDecoration:'none' }}>
-              <Button variant="outline" intent="primary" fullWidth size="lg" style={{ background:'#e8f0fe',color:'#2563eb',borderColor:'#c7d2fe' }}>
-                💬 Messenger
-              </Button>
-            </a>
-          )}
+        <div className="ltn-form-modal-footer" style={{ padding:'10px 24px',borderTop:'1px solid #f1f5f9',display:'flex',gap:10,flexShrink:0 }}>
           <Button variant="outline" intent="neutral" fullWidth size="lg" onClick={onClose}>Đóng</Button>
         </div>
       </div>

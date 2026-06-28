@@ -55,26 +55,26 @@ function txStudents(raw: any[], tl: string[]): Student[] {
 
 function txPayments(raw: any[], hs: Student[]): Payment[] {
   return raw.map((p, i) => {
-    const rawDate    = String(p['Ngày CT'] || p.date || '').replace(/\//g, '').replace(/\s.*/,'');
-    const maHS       = String(p['Mã HS'] || p.studentId || 'X').trim();
+    const rawDate    = String(p.NgayThu || p['Ngày thu'] || p['Ngày CT'] || p.date || '').replace(/\//g, '').replace(/\s.*/,'');
+    const maHS       = String(p.MaHS || p['Mã HS'] || p.studentId || 'X').trim();
     const fallbackId = `PT-${rawDate || '0'}-${maHS}-${i}`;
-    const d          = p['Số hiệu CT'] || p.docNum || fallbackId;
+    const d          = p.MaPhieuThu || p['Mã phiếu thu'] || p['Số hiệu CT'] || p.docNum || fallbackId;
     return {
       id:          String(d),
       // B4 FIX: formatDate normalises any GAS date format (ISO / DD/MM/YYYY / ISO+T)
       // to DD/MM/YYYY so filteredLedger regex filter never misses a record.
-      date:        formatDate(String(p['Ngày CT'] || p.date || '')),
+      date:        formatDate(String(p.NgayThu || p['Ngày thu'] || p['Ngày CT'] || p.date || '')),
       docNum:      String(d),
       studentId:   maHS,
       studentName: String(p.studentName || hs.find(s => s.id === maHS)?.name || '?'),
-      payer:       String(p['Người thanh toán'] || p.payer  || '---'),
-      method:      normalizePaymentMethod(p['Hình thức'] || p.method || '---'),
-      description: String(p['Diễn giải']        || p.description || ''),
-      amount:      Number(p['Số tiền']          || p.amount) || 0,
-      note:        String(p['Ghi chú']          || p.note   || ''),
-      thangHP:     Number(p.thangHP) || 0,
-      namHP:       Number(p.namHP)   || 0,
-      maLop:       String(p.maLop || p.MaLop || p.classId || p['MÃ£ Lá»›p'] || ''),
+      payer:       String(p.NguoiNop || p['Người nộp'] || p['Người thanh toán'] || p.payer  || '---'),
+      method:      normalizePaymentMethod(p.HinhThuc || p['Hình thức'] || p.method || '---'),
+      description: String(p.DienGiai || p['Diễn giải']        || p.description || ''),
+      amount:      Number(p.SoTien || p['Số tiền']          || p.amount) || 0,
+      note:        String(p.GhiChu || p['Ghi chú']          || p.note   || ''),
+      thangHP:     Number(p.ThangHP || p.thangHP) || 0,
+      namHP:       Number(p.NamHP || p.namHP)   || 0,
+      maLop:       String(p.MaLop || p.maLop || p.classId || p['Mã Lớp'] || p['Mã lớp'] || p['Ma Lop'] || ''),
       createdAt:   String(p.createdAt || p.CreatedAt || ''),
       updatedAt:   String(p.updatedAt || p.UpdatedAt || ''),
     };
@@ -83,19 +83,19 @@ function txPayments(raw: any[], hs: Student[]): Payment[] {
 
 function txExpenses(raw: any[]): any[] {
   return raw.map((e, i) => {
-    const rawDate    = String(e['Ngày CT'] || e.date || '').replace(/\//g, '').replace(/\s.*/,'');
-    const desc       = String(e['Nội dung chi'] || e.description || '').slice(0, 6).replace(/\s/g, '');
+    const rawDate    = String(e.NgayChi || e['Ngày chi'] || e['Ngày CT'] || e.date || '').replace(/\//g, '').replace(/\s.*/,'');
+    const desc       = String(e.NoiDung || e['Nội dung'] || e['Nội dung chi'] || e.description || '').slice(0, 6).replace(/\s/g, '');
     const fallbackId = `PC-${rawDate || '0'}-${desc || 'X'}-${i}`;
-    const d          = e['Số hiệu CT'] || e.docNum || fallbackId;
+    const d          = e.MaPhieuChi || e['Mã phiếu chi'] || e['Số hiệu CT'] || e.docNum || fallbackId;
     return {
       id:          String(d),
       // B4 FIX: same as txPayments — normalise to DD/MM/YYYY
-      date:        formatDate(String(e['Ngày CT'] || e.date || '')),
+      date:        formatDate(String(e.NgayChi || e['Ngày chi'] || e['Ngày CT'] || e.date || '')),
       docNum:      String(d),
-      description: String(e['Nội dung chi'] || e.description || ''),
-      category:    String(e['Hạng mục']     || e.category    || ''),
-      amount:      Number(e['Số tiền']      || e.amount) || 0,
-      spender:     String(e['Người chi']    || e.spender || ''),
+      description: String(e.NoiDung || e['Nội dung'] || e['Nội dung chi'] || e.description || ''),
+      category:    String(e.HangMuc || e['Hạng mục']     || e.category    || ''),
+      amount:      Number(e.SoTien || e['Số tiền']      || e.amount) || 0,
+      spender:     String(e.NguoiChi || e['Người chi']    || e.spender || ''),
       createdAt:   String(e.createdAt || e.CreatedAt || ''),
       updatedAt:   String(e.updatedAt || e.UpdatedAt || ''),
     };

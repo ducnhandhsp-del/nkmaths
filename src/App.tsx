@@ -16,7 +16,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 
 import { loadSettings, parseDMY, SCRIPT_URL_DEFAULT, FEE_DEFAULT, CA_DAY_DEFAULT, TEACHER_LIST_DEFAULT } from './helpers';
 import { RULES } from './rules';
-import type { Screen, Student, DeleteTarget, TrainingSub, OperationsSub, FinanceSub } from './types';
+import type { Screen, Student, DeleteTarget, TrainingSub, OperationsSub, FinanceSub, ReportsSub } from './types';
 
 import { Sidebar, MobileHeader, BottomNav, useIsDesktop } from './Layout';
 import { ErrorBoundary } from './AppComponents';
@@ -27,7 +27,7 @@ import { useDomains } from './useDomains';
 
 import { StudentModal, StudentDetailModal } from './ModalStudent';
 import { ClassModal, BulkTransferModal } from './ModalClass';
-import { FABModal, InvoiceModal, ExpenseModal, FinanceDetailModal } from './ModalFinance';
+import { PaymentFormModal, ExpenseFormModal, InvoiceModal, ExpenseModal, FinanceDetailModal } from './ModalFinance';
 import { DiaryModal, DiaryDetailModal } from './ModalDiary';
 import { DeleteModal } from './UIComponents';
 import LoadingScreen from './LoadingScreen';
@@ -36,6 +36,7 @@ import OverviewTab    from './OverviewTab';
 import OperationsTab  from './OperationsTab';
 import LearningTab    from './LearningTab';
 import FinanceTab     from './FinanceTab';
+import ReportsTab     from './ReportsTab';
 import SettingsTab    from './SettingsTab';
 
 export default function App() {
@@ -43,27 +44,33 @@ export default function App() {
   /* ── Routing ── */
   const [screen, setScreen] = useState<Screen>('overview');
   const goScreen = useCallback((s: Screen) => setScreen(s), []);
-  const [trainingSubtab, setTrainingSubtab] = useState<TrainingSub>('overview');
-  const goTraining = useCallback((sub: TrainingSub = 'overview') => {
+  const [trainingSubtab, setTrainingSubtab] = useState<TrainingSub>('students');
+  const goTraining = useCallback((sub: TrainingSub = 'students') => {
     setTrainingSubtab(sub);
     setScreen('training');
   }, []);
-  const [operationsSubtab, setOperationsSubtab] = useState<OperationsSub>('overview');
-  const goOperations = useCallback((sub: OperationsSub = 'overview') => {
+  const [operationsSubtab, setOperationsSubtab] = useState<OperationsSub>('schedule');
+  const goOperations = useCallback((sub: OperationsSub = 'schedule') => {
     setOperationsSubtab(sub);
     setScreen('operations');
   }, []);
-  const [financeSubtab, setFinanceSubtab] = useState<FinanceSub>('report');
-  const goFinance = useCallback((sub: FinanceSub = 'report') => {
+  const [financeSubtab, setFinanceSubtab] = useState<FinanceSub>('debt');
+  const goFinance = useCallback((sub: FinanceSub = 'debt') => {
     setFinanceSubtab(sub);
     setScreen('finance');
+  }, []);
+  const [reportsSubtab, setReportsSubtab] = useState<ReportsSub>('finance');
+  const goReports = useCallback((sub: ReportsSub = 'finance') => {
+    setReportsSubtab(sub);
+    setScreen('reports');
   }, []);
 
   /* ── Settings (localStorage) ── */
   const _saved        = useRef(loadSettings());
   const [baseTuition,  setBaseTuition]  = useState<number>(_saved.current?.baseTuition  ?? FEE_DEFAULT);
-  const [schoolYear,   setSchoolYear]   = useState<string>(_saved.current?.schoolYear   ?? '2025-2026');
-  const [zaloTpl,      setZaloTpl]      = useState<string>(_saved.current?.zaloTpl      ?? 'Chào anh/chị, học phí tháng [Thang] của cháu [Ten] là [SoTien]. Xin cảm ơn.');
+  const [schoolYear,   setSchoolYear]   = useState<string>(_saved.current?.schoolYear   ?? '2026-2027');
+  const [tuitionDueDay, setTuitionDueDay] = useState<number>(_saved.current?.tuitionDueDay ?? 15);
+  const [, setZaloTpl] = useState<string>(_saved.current?.zaloTpl ?? 'Chào phụ huynh em [Ten], LỚP TOÁN NK thông báo học phí tháng [Thang]/[Nam] của em hiện còn [SoTien]. Phụ huynh vui lòng kiểm tra và thanh toán giúp lớp. Em cảm ơn ạ.');
   const [scriptUrl,    setScriptUrl]    = useState<string>(_saved.current?.scriptUrl    ?? SCRIPT_URL_DEFAULT);
   const [centerName,   setCenterName]   = useState<string>(_saved.current?.centerName   ?? 'Lớp Toán NK');
   const [teacher,      setTeacher]      = useState<string>(_saved.current?.teacher      ?? 'LÊ ĐỨC NHÂN');
@@ -92,7 +99,7 @@ export default function App() {
 
   /* ── Domain hooks (business logic + CRUD) ── */
   const d = useDomains({
-    scriptUrl, students, payments, expenses, tlogs, uClasses,
+    scriptUrl, schoolYear, students, payments, expenses, tlogs, uClasses,
     teachers, materials,
     setStudents, setUClasses, setPayments, setExpenses, setTlogs,
     setTeachers, setMaterials, setLeaveRequests,
@@ -105,10 +112,10 @@ export default function App() {
   /* ── Modal UI state ── */
   const [showStudent,  setShowStudent]  = useState(false);
   const [showClass,    setShowClass]    = useState(false);
-  const [showFAB,      setShowFAB]      = useState(false);
+  const [showPayment,  setShowPayment]  = useState(false);
+  const [showExpense,  setShowExpense]  = useState(false);
   const [showDiary,    setShowDiary]    = useState(false);
   const [showBulkXfer, setShowBulkXfer] = useState(false);
-  const [fabInitialTab, setFabInitialTab] = useState<'income'|'expense'>('income');
   const [preselectedDiaryClass, setPreselectedDiaryClass] = useState('');
   const [preselectedDiaryDate,  setPreselectedDiaryDate]  = useState('');
   const [preselectedDiaryCaDay, setPreselectedDiaryCaDay] = useState('');
@@ -118,6 +125,8 @@ export default function App() {
   const [vFinance,  setVFinance]  = useState<Student | null>(null);
   const [vExpense,  setVExpense]  = useState<any>(null);
   const [delTarget, setDelTarget] = useState<DeleteTarget | null>(null);
+  const mainRef = useRef<HTMLElement | null>(null);
+  const lastRouteRef = useRef('');
 
   /* ── Ctrl+K ── */
   const [cmdOpen, setCmdOpen] = useState(false);
@@ -146,8 +155,42 @@ export default function App() {
     onAddStudent: () => { goTraining('students'); d.setEditStudent(null); setShowStudent(true); },
     onAddClass:   () => { goTraining('classes'); d.setEditClass(null); setShowClass(true); },
     onAddDiary:   (classId?: string) => { goOperations('schedule'); handleAddDiary(classId); },
-    onAddPayment: () => { goFinance('ledger'); setFabInitialTab('income'); d.setEditPayment(null); d.setEditExpense(null); setShowFAB(true); },
+    onAddPayment: () => { goFinance('ledger'); d.setEditPayment(null); d.setEditExpense(null); setShowPayment(true); },
   });
+
+  useEffect(() => {
+    const routeKey = `${screen}:${trainingSubtab}:${operationsSubtab}:${financeSubtab}:${reportsSubtab}`;
+    if (lastRouteRef.current === routeKey) return;
+    lastRouteRef.current = routeKey;
+
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+    mainRef.current?.scrollTo?.({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+
+    if (screen === 'training') {
+      if (trainingSubtab === 'students') {
+        d.setQS('');
+        d.setFCls('');
+        d.setHideInactive(true);
+        d.setPgS(1);
+      } else if (trainingSubtab === 'classes') {
+        d.setQCls('');
+        d.setFClsTeacher('');
+      }
+    }
+    if (screen === 'operations') {
+      d.setQD('');
+      d.setDCls('');
+      d.setPgD(1);
+    }
+    if (screen === 'finance') {
+      d.setQF('');
+      d.setFTch('');
+      d.setFFC('');
+      d.setFMo(`${String(d.curMo).padStart(2, '0')}/${d.curYr}`);
+      d.setFSt(financeSubtab === 'debt' ? 'unpaid' : '');
+      d.setPgF(1);
+    }
+  }, [screen, trainingSubtab, operationsSubtab, financeSubtab, reportsSubtab]);
 
   /* ── Prev-month deltas ── */
   // prevStudentCount = số HS active đầu tháng này (để delta = active now - active last month)
@@ -178,30 +221,55 @@ export default function App() {
   }, [tlogs, d.curMo, d.curYr, d.prevMo, d.prevYr]);
 
   if (loading) return <LoadingScreen />;
-
   return (
-    <div style={{ minHeight: '100dvh', background: '#F0F2F5', fontFamily: 'inherit' }}>
+    <div style={{ minHeight: '100dvh', background: '#F0F2F8', fontFamily: 'inherit' }}>
       <div style={{ display: 'flex' }}>
-        <Sidebar active={screen} set={goScreen} centerName={centerName} isDesktop={isDesktop} />
+        <Sidebar
+          active={screen}
+          set={goScreen}
+          centerName={centerName}
+          isDesktop={isDesktop}
+          trainingSubtab={trainingSubtab}
+          setTrainingSubtab={setTrainingSubtab}
+          operationsSubtab={operationsSubtab}
+          setOperationsSubtab={setOperationsSubtab}
+          financeSubtab={financeSubtab}
+          setFinanceSubtab={setFinanceSubtab}
+          reportsSubtab={reportsSubtab}
+          setReportsSubtab={setReportsSubtab}
+        />
 
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: '100dvh' }}>
-          <MobileHeader active={screen} set={goScreen} centerName={centerName} isDesktop={isDesktop} />
+          <MobileHeader
+            active={screen}
+            set={goScreen}
+            centerName={centerName}
+            isDesktop={isDesktop}
+            trainingSubtab={trainingSubtab}
+            setTrainingSubtab={setTrainingSubtab}
+            operationsSubtab={operationsSubtab}
+            setOperationsSubtab={setOperationsSubtab}
+            financeSubtab={financeSubtab}
+            setFinanceSubtab={setFinanceSubtab}
+            reportsSubtab={reportsSubtab}
+            setReportsSubtab={setReportsSubtab}
+          />
 
           <main
-            style={{ flex: 1, width: '100%', padding: '20px 24px 32px', boxSizing: 'border-box' }}
+            ref={mainRef}
+            style={{ flex: 1, width: '100%', padding: isDesktop ? '24px 28px 32px' : '14px 16px 24px', boxSizing: 'border-box' }}
             className="print:p-0 mobile-main-content"
           >
             {screen === 'overview' && (
               <ErrorBoundary fallbackLabel="Tổng quan">
                 <OverviewTab
-                  students={students} payments={payments} expenses={expenses}
+                  students={students} payments={payments}
                   tlogs={tlogs} uClasses={uClasses}
-                  curMo={d.curMo} curYr={d.curYr}
+                  curMo={d.curMo} curYr={d.curYr} baseTuition={baseTuition}
                   goTraining={goTraining} goOperations={goOperations} goFinance={goFinance} isPaid={d.isPaid}
                   onAddStudent={() => { goTraining('students'); d.setEditStudent(null); setShowStudent(true); }}
                   onAddDiary={(classId, date, caDay) => { goOperations('schedule'); handleAddDiary(classId, date, caDay); }}
-                  onAddIncome={() => { goFinance('ledger'); setFabInitialTab('income'); d.setEditPayment(null); d.setEditExpense(null); setShowFAB(true); }}
-                  onAddExpense={() => { goFinance('expense'); setFabInitialTab('expense'); d.setEditPayment(null); d.setEditExpense(null); setShowFAB(true); }}
+                  onAddIncome={() => { goFinance('ledger'); d.setEditPayment(null); d.setEditExpense(null); setShowPayment(true); }}
                 />
               </ErrorBoundary>
             )}
@@ -209,12 +277,12 @@ export default function App() {
             {screen === 'operations' && (
               <ErrorBoundary fallbackLabel="Vận hành">
                 <OperationsTab
+                  key={operationsSubtab}
                   sub={operationsSubtab} setSub={setOperationsSubtab}
                   filtD={d.filtD} pgD={d.pgD} setPgD={d.setPgD} qD={d.qD} setQD={d.setQD}
                   dCls={d.dCls} setDCls={d.setDCls} uClasses={uClasses}
                   IPP={RULES.pagination.defaultIPP}
                   students={students} tlogs={tlogs} leaveRequests={leaveRequests}
-                  teachers={teachers} payments={payments} curMo={d.curMo} curYr={d.curYr} isPaid={d.isPaid}
                   onViewDiary={log => setVDiary(log)}
                   onEditDiary={log => { d.setEditDiary(log); setShowDiary(true); }}
                   onAddDiary={handleAddDiary}
@@ -226,6 +294,7 @@ export default function App() {
             {screen === 'training' && (
               <ErrorBoundary fallbackLabel="Đào tạo">
                 <LearningTab
+                  key={trainingSubtab}
                   trainingSubtab={trainingSubtab}
                   setTrainingSubtab={setTrainingSubtab}
                   uClasses={uClasses} students={students}
@@ -235,6 +304,7 @@ export default function App() {
                   fClsTeacher={d.fClsTeacher} setFClsTeacher={d.setFClsTeacher}
                   isPaid={d.isPaid}
                   onEditClass={c => { d.setEditClass(c); setShowClass(true); }}
+                  onDeleteClass={t => setDelTarget(t)}
                   onAddClass={() => { d.setEditClass(null); setShowClass(true); }}
                   uniqueBranches={d.uniqueBranches}
                   filtS={d.filtS} pgS={d.pgS} setPgS={d.setPgS}
@@ -245,8 +315,10 @@ export default function App() {
                   onEditStudent={s => { d.setEditStudent(s); setShowStudent(true); }}
                   onDeleteStudent={t => setDelTarget(t)}
                   onAddStudent={() => { d.setEditStudent(null); setShowStudent(true); }}
+                  onCollectFee={s => setVFinance(s)}
                   onBulkTransfer={ss => { d.setBulkStudents(ss); setShowBulkXfer(true); }}
                   onSaveTeacher={d.handleSaveTeacher}
+                  onDeleteTeacher={t => setDelTarget(t)}
                   isSaving={d.saving}
                   onAddDiary={handleAddDiary}
                 />
@@ -256,24 +328,49 @@ export default function App() {
             {screen === 'finance' && (
               <ErrorBoundary fallbackLabel="Tài chính">
                 <FinanceTab
+                  key={financeSubtab}
                   financeSubtab={financeSubtab}
                   setFinanceSubtab={setFinanceSubtab}
-                  summary={summary} payments={payments} expenses={expenses}
-                  students={students} uClasses={uClasses} tlogs={tlogs}
+                  payments={payments} expenses={expenses}
+                  students={students} uClasses={uClasses}
                   curMo={d.curMo} curYr={d.curYr}
                   qF={d.qF} setQF={d.setQF} fMo={d.fMo} setFMo={d.setFMo}
                   fTch={d.fTch} setFTch={d.setFTch} fFC={d.fFC} setFFC={d.setFFC}
                   fSt={d.fSt} setFSt={d.setFSt} pgF={d.pgF} setPgF={d.setPgF}
                   filtFin={d.filtFin} isPaid={d.isPaid}
-                  zaloTpl={zaloTpl} baseTuition={baseTuition} schoolYear={schoolYear}
+                  baseTuition={baseTuition} schoolYear={schoolYear} tuitionDueDay={tuitionDueDay}
                   onViewInvoice={p => d.setVInvoice(p)}
                   onViewFinance={s => setVFinance(s)}
-                  onShowFAB={() => { setFabInitialTab('income'); d.setEditPayment(null); d.setEditExpense(null); setShowFAB(true); }}
-                  onEditPayment={p => { setFabInitialTab('income'); d.setEditPayment(p); d.setEditExpense(null); setShowFAB(true); }}
+                  onShowFAB={(tab: 'income' | 'expense' = 'income') => {
+                    d.setEditPayment(null);
+                    d.setEditExpense(null);
+                    if (tab === 'expense') setShowExpense(true);
+                    else setShowPayment(true);
+                  }}
+                  onEditPayment={p => { d.setEditPayment(p); d.setEditExpense(null); setShowPayment(true); }}
                   onDeletePayment={p => setDelTarget({ type:'payment', id:p.docNum, name:`${p.studentName} (${p.docNum})` })}
-                  onEditExpense={e => { setFabInitialTab('expense'); d.setEditExpense(e); d.setEditPayment(null); setShowFAB(true); }}
+                  onEditExpense={e => { d.setEditExpense(e); d.setEditPayment(null); setShowExpense(true); }}
                   onDeleteExpense={e => setDelTarget({ type:'expense', id:e.docNum, name:`${e.description} (${e.docNum})` })}
                   onViewExpense={e => setVExpense(e)}
+                />
+              </ErrorBoundary>
+            )}
+
+            {screen === 'reports' && (
+              <ErrorBoundary fallbackLabel="Báo cáo">
+                <ReportsTab
+                  key={reportsSubtab}
+                  reportsSubtab={reportsSubtab}
+                  setReportsSubtab={setReportsSubtab}
+                  students={students}
+                  payments={payments}
+                  expenses={expenses}
+                  tlogs={tlogs}
+                  uClasses={uClasses}
+                  summary={summary}
+                  curMo={d.curMo}
+                  curYr={d.curYr}
+                  isPaid={d.isPaid}
                 />
               </ErrorBoundary>
             )}
@@ -283,7 +380,8 @@ export default function App() {
                 <SettingsTab
                   baseTuition={baseTuition} setBaseTuition={setBaseTuition}
                   schoolYear={schoolYear}   setSchoolYear={setSchoolYear}
-                  zaloTpl={zaloTpl}         setZaloTpl={setZaloTpl}
+                  tuitionDueDay={tuitionDueDay} setTuitionDueDay={setTuitionDueDay}
+                  setZaloTpl={setZaloTpl}
                   bankId={bankId}           setBankId={setBankId}
                   accountNo={accountNo}     setAccountNo={setAccountNo}
                   accountName={accountName} setAccountName={setAccountName}
@@ -325,15 +423,23 @@ export default function App() {
         open={showClass}
         onClose={() => { setShowClass(false); d.setEditClass(null); }}
         editing={d.editClass} isSaving={d.saving}
-        onSave={(f) => { setShowClass(false); d.setEditClass(null); return d.handleSaveClass(f); }}
+        onSave={(f) => d.handleSaveClass(f).then(() => { setShowClass(false); d.setEditClass(null); })}
         uniqueBranches={d.uniqueBranches} teacherList={teacherList}
       />
-      <FABModal
-        open={showFAB}
-        onClose={() => { setShowFAB(false); d.setEditPayment(null); d.setEditExpense(null); }}
-        students={students} baseTuition={baseTuition} isSaving={d.saving}
-        onSaveFee={d.handleSaveFee} onSaveExpense={d.handleSaveExpense}
-        editingPayment={d.editPayment} editingExpense={d.editExpense} initialTab={fabInitialTab}
+      <PaymentFormModal
+        open={showPayment}
+        onClose={() => { setShowPayment(false); d.setEditPayment(null); }}
+        students={students} classes={uClasses} baseTuition={baseTuition} isSaving={d.saving}
+        onSave={d.handleSaveFee}
+        editingPayment={d.editPayment}
+      />
+      <ExpenseFormModal
+        open={showExpense}
+        onClose={() => { setShowExpense(false); d.setEditExpense(null); }}
+        expenses={expenses}
+        isSaving={d.saving}
+        onSave={d.handleSaveExpense}
+        editingExpense={d.editExpense}
       />
       <DiaryModal
         open={showDiary}
@@ -360,11 +466,11 @@ export default function App() {
         isSaving={d.saving} onConfirm={d.handleConfirmBulkTransfer}
       />
 
-      {vStudent   && <StudentDetailModal student={vStudent} onClose={() => setVStudent(null)} tlogs={tlogs} payments={payments} onToggleStatus={d.handleToggleStudentStatus} onSaveNote={d.handleSaveNote} onSaveFacebook={d.handleSaveFacebook} />}
-      {vDiary     && <DiaryDetailModal log={vDiary} onClose={() => setVDiary(null)} />}
-      {d.vInvoice && <InvoiceModal payment={d.vInvoice} onClose={() => d.setVInvoice(null)} centerName={centerName} bankId={bankId} accountNo={accountNo} accountName={accountName} />}
+      {vStudent   && <StudentDetailModal student={vStudent} onClose={() => setVStudent(null)} tlogs={tlogs} payments={payments} onToggleStatus={d.handleToggleStudentStatus} onSaveNote={d.handleSaveNote} onSaveFacebook={d.handleSaveFacebook} onEdit={(s) => { setVStudent(null); d.setEditStudent(s); setShowStudent(true); }} />}
+      {vDiary     && <DiaryDetailModal log={vDiary} onClose={() => setVDiary(null)} onEdit={(log) => { setVDiary(null); d.setEditDiary(log); setShowDiary(true); }} />}
+      {d.vInvoice && <InvoiceModal payment={d.vInvoice} onClose={() => d.setVInvoice(null)} centerName={centerName} bankId={bankId} accountNo={accountNo} accountName={accountName} students={students} classes={uClasses} />}
       {vExpense   && <ExpenseModal expense={vExpense} onClose={() => setVExpense(null)} centerName={centerName} />}
-      {vFinance   && <FinanceDetailModal student={vFinance} payments={payments} onClose={() => setVFinance(null)} isPaid={d.isPaid} />}
+      {vFinance   && <FinanceDetailModal student={vFinance} payments={payments} onClose={() => setVFinance(null)} isPaid={d.isPaid} schoolYear={schoolYear} />}
       {delTarget  && <DeleteModal target={delTarget} onClose={() => setDelTarget(null)} onConfirm={() => { d.handleDelete(delTarget!); setDelTarget(null); }} isSaving={d.saving} />}
     </div>
   );

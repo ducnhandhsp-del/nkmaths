@@ -51,20 +51,6 @@ const DEFAULT_LINKS = [
   { label: 'Học phí & ưu đãi',       url: '' },
 ];
 
-/* ── Demo data ── */
-const DEMO_LEADS: Lead[] = [
-  { id:'L001', name:'Nguyễn Thị Lan', phone:'0912345678', source:'Facebook',    status:'appointment',
-    appointmentDate: new Date(Date.now()+86400000*2).toISOString().split('T')[0],
-    notes:'Con học lớp 9, cần ôn thi vào 10', grade:'9',
-    createdAt: new Date(Date.now()-3*86400000).toISOString() },
-  { id:'L002', name:'Trần Văn Minh',  phone:'0978654321', source:'Zalo',        status:'contacted',
-    notes:'Hỏi về lớp 12 luyện thi ĐH', grade:'12',
-    createdAt: new Date(Date.now()-7*86400000).toISOString() },
-  { id:'L003', name:'Lê Thị Hoa',    phone:'0905123456', source:'Giới thiệu',  status:'new',
-    notes:'Do phụ huynh HS NK003 giới thiệu', grade:'8',
-    createdAt: new Date(Date.now()-86400000).toISOString() },
-];
-
 /* ══════════════════════════════════════════════════════
    MODAL THÊM / SỬA TIỀM NĂNG
    BUG FIX v24.1:
@@ -197,7 +183,7 @@ interface Props {
 }
 
 export default function RecruitmentTab({ leads: propLeads, students, onSaveLead, onDeleteLead, isSaving }: Props) {
-  const leads = propLeads.length > 0 ? propLeads : DEMO_LEADS;
+  const leads = propLeads;
   const [search,       setSearch]       = useState('');
   const [filterStatus, setFilterStatus] = useState<Lead['status'] | ''>('');
   const [showModal,    setShowModal]    = useState(false);

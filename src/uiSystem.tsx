@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { ChevronLeft, ChevronRight, RotateCcw, X } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { AlertTriangle, ChevronLeft, ChevronRight, Inbox, Info, RotateCcw, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 import { colors, radius, shadows, transition, typography } from './ds';
 import { Button, FilterTabs, IconButton, SearchBar } from './dsComponents';
+import { fmtVND, formatDate } from './helpers';
 
 export type UiTone =
   | 'primary'
@@ -33,6 +35,8 @@ export interface UiAction {
   disabled?: boolean;
 }
 
+export type ConfirmVariant = 'info' | 'warning' | 'danger';
+
 const TONE: Record<UiTone, { solid: string; text: string; bg: string; border: string; grad: string }> = {
   primary: { solid: colors.primary[500], text: colors.primary[600], bg: colors.primary[50], border: colors.primary[200], grad: colors.primary.grad },
   success: { solid: colors.success[500], text: colors.success[600], bg: colors.success[50], border: colors.success[200], grad: colors.success.grad },
@@ -47,31 +51,62 @@ const TONE: Record<UiTone, { solid: string; text: string; bg: string; border: st
 const CARD: React.CSSProperties = {
   background: 'white',
   border: `1px solid ${colors.neutral[200]}`,
-  borderRadius: 12,
-  boxShadow: '0 1px 3px rgba(15,23,42,0.05)',
+  borderRadius: 14,
+  boxShadow: '0 2px 16px rgba(79,70,229,0.08)',
 };
 
 const TH: React.CSSProperties = {
-  padding: '11px 14px',
+  padding: '10px 14px',
   fontSize: 11,
-  fontWeight: 700,
-  color: colors.neutral[500],
+  fontWeight: 900,
+  color: colors.neutral[400],
   textTransform: 'uppercase',
-  letterSpacing: '0.07em',
+  letterSpacing: '0.08em',
   background: colors.neutral[50],
-  borderBottom: `1.5px solid ${colors.neutral[200]}`,
+  borderBottom: `1px solid ${colors.neutral[200]}`,
   whiteSpace: 'nowrap',
   textAlign: 'left',
+  lineHeight: 1.25,
 };
 
 const TD: React.CSSProperties = {
-  padding: '13px 14px',
+  padding: '10px 14px',
   fontSize: 13,
   color: colors.neutral[800],
-  fontWeight: 500,
+  fontWeight: 700,
   borderBottom: `1px solid ${colors.neutral[100]}`,
   verticalAlign: 'middle',
+  lineHeight: 1.35,
 };
+
+const DATA_TABLE_CSS = `
+@keyframes uiSysLoad{0%{transform:translateX(-110%)}100%{transform:translateX(320%)}}
+.ltn-data-table-card{background:white;border:1px solid ${colors.neutral[200]};border-radius:16px;box-shadow:0 10px 30px rgba(15,23,42,0.055);overflow:hidden}
+.ltn-data-table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.ltn-data-table{width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0}
+.ltn-data-table thead th:first-child{padding-left:16px}
+.ltn-data-table tbody td:first-child{padding-left:16px}
+.ltn-data-table thead th:last-child{padding-right:16px}
+.ltn-data-table tbody td:last-child{padding-right:16px}
+.ltn-data-table-row{transition:background .14s ease,box-shadow .14s ease}
+.ltn-data-table-row:last-child .ltn-data-table-cell{border-bottom:none!important}
+.ltn-data-table-cell{min-height:52px;overflow:hidden}
+.ltn-data-table-cell p{margin-top:0}
+.ltn-data-table-cell button,.ltn-data-table-cell a{white-space:nowrap}
+.ltn-data-table-cell [style*="text-overflow"]{min-width:0}
+@media(max-width:720px){
+  .ltn-data-table-card{box-shadow:0 1px 8px rgba(15,23,42,.06)}
+  .ltn-data-table-scroll{overflow-x:visible!important}
+  .ltn-data-table{display:block}
+  .ltn-data-table thead{display:none}
+  .ltn-data-table tbody{display:grid;gap:10px;padding:10px;background:${colors.neutral[50]}}
+  .ltn-data-table-row{display:block;border:1px solid ${colors.neutral[200]};border-radius:14px;background:white!important;overflow:hidden;box-shadow:0 1px 8px rgba(15,23,42,.04)}
+  .ltn-data-table-cell{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:42px;padding:10px 12px!important;border-bottom:1px solid ${colors.neutral[100]}!important;text-align:right!important}
+  .ltn-data-table-cell:last-child{border-bottom:none!important}
+  .ltn-data-table-cell::before{content:attr(data-label);font-size:10px;font-weight:800;color:${colors.neutral[400]};text-transform:uppercase;letter-spacing:.06em;text-align:left;flex:0 0 38%;max-width:38%}
+  .ltn-data-table-cell > *{max-width:62%;justify-content:flex-end}
+}
+`;
 
 const statusDefaults: Record<string, { label: string; tone: UiTone }> = {
   active: { label: 'Đang hoạt động', tone: 'success' },
@@ -115,7 +150,14 @@ const statusByDomain: Record<StatusDomain, Record<string, { label: string; tone:
     synced: { label: 'Đã đồng bộ', tone: 'success' },
     local: { label: 'Dữ liệu cục bộ', tone: 'info' },
   },
-  general: statusDefaults,
+  general: {
+    ...statusDefaults,
+    success: { label: 'Đã xong', tone: 'success' },
+    warning: { label: 'Cần chú ý', tone: 'warning' },
+    danger: { label: 'Cảnh báo', tone: 'danger' },
+    info: { label: 'Thông tin', tone: 'info' },
+    all: { label: 'Tất cả', tone: 'neutral' },
+  },
 };
 
 function iconNode(icon?: React.ReactNode | LucideIcon, size = 16, color?: string) {
@@ -144,6 +186,106 @@ function actionButton(action: UiAction, size: 'xs' | 'sm' | 'md' = 'md') {
     >
       {action.label}
     </Button>
+  );
+}
+
+export const notify = {
+  success: (message: string) => toast.success(message),
+  error: (message: string) => toast.error(message),
+  info: (message: string) => toast(message, { icon: 'i' }),
+  copied: (message = 'Đã copy') => toast.success(message),
+  zaloCopied: () => toast.success('Đã copy tin nhắn Zalo'),
+};
+
+export function PageToolbar({
+  title,
+  children,
+  actions,
+  embedded = false,
+  style,
+  controlsStyle,
+}: {
+  title?: React.ReactNode;
+  children?: React.ReactNode;
+  actions?: React.ReactNode;
+  embedded?: boolean;
+  style?: React.CSSProperties;
+  controlsStyle?: React.CSSProperties;
+}) {
+  return (
+    <div
+      className="ltn-page-toolbar"
+      style={{
+        ...CARD,
+        display: 'flex',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: 10,
+        padding: '12px 14px',
+        ...style,
+      }}
+    >
+      {!embedded && title && (
+        <>
+          <div style={{ flexShrink: 0 }}>
+            {typeof title === 'string'
+              ? <h2 style={{ fontSize: 22, fontWeight: 800, color: colors.neutral[900], textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>{title}</h2>
+              : title}
+          </div>
+          <span style={{ width: 1, height: 22, background: colors.neutral[200], flexShrink: 0 }} />
+        </>
+      )}
+      {children && (
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, minWidth: 0, ...controlsStyle }}>
+          {children}
+        </div>
+      )}
+      {actions && (
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {actions}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function ToolbarTabs<T extends string>({
+  tabs,
+  active,
+  onChange,
+}: {
+  tabs: { id: T; label: string }[];
+  active: T;
+  onChange: (id: T) => void;
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', flexShrink: 0 }}>
+      {tabs.map(tab => {
+        const selected = active === tab.id;
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => onChange(tab.id)}
+            style={{
+              minHeight: 34,
+              padding: '7px 13px',
+              borderRadius: 999,
+              border: selected ? `1px solid ${colors.primary[200]}` : `1px solid ${colors.neutral[200]}`,
+              background: selected ? colors.primary[50] : 'white',
+              color: selected ? colors.primary[600] : colors.neutral[500],
+              fontSize: 13,
+              fontWeight: 900,
+              cursor: 'pointer',
+              fontFamily: typography.fontFamily,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {tab.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -299,7 +441,7 @@ export function ActionableKpi({
         opacity: 1,
       }}
     >
-      <span style={{ width: 42, height: 42, borderRadius: 10, background: t.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+      <span style={{ width: 42, height: 42, borderRadius: radius.md, background: t.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
         {iconNode(icon, 19, t.text)}
       </span>
       <span style={{ flex: 1, minWidth: 0 }}>
@@ -409,6 +551,8 @@ export function FilterBar({
   right,
   hasActiveFilter,
   onReset,
+  style,
+  className,
 }: {
   search?: string;
   onSearch?: (value: string) => void;
@@ -417,10 +561,24 @@ export function FilterBar({
   right?: React.ReactNode;
   hasActiveFilter?: boolean;
   onReset?: () => void;
+  style?: React.CSSProperties;
+  className?: string;
 }) {
   return (
-    <div style={{ ...CARD, padding: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-      {onSearch && <SearchBar value={search || ''} onChange={onSearch} placeholder={searchPlaceholder} width={260} />}
+    <div
+      className={className}
+      style={{
+        ...CARD,
+        padding: '8px 10px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        flexWrap: 'wrap',
+        boxShadow: '0 8px 18px rgba(15,23,42,.04)',
+        ...style,
+      }}
+    >
+      {onSearch && <SearchBar value={search || ''} onChange={onSearch} placeholder={searchPlaceholder} width={180} />}
       {filters}
       {hasActiveFilter && onReset && (
         <Button size="sm" variant="outline" intent="neutral" icon={<RotateCcw size={14} />} onClick={onReset}>
@@ -447,42 +605,47 @@ export function DataTable<T extends Record<string, any>>({
   data,
   rowKey,
   emptyText = 'Không có dữ liệu',
+  emptySub,
   emptyAction,
   loading,
   onRowClick,
   footer,
   scrollX = true,
+  density = 'compact',
 }: {
   columns: DataTableColumn<T>[];
   data: T[];
   rowKey: keyof T | ((row: T) => string | number);
   emptyText?: string;
+  emptySub?: React.ReactNode;
   emptyAction?: UiAction;
   loading?: boolean;
   onRowClick?: (row: T) => void;
   footer?: React.ReactNode;
   scrollX?: boolean;
+  density?: 'compact' | 'comfortable';
 }) {
   const [hovRow, setHovRow] = useState<string | number | null>(null);
   const keyOf = (row: T) => typeof rowKey === 'function' ? rowKey(row) : String(row[rowKey]);
+  const cellPad = density === 'comfortable' ? '13px 16px' : '10px 14px';
   return (
-    <div style={{ ...CARD, overflow: 'hidden' }}>
+    <div className="ltn-data-table-card" aria-busy={loading || undefined}>
       {loading && <div style={{ height: 4, background: colors.neutral[100], overflow: 'hidden' }}><div style={{ height: '100%', width: '35%', background: colors.primary[500], animation: 'uiSysLoad 1.1s ease-in-out infinite' }} /></div>}
-      <style>{`@keyframes uiSysLoad{0%{transform:translateX(-110%)}100%{transform:translateX(320%)}}`}</style>
-      <div style={{ overflowX: scrollX ? 'auto' : undefined }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <style>{DATA_TABLE_CSS}</style>
+      <div className="ltn-data-table-scroll" style={{ overflowX: scrollX ? 'auto' : undefined }}>
+        <table className="ltn-data-table">
           <thead>
             <tr>
               {columns.map(col => (
-                <th key={String(col.key)} style={{ ...TH, textAlign: col.align || 'left', width: col.width, ...col.headerStyle }}>{col.label}</th>
+                <th key={String(col.key)} scope="col" style={{ ...TH, padding: cellPad, textAlign: col.align || 'left', width: col.width, ...col.headerStyle }}>{col.label}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {data.length === 0 ? (
               <tr>
-                <td colSpan={columns.length} style={{ padding: '44px 16px' }}>
-                  <EmptyState text={emptyText} action={emptyAction} />
+                <td colSpan={columns.length} style={{ padding: density === 'comfortable' ? '36px 16px' : '24px 12px' }}>
+                  <EmptyState text={emptyText} sub={emptySub} action={emptyAction} compact={density === 'compact'} />
                 </td>
               </tr>
             ) : data.map((row, idx) => {
@@ -491,11 +654,12 @@ export function DataTable<T extends Record<string, any>>({
               return (
                 <tr
                   key={key}
+                  className="ltn-data-table-row"
                   onClick={() => onRowClick?.(row)}
                   onMouseEnter={() => setHovRow(key)}
                   onMouseLeave={() => setHovRow(null)}
                   style={{
-                    background: isHover ? '#eef2ff' : idx % 2 === 0 ? 'white' : '#f8fbff',
+                    background: isHover ? '#f8fafc' : 'white',
                     cursor: onRowClick ? 'pointer' : 'default',
                     transition: 'background 0.1s ease',
                   }}
@@ -503,8 +667,8 @@ export function DataTable<T extends Record<string, any>>({
                   {columns.map(col => {
                     const value = row[col.key as keyof T];
                     return (
-                      <td key={String(col.key)} style={{ ...TD, textAlign: col.align || 'left', ...col.cellStyle }}>
-                        {col.render ? col.render(value, row, idx) : String(value ?? '---')}
+                      <td key={String(col.key)} className="ltn-data-table-cell" data-label={col.label} style={{ ...TD, padding: cellPad, textAlign: col.align || 'left', ...col.cellStyle }}>
+                        {col.render ? col.render(value, row, idx) : String(value ?? '—')}
                       </td>
                     );
                   })}
@@ -614,18 +778,25 @@ export function EmptyState({
   icon,
   action,
   compact = false,
+  style,
 }: {
   text?: React.ReactNode;
   sub?: React.ReactNode;
   icon?: React.ReactNode | LucideIcon;
   action?: UiAction;
   compact?: boolean;
+  style?: React.CSSProperties;
 }) {
+  const iconBox = icon ?? Inbox;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: compact ? 6 : 10, textAlign: 'center', padding: compact ? '8px 4px' : '18px 8px' }}>
-      {!compact && icon && <div style={{ color: colors.neutral[300] }}>{iconNode(icon, 34, colors.neutral[300])}</div>}
-      <p style={{ color: colors.neutral[400], fontStyle: 'italic', fontSize: 13, margin: 0 }}>{text}</p>
-      {sub && <p style={{ color: colors.neutral[400], fontSize: 11, margin: 0 }}>{sub}</p>}
+    <div className="ltn-empty-state" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: compact ? 6 : 10, textAlign: 'center', padding: compact ? '10px 6px' : '22px 10px', minHeight: compact ? 86 : 128, ...style }}>
+      {!compact && (
+        <div style={{ width: 42, height: 42, borderRadius: 14, background: colors.neutral[50], border: `1px solid ${colors.neutral[200]}`, color: colors.neutral[300], display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {iconNode(iconBox, 21, colors.neutral[400])}
+        </div>
+      )}
+      <p style={{ color: colors.neutral[600], fontSize: 13, fontWeight: 800, margin: 0, lineHeight: 1.45 }}>{text}</p>
+      {sub && <p style={{ color: colors.neutral[400], fontSize: 11, margin: 0, lineHeight: 1.5, maxWidth: 320 }}>{sub}</p>}
       {action && actionButton(action, 'sm')}
     </div>
   );
@@ -701,17 +872,17 @@ export function ModalForm({
     await Promise.resolve(onSubmit?.());
   };
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)' }}>
-      <form onSubmit={submit} style={{ background: 'white', width: '100%', maxWidth: width, maxHeight: '92vh', borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: shadows.xl }}>
-        <header style={{ padding: '18px 22px', borderBottom: `1px solid ${colors.neutral[100]}`, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+    <div className="ltn-modal-overlay ltn-form-modal-overlay" style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)' }}>
+      <form onSubmit={submit} className="ltn-modal-panel ltn-form-modal-panel" style={{ background: 'white', width: '100%', maxWidth: width, maxHeight: '92vh', borderRadius: radius.lg, overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: shadows.xl }}>
+        <header className="ltn-form-modal-header" style={{ padding: '18px 22px', borderBottom: `1px solid ${colors.neutral[100]}`, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: colors.neutral[900] }}>{title}</h3>
             {subtitle && <p style={{ margin: '3px 0 0', fontSize: 12, color: colors.neutral[500], lineHeight: 1.5 }}>{subtitle}</p>}
           </div>
           <IconButton icon={<X size={18} />} label="Đóng" onClick={onClose} />
         </header>
-        <div style={{ flex: 1, overflowY: 'auto', padding: 22 }}>{children}</div>
-        <footer style={{ padding: '14px 22px', borderTop: `1px solid ${colors.neutral[100]}`, background: colors.neutral[50], display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+        <div className="ltn-form-modal-body" style={{ flex: 1, overflowY: 'auto', padding: 22 }}>{children}</div>
+        <footer className="ltn-form-modal-footer" style={{ padding: '14px 22px', borderTop: `1px solid ${colors.neutral[100]}`, background: colors.neutral[50], display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
           <Button type="button" variant="outline" intent="neutral" onClick={onClose}>{cancelLabel}</Button>
           <Button type="submit" intent="primary" loading={isSaving} disabled={submitDisabled}>{submitLabel}</Button>
         </footer>
@@ -745,6 +916,51 @@ export function MonthNavigator({
       {onToday && <Button size="sm" variant="ghost" intent="neutral" onClick={onToday}>Hiện tại</Button>}
     </div>
   );
+}
+
+export function MoneyText({
+  value,
+  tone = 'neutral',
+  compact = false,
+  zero = '0đ',
+  style,
+}: {
+  value?: number | null;
+  tone?: UiTone | 'auto';
+  compact?: boolean;
+  zero?: string;
+  style?: React.CSSProperties;
+}) {
+  const safe = typeof value === 'number' && Number.isFinite(value) ? value : 0;
+  const resolvedTone: UiTone = tone === 'auto' ? (safe < 0 ? 'danger' : safe > 0 ? 'success' : 'neutral') : tone;
+  const t = TONE[resolvedTone];
+  const display = safe === 0 ? zero : compact ? formatMoneyCompact(safe) : fmtVND(safe);
+  return <span style={{ color: t.text, fontWeight: 800, whiteSpace: 'nowrap', ...style }}>{display}</span>;
+}
+
+export function DateText({
+  value,
+  placeholder = '—',
+  style,
+}: {
+  value?: string | number | Date | null;
+  placeholder?: string;
+  style?: React.CSSProperties;
+}) {
+  const text = value ? formatDate(value) : placeholder;
+  return <span style={{ color: colors.neutral[600], fontWeight: 700, whiteSpace: 'nowrap', ...style }}>{text}</span>;
+}
+
+export function MonthText({ month, year, style }: { month: number; year: number; style?: React.CSSProperties }) {
+  return <span style={{ fontWeight: 800, color: colors.neutral[900], whiteSpace: 'nowrap', ...style }}>{`T${month}/${year}`}</span>;
+}
+
+function formatMoneyCompact(value: number) {
+  const abs = Math.abs(value);
+  const sign = value < 0 ? '-' : '';
+  if (abs >= 1_000_000_000) return `${sign}${parseFloat((abs / 1_000_000_000).toFixed(1))} tỷ`;
+  if (abs >= 1_000_000) return `${sign}${parseFloat((abs / 1_000_000).toFixed(1))}tr`;
+  return `${sign}${fmtVND(abs)}`;
 }
 
 export function ChartPanel({
@@ -824,6 +1040,144 @@ export function ViewToggle({
       })}
     </div>
   );
+}
+
+export function MobileCard({
+  title,
+  subtitle,
+  badge,
+  rows,
+  actions,
+  onClick,
+  tone = 'neutral',
+  style,
+}: {
+  title: React.ReactNode;
+  subtitle?: React.ReactNode;
+  badge?: React.ReactNode;
+  rows?: { label: React.ReactNode; value: React.ReactNode }[];
+  actions?: React.ReactNode;
+  onClick?: () => void;
+  tone?: UiTone;
+  style?: React.CSSProperties;
+}) {
+  const t = TONE[tone];
+  return (
+    <div
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={onClick ? (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onClick();
+        }
+      } : undefined}
+      style={{
+        ...CARD,
+        width: '100%',
+        padding: 14,
+        display: 'block',
+        textAlign: 'left',
+        borderRadius: 16,
+        borderColor: onClick ? `${t.border}` : colors.neutral[200],
+        boxShadow: '0 1px 10px rgba(15,23,42,.055)',
+        cursor: onClick ? 'pointer' : 'default',
+        fontFamily: typography.fontFamily,
+        ...style,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+        <div style={{ minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 900, color: colors.neutral[900], lineHeight: 1.32 }}>{title}</p>
+          {subtitle && <p style={{ margin: '3px 0 0', fontSize: 11, fontWeight: 700, color: colors.neutral[400], lineHeight: 1.45 }}>{subtitle}</p>}
+        </div>
+        {badge && <div style={{ flexShrink: 0 }}>{badge}</div>}
+      </div>
+      {!!rows?.length && (
+        <div style={{ display: 'grid', gap: 7, marginTop: 12, paddingTop: 11, borderTop: `1px solid ${colors.neutral[100]}` }}>
+          {rows.map((row, idx) => (
+            <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, fontSize: 12 }}>
+              <span style={{ color: colors.neutral[400], fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{row.label}</span>
+              <span style={{ color: colors.neutral[800], fontWeight: 800, textAlign: 'right' }}>{row.value}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {actions && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>{actions}</div>}
+    </div>
+  );
+}
+
+export function ConfirmDialog({
+  open,
+  title,
+  message,
+  confirmLabel = 'Xác nhận',
+  cancelLabel = 'Hủy',
+  variant = 'info',
+  loading = false,
+  onConfirm,
+  onClose,
+}: {
+  open: boolean;
+  title: React.ReactNode;
+  message?: React.ReactNode;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  variant?: ConfirmVariant;
+  loading?: boolean;
+  onConfirm: () => void | Promise<void>;
+  onClose: () => void;
+}) {
+  if (!open) return null;
+  const cfg = variant === 'danger'
+    ? { tone: TONE.danger, icon: AlertTriangle }
+    : variant === 'warning'
+      ? { tone: TONE.warning, icon: AlertTriangle }
+      : { tone: TONE.info, icon: Info };
+  const Icon = cfg.icon;
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(15,23,42,0.45)', backdropFilter: 'blur(4px)' }} onClick={onClose}>
+      <section style={{ width: '100%', maxWidth: 420, background: 'white', borderRadius: radius.lg, boxShadow: shadows.xl, padding: 20 }} onClick={e => e.stopPropagation()}>
+        <div style={{ width: 52, height: 52, borderRadius: 16, background: cfg.tone.bg, border: `1px solid ${cfg.tone.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+          <Icon size={24} color={cfg.tone.text} />
+        </div>
+        <h3 style={{ margin: 0, textAlign: 'center', fontSize: 18, fontWeight: 800, color: colors.neutral[900] }}>{title}</h3>
+        {message && <div style={{ marginTop: 8, textAlign: 'center', fontSize: 13, lineHeight: 1.6, color: colors.neutral[500] }}>{message}</div>}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 18 }}>
+          <Button intent="neutral" variant="outline" onClick={onClose} disabled={loading}>{cancelLabel}</Button>
+          <Button intent={variant === 'danger' ? 'danger' : variant === 'warning' ? 'warning' : 'primary'} onClick={onConfirm} loading={loading}>{confirmLabel}</Button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export function useConfirm() {
+  const [state, setState] = useState<{
+    open: boolean;
+    title: React.ReactNode;
+    message?: React.ReactNode;
+    variant: ConfirmVariant;
+    resolver: ((value: boolean) => void) | null;
+  }>({ open: false, title: '', message: undefined, variant: 'info', resolver: null });
+
+  const confirm = (title: React.ReactNode, message?: React.ReactNode, variant: ConfirmVariant = 'info') =>
+    new Promise<boolean>(resolve => setState({ open: true, title, message, variant, resolver: resolve }));
+
+  const close = () => {
+    state.resolver?.(false);
+    setState(prev => ({ ...prev, open: false, resolver: null }));
+  };
+  const accept = () => {
+    state.resolver?.(true);
+    setState(prev => ({ ...prev, open: false, resolver: null }));
+  };
+  const ConfirmComponent = () => (
+    <ConfirmDialog open={state.open} title={state.title} message={state.message} variant={state.variant} onClose={close} onConfirm={accept} />
+  );
+  return { confirm, ConfirmDialog: ConfirmComponent };
 }
 
 export function ActionBar({ children, align = 'right' }: { children: React.ReactNode; align?: 'left' | 'right' | 'between' }) {

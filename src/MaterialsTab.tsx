@@ -53,7 +53,7 @@ function MaterialModal({ open, onClose, editing, onSave, isSaving }: {
         <div style={{ flex:1,overflowY:'auto',padding:24 }}>
           <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:14 }}>
             <div style={{ gridColumn:'1/-1' }}>
-              <Input label="Tên học liệu *" value={f.name||''} onChange={v=>u('name',v)} placeholder="VD: Đề thi HK1 Toán 9 năm 2025"/>
+              <Input label="Tên học liệu *" value={f.name||''} onChange={v=>u('name',v)} placeholder="VD: Đề thi HK1 Toán 9 năm 2026"/>
             </div>
             <Select label="Loại" value={f.type||'lesson'} onChange={v=>u('type',v)} options={MAIN_TYPES.map(k=>({value:k,label:TYPE_CFG[k].label}))}/>
             <Select label="Khối lớp" value={f.grade||'9'} onChange={v=>u('grade',v)} options={GRADES.map(g=>({value:g,label:g==='Tổng hợp'?g:`Khối ${g}`}))}/>

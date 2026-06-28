@@ -41,6 +41,7 @@ export function useCommands({
       ['training',  'Đào tạo',           'dao tao hoc sinh lop giao vien', '🎓'],
       ['operations', 'Vận hành',          'nhat ky diem danh diary',   '📖'],
       ['finance',   'Tài chính',         'tai chinh thu chi finance',  '💰'],
+      ['reports',   'Báo cáo',           'bao cao report thong ke',    '📊'],
       ['settings',  'Cài đặt',           'cai dat settings',           '⚙️'],
     ];
     navItems.forEach(([id, label, kw, icon]) => {
@@ -50,12 +51,11 @@ export function useCommands({
         label,
         keywords: kw.split(' '),
         icon,
-        handler:  () => id === 'training' ? goTraining('overview') : goScreen(id),
+        handler:  () => id === 'training' ? goTraining('students') : goScreen(id),
       });
     });
 
     [
-      ['overview', 'Tổng hợp đào tạo', 'tong hop dao tao overview', '📊'],
       ['students', 'Học sinh', 'hoc sinh student', '👤'],
       ['classes', 'Lớp học', 'lop hoc class', '🏫'],
       ['teachers', 'Giáo viên', 'giao vien teacher', '👩‍🏫'],

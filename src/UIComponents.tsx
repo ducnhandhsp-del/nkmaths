@@ -1,16 +1,17 @@
 import React, { useEffect, useRef, memo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Eye, Edit3, Calendar, Users, X, AlertTriangle, LucideIcon } from 'lucide-react';
 import { cn, formatDate } from './helpers';
+import { ConfirmDialog as SystemConfirmDialog, EmptyState as SystemEmptyState } from './uiSystem';
 
 export const DS = {
-  surfaceBase:'#f8fafc', surfaceCard:'#ffffff', surfaceMuted:'#f1f5f9',
-  borderLight:'1px solid #e2e8f0', borderMuted:'1px solid #f1f5f9',
-  radiusSm:10, radiusMd:14, radiusLg:18, radiusXl:22,
-  shadowCard:'0 1px 4px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04)',
-  shadowModal:'0 8px 40px rgba(0,0,0,0.18)',
-  textHeading:'#0f172a', textBody:'#334155', textMuted:'#64748b', textLight:'#94a3b8',
-  gapSm:10, gapMd:16, gapLg:24,
-  primary:'#6366f1', primaryDark:'#4f46e5', primaryLight:'#eef2ff',
+  surfaceBase:'#f1f3fb', surfaceCard:'#ffffff', surfaceMuted:'#f8fafc',
+  borderLight:'1px solid #e8eaf3', borderMuted:'1px solid #f1f3fb',
+  radiusSm:8, radiusMd:12, radiusLg:16, radiusXl:20,
+  shadowCard:'0 2px 12px rgba(79,70,229,0.09)',
+  shadowModal:'0 18px 48px rgba(15,23,42,0.24)',
+  textHeading:'#1a1d2e', textBody:'#334155', textMuted:'#6b7280', textLight:'#9ca3af',
+  gapSm:8, gapMd:16, gapLg:24,
+  primary:'#4f46e5', primaryDark:'#3730a3', primaryLight:'#eef2ff',
   gradBlue:'linear-gradient(135deg,#3b82f6,#2563eb)',
   gradIndigo:'linear-gradient(135deg,#6366f1,#4f46e5)',
   gradGreen:'linear-gradient(135deg,#10b981,#059669)',
@@ -83,13 +84,7 @@ export function SectionTitle({ children, action }: { children:React.ReactNode; a
 }
 
 export function EmptyState({ emoji='', title, subtitle }: { emoji?:string; title:string; subtitle?:string }) {
-  return (
-    <div style={{ padding:'48px 24px', textAlign:'center', color:DS.textLight }}>
-      {emoji && <div style={{ fontSize:40, marginBottom:12 }}>{emoji}</div>}
-      <p style={{ fontSize:15, fontWeight:700, color:DS.textMuted, margin:0 }}>{title}</p>
-      {subtitle && <p style={{ fontSize:13, color:DS.textLight, margin:'6px 0 0' }}>{subtitle}</p>}
-    </div>
-  );
+  return <SystemEmptyState text={title} sub={subtitle} icon={emoji || undefined} compact={!emoji} />;
 }
 
 export function ActionBtn({ onClick, children, variant='primary', disabled, icon:Icon, style }: { onClick:()=>void; children:React.ReactNode; variant?:'primary'|'secondary'|'danger'; disabled?:boolean; icon?:LucideIcon; style?:React.CSSProperties }) {
@@ -99,7 +94,7 @@ export function ActionBtn({ onClick, children, variant='primary', disabled, icon
     danger:    { background:'#e11d48', color:'white', border:'none', boxShadow:'0 4px 14px rgba(225,29,72,0.3)' },
   };
   return (
-    <button onClick={onClick} disabled={disabled} style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, padding:'9px 18px', borderRadius:DS.radiusMd, fontWeight:700, fontSize:13, cursor:'pointer', transition:'all 0.15s', opacity:disabled?0.5:1, ...V[variant], ...style }}>
+    <button onClick={onClick} disabled={disabled} style={{ minHeight:40, display:'flex', alignItems:'center', justifyContent:'center', gap:8, padding:'9px 18px', borderRadius:DS.radiusMd, fontWeight:700, fontSize:13, cursor:'pointer', transition:'all 0.15s', opacity:disabled?0.5:1, ...V[variant], ...style }}>
       {Icon && <Icon size={15} color="currentColor"/>}
       {children}
     </button>
@@ -111,7 +106,7 @@ export function IconBtn({ onClick, icon:Icon, color=DS.textMuted, bg=DS.surfaceM
 }
 
 export function StatusBadge({ label, bg, color }: { label:string; bg:string; color:string }) {
-  return <span style={{ background:bg, color, fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:8, whiteSpace:'nowrap' }}>{label}</span>;
+  return <span style={{ background:bg, color, fontSize:11, fontWeight:800, padding:'3px 10px', borderRadius:999, whiteSpace:'nowrap' }}>{label}</span>;
 }
 
 export function FilterBar({ children }: { children:React.ReactNode }) {
@@ -155,9 +150,10 @@ export function ModalBase({ onClose, children, size='md' }: { onClose:()=>void; 
     }
   };
   return (
-    <div style={{ position:'fixed', inset:0, zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', padding:16, boxSizing:'border-box' }} className="print:hidden">
+    <div style={{ position:'fixed', inset:0, zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', padding:16, boxSizing:'border-box' }} className="ltn-modal-overlay ltn-form-modal-overlay print:hidden">
       <div style={{ position:'absolute', inset:0, background:'rgba(15,23,42,0.55)', backdropFilter:'blur(4px)', WebkitBackdropFilter:'blur(4px)' }} onClick={onClose} aria-hidden="true"/>
       <div ref={panelRef} role="dialog" aria-modal="true" tabIndex={-1} onKeyDown={handleKeyDown}
+        className="ltn-modal-panel ltn-form-modal-panel"
         style={{ position:'relative', background:DS.surfaceCard, borderRadius:DS.radiusXl, boxShadow:DS.shadowModal, width:'100%', maxWidth:MODAL_WIDTHS[size], maxHeight:'calc(100vh - 32px)', overflowY:'auto', WebkitOverflowScrolling:'touch', outline:'none', animation:'modalSlideUp 0.2s cubic-bezier(0.16,1,0.3,1)' }}>
         {children}
       </div>
@@ -171,7 +167,7 @@ export function ModalWrap({ onClose, children, size }: { onClose:()=>void; child
 
 export function ModalHeader({ title, onClose }: { title:string; onClose:()=>void }) {
   return (
-    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'20px 24px 0' }}>
+    <div className="ltn-form-modal-header" style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'20px 24px 0' }}>
       <h3 style={{ fontSize:17, fontWeight:800, color:DS.textHeading, margin:0, letterSpacing:'-0.01em' }}>{title}</h3>
       <button onClick={onClose} style={{ width:32, height:32, borderRadius:9, background:DS.surfaceMuted, border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }} aria-label="Đóng"><X size={14} color={DS.textMuted}/></button>
     </div>
@@ -179,7 +175,7 @@ export function ModalHeader({ title, onClose }: { title:string; onClose:()=>void
 }
 
 export function ModalFooter({ children }: { children:React.ReactNode }) {
-  return <div style={{ display:'flex', justifyContent:'flex-end', gap:10, padding:'16px 24px 20px', borderTop:DS.borderLight }}>{children}</div>;
+  return <div className="ltn-form-modal-footer" style={{ display:'flex', justifyContent:'flex-end', gap:10, padding:'16px 24px 20px', borderTop:DS.borderLight }}>{children}</div>;
 }
 
 export function Field({ label, children, error }: { label:string; children:React.ReactNode; error?:string }) {
@@ -263,21 +259,7 @@ export function ConfirmDialog({ isOpen, onClose, onConfirm, title, message, conf
   isOpen:boolean; onClose:()=>void; onConfirm:()=>void; title:string; message:string;
   confirmText?:string; cancelText?:string; variant?:'danger'|'warning'|'info';
 }) {
-  if (!isOpen) return null;
-  const VC = { danger:'bg-red-600 hover:bg-red-700', warning:'bg-amber-600 hover:bg-amber-700', info:'bg-indigo-600 hover:bg-indigo-700' };
-  const VI = { danger:'!', warning:'!', info:'i' };
-  return (
-    <ModalWrap onClose={onClose} size="sm">
-      <div className="p-6 space-y-5 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center mx-auto"><span className="text-3xl">{VI[variant]}</span></div>
-        <div><h3 className="text-xl font-bold text-slate-900 mb-2">{title}</h3><p className="text-slate-500 text-base">{message}</p></div>
-        <div className="flex gap-3">
-          <button onClick={onClose} className="flex-1 px-5 py-3 bg-white hover:bg-slate-50 text-slate-700 rounded-xl font-semibold text-base border border-slate-200 transition-all">{cancelText}</button>
-          <button onClick={onConfirm} className={cn('flex-1 px-5 py-3 text-white rounded-xl font-semibold text-base transition-all active:scale-95',VC[variant])}>{confirmText}</button>
-        </div>
-      </div>
-    </ModalWrap>
-  );
+  return <SystemConfirmDialog open={isOpen} title={title} message={message} confirmLabel={confirmText} cancelLabel={cancelText} variant={variant} onClose={onClose} onConfirm={onConfirm} />;
 }
 
 export function DeleteModal({ target, onClose, onConfirm, isSaving }: {

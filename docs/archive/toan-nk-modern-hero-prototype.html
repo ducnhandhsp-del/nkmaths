@@ -1,0 +1,2548 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lớp Toán NK - UI Prototype V3.5</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #edf3f8;
+      --surface: #fff;
+      --soft: #f8fafc;
+      --soft-2: #f1f5f9;
+      --line: #dce5ef;
+      --line-soft: #edf2f7;
+      --text: #0f172a;
+      --muted: #64748b;
+      --faint: #94a3b8;
+      --blue: #1d4ed8;
+      --blue-soft: #eaf2ff;
+      --green: #047857;
+      --green-soft: #ecfdf5;
+      --amber: #b45309;
+      --amber-soft: #fff7ed;
+      --red: #be123c;
+      --red-soft: #fff1f2;
+      --radius: 14px;
+      --radius-lg: 18px;
+      --shadow: 0 8px 20px rgba(15, 23, 42, .07);
+      font-family: "Be Vietnam Pro", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-variant-numeric: tabular-nums;
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.45; }
+    button, input, select, textarea { font: inherit; }
+    button { cursor: pointer; }
+    .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
+    .num { font-variant-numeric: tabular-nums; letter-spacing: -.045em; }
+
+    .app { min-height: 100vh; display: grid; grid-template-columns: 238px minmax(0, 1fr); }
+    .sidebar { position: sticky; top: 0; height: 100vh; padding: 16px 12px; background: rgba(255,255,255,.94); border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 14px; }
+    .brand { min-height: 58px; padding: 10px; border-radius: 15px; background: #0f172a; color: #fff; display: flex; align-items: center; gap: 11px; }
+    .brand-mark { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; background: var(--blue); font-weight: 900; letter-spacing: -.05em; }
+    .brand-title { margin: 0; font-size: 14px; font-weight: 900; }
+    .brand-sub { margin: 1px 0 0; color: #bfdbfe; font-size: 11px; font-weight: 700; }
+    .nav { display: grid; gap: 4px; }
+    .nav-label { margin: 12px 10px 4px; color: var(--faint); font-size: 10px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+    .nav-item { height: 40px; border: 0; border-radius: 11px; padding: 0 11px; background: transparent; color: var(--muted); display: flex; align-items: center; gap: 9px; font-weight: 700; text-align: left; }
+    .nav-item:hover { background: var(--soft-2); color: var(--text); }
+    .nav-item.active { color: var(--blue); background: var(--blue-soft); box-shadow: inset 3px 0 0 var(--blue); }
+    .nav-dot { width: 9px; height: 9px; border-radius: 99px; background: currentColor; }
+    .account { margin-top: auto; padding: 11px; border: 1px solid var(--line); border-radius: 13px; background: var(--soft); color: var(--muted); font-size: 12px; font-weight: 600; }
+    .account strong { display: block; color: var(--text); font-size: 13px; margin-bottom: 2px; }
+
+    .main { min-width: 0; padding: 18px 20px 84px; }
+    .view { display: none; max-width: 1280px; margin: 0 auto; gap: 12px; }
+    .view.active { display: grid; }
+    .topbar { min-height: 54px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .page-title { margin: 0; font-size: clamp(25px, 3vw, 34px); line-height: 1.05; font-weight: 900; letter-spacing: -.055em; }
+    .page-sub { margin: 4px 0 0; color: var(--muted); font-size: 13px; font-weight: 600; }
+    .top-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+
+    .btn { min-height: 36px; border: 1px solid var(--line); border-radius: 10px; padding: 0 12px; background: #fff; color: var(--text); display: inline-flex; align-items: center; justify-content: center; gap: 7px; font-weight: 700; box-shadow: 0 1px 0 rgba(15,23,42,.03); }
+    .btn.primary { color: #fff; border-color: var(--blue); background: var(--blue); box-shadow: 0 8px 18px rgba(29,78,216,.18); }
+    .btn.green { color: #fff; border-color: var(--green); background: var(--green); }
+    .btn.danger { color: var(--red); border-color: #fecdd3; background: var(--red-soft); box-shadow: none; }
+    .btn.ghost { color: var(--muted); background: var(--soft); box-shadow: none; }
+    .btn.small { min-height: 30px; padding: 0 9px; font-size: 12px; }
+
+    .input, .select, .textarea { width: 100%; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--text); outline: 0; font-weight: 600; }
+    .input, .select { height: 36px; padding: 0 11px; }
+    .select { appearance: none; padding-right: 28px; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 15px) 15px, calc(100% - 10px) 15px; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
+    .textarea { min-height: 78px; padding: 10px 11px; resize: vertical; }
+
+    .notice { border: 1px solid #fed7aa; border-left: 5px solid var(--amber); border-radius: var(--radius); background: #fffaf0; padding: 11px 13px; display: flex; align-items: center; justify-content: space-between; gap: 12px; box-shadow: 0 3px 10px rgba(180,83,9,.06); }
+    .notice strong { color: var(--text); font-weight: 900; }
+    .notice span { color: var(--amber); font-weight: 700; }
+
+    .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .stat { min-height: 76px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); padding: 11px 12px; box-shadow: var(--shadow); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .stat p { margin: 0; color: var(--muted); font-size: 12px; font-weight: 700; }
+    .stat strong { display: block; margin-top: 2px; color: var(--text); font-size: 24px; line-height: 1; font-weight: 900; letter-spacing: -.055em; white-space: nowrap; }
+    .stat i { width: 4px; height: 38px; border-radius: 99px; background: var(--blue); }
+    .stat.green i { background: var(--green); }
+    .stat.amber i { background: var(--amber); }
+    .stat.red i { background: var(--red); }
+
+    .segmented { display: inline-flex; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft-2); }
+    .segmented button { min-height: 30px; border: 0; border-radius: 9px; padding: 0 10px; background: transparent; color: var(--muted); font-weight: 700; }
+    .segmented button.active { color: var(--blue); background: #fff; box-shadow: 0 1px 4px rgba(15,23,42,.08); }
+
+    .grid-2 { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 12px; align-items: start; }
+    .grid-ops { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 12px; align-items: start; }
+    .panel { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-lg); background: rgba(255,255,255,.96); box-shadow: var(--shadow); }
+    .panel-head { min-height: 52px; padding: 11px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); background: #fbfdff; }
+    .panel-title { margin: 0; font-size: 16px; line-height: 1.25; font-weight: 900; letter-spacing: -.025em; }
+    .panel-sub { margin: 3px 0 0; color: var(--muted); font-size: 12px; font-weight: 600; }
+    .subview { display: none; gap: 12px; }
+    .subview.active { display: grid; }
+
+    .toolbar { padding: 10px; border-bottom: 1px solid var(--line); background: #fbfdff; display: grid; grid-template-columns: minmax(210px, 1.4fr) repeat(3, minmax(112px, .65fr)) auto; gap: 8px; align-items: center; }
+    .toolbar.slim { grid-template-columns: minmax(190px, 1fr) repeat(2, minmax(112px, .5fr)) auto; }
+    .toolbar.wide { grid-template-columns: minmax(190px, 1fr) repeat(4, minmax(104px, .5fr)); }
+
+    .badge { display: inline-flex; align-items: center; justify-content: center; min-height: 24px; padding: 3px 8px; border-radius: 999px; border: 1px solid transparent; font-size: 11px; font-weight: 900; white-space: nowrap; }
+    .badge.blue { color: var(--blue); background: var(--blue-soft); border-color: #c7d7fe; }
+    .badge.green { color: var(--green); background: var(--green-soft); border-color: #bbf7d0; }
+    .badge.amber { color: var(--amber); background: var(--amber-soft); border-color: #fed7aa; }
+    .badge.red { color: var(--red); background: var(--red-soft); border-color: #fecdd3; }
+    .badge.gray { color: var(--muted); background: var(--soft-2); border-color: #e2e8f0; }
+
+    .table-wrap { overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th { height: 40px; padding: 0 12px; background: #f8fafc; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 11px; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; text-align: left; white-space: nowrap; }
+    td { height: 58px; padding: 9px 12px; border-bottom: 1px solid var(--line-soft); color: #172033; font-weight: 600; vertical-align: middle; }
+    tbody tr:hover td { background: #f8fbff; }
+    .cell-title { margin: 0; color: var(--text); font-weight: 900; letter-spacing: -.015em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .meta { margin: 2px 0 0; color: var(--muted); font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .money { color: var(--text); text-align: right; font-weight: 900; letter-spacing: -.035em; white-space: nowrap; }
+    .money.good { color: var(--green); }
+    .money.warn { color: var(--amber); }
+    .money.bad { color: var(--red); }
+    .actions { display: flex; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
+    .row-btn { min-height: 28px; border: 1px solid var(--line); border-radius: 8px; padding: 0 8px; background: #fff; color: var(--muted); font-size: 11px; font-weight: 900; }
+    .row-btn.blue { color: var(--blue); background: var(--blue-soft); border-color: #c7d7fe; }
+    .row-btn.green { color: var(--green); background: var(--green-soft); border-color: #bbf7d0; }
+    .row-btn.red { color: var(--red); background: var(--red-soft); border-color: #fecdd3; }
+
+    .queue { display: grid; }
+    .queue-item { padding: 12px 14px; border-bottom: 1px solid var(--line-soft); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+    .queue-item:last-child { border-bottom: 0; }
+    .queue-item strong { display: block; color: var(--text); font-weight: 900; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .queue-item p { margin: 3px 0 0; color: var(--muted); font-size: 12px; font-weight: 600; }
+
+    .chart { padding: 13px 14px; display: grid; gap: 11px; }
+    .bar-row { display: grid; grid-template-columns: 82px minmax(0, 1fr) 74px; gap: 10px; align-items: center; color: var(--muted); font-size: 12px; font-weight: 700; }
+    .bar-track { height: 12px; border-radius: 999px; background: #e9eef5; overflow: hidden; }
+    .bar { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--blue), var(--green)); }
+
+    .lesson-form { padding: 12px; display: grid; gap: 10px; }
+    .form-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+    .span-2 { grid-column: span 2; }
+    .attendance-list { display: grid; padding: 0 12px 12px; gap: 8px; }
+    .attendance-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+    .state-group { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+    .state-group button { min-height: 28px; border: 1px solid var(--line); border-radius: 999px; padding: 0 9px; background: var(--soft); color: var(--muted); font-size: 11px; font-weight: 900; }
+    .state-group button.present { color: var(--green); background: var(--green-soft); border-color: #bbf7d0; }
+    .state-group button.absent { color: var(--red); background: var(--red-soft); border-color: #fecdd3; }
+    .state-group button.excused { color: var(--muted); background: var(--soft-2); border-color: #cbd5e1; }
+
+    .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .setting-body { padding: 12px; display: grid; gap: 9px; }
+    .danger-zone { border-color: #fecdd3; background: #fff7f8; }
+    .empty { padding: 18px; color: var(--muted); text-align: center; font-weight: 700; }
+
+    .mobile-cards { display: none; padding: 10px; gap: 9px; }
+    .mobile-card { border: 1px solid var(--line); border-radius: var(--radius); background: #fff; padding: 12px; box-shadow: var(--shadow); }
+    .mobile-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 9px; }
+    .mobile-lines { display: grid; gap: 7px; padding-top: 9px; border-top: 1px solid var(--line-soft); }
+    .mobile-line { display: flex; justify-content: space-between; gap: 10px; color: var(--text); font-size: 12px; font-weight: 600; }
+    .mobile-line span:first-child { color: var(--muted); font-size: 10px; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; }
+
+    .mobile-settings { display: none; }
+    .bottom-nav { display: none; position: fixed; left: 10px; right: 10px; bottom: 10px; z-index: 20; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; padding: 6px; border: 1px solid var(--line); border-radius: 17px; background: rgba(255,255,255,.96); box-shadow: var(--shadow); }
+    .bottom-nav button { min-height: 42px; border: 0; border-radius: 12px; background: transparent; color: var(--muted); font-size: 11px; font-weight: 700; }
+    .bottom-nav button.active { color: var(--blue); background: var(--blue-soft); }
+
+    /* V3.3 visual polish layer */
+    body {
+      background:
+        radial-gradient(circle at 8% -10%, rgba(29, 78, 216, .13), transparent 26rem),
+        radial-gradient(circle at 98% 0%, rgba(4, 120, 87, .08), transparent 24rem),
+        linear-gradient(180deg, #f8fbff 0%, var(--bg) 52%, #e9eff6 100%);
+    }
+
+    .sidebar {
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.98), rgba(248,250,252,.94)),
+        radial-gradient(circle at 0 0, rgba(29,78,216,.10), transparent 14rem);
+      box-shadow: 8px 0 28px rgba(15, 23, 42, .04);
+    }
+
+    .brand {
+      min-height: 64px;
+      background:
+        radial-gradient(circle at 100% 0%, rgba(255,255,255,.22), transparent 7rem),
+        linear-gradient(135deg, #0f172a 0%, #173b7a 56%, #1d4ed8 100%);
+      box-shadow: 0 14px 26px rgba(29,78,216,.18);
+    }
+
+    .brand-mark {
+      background: rgba(255,255,255,.15);
+      border: 1px solid rgba(255,255,255,.24);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.06);
+    }
+
+    .nav-item {
+      transition: background .14s ease, color .14s ease, transform .14s ease, box-shadow .14s ease;
+    }
+
+    .nav-item:hover {
+      transform: translateX(1px);
+    }
+
+    .nav-item.active {
+      box-shadow: inset 3px 0 0 var(--blue), 0 8px 18px rgba(29,78,216,.08);
+    }
+
+    .nav-dot {
+      width: 22px;
+      height: 22px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      background: rgba(100,116,139,.12);
+      color: currentColor;
+      font-size: 9px;
+      font-style: normal;
+      font-weight: 900;
+      letter-spacing: -.04em;
+    }
+
+    .nav-item.active .nav-dot {
+      background: #fff;
+      box-shadow: 0 4px 10px rgba(29,78,216,.12);
+    }
+
+    .nav-item[data-page="overview"] .nav-dot::before { content: "TQ"; }
+    .nav-item[data-page="operations"] .nav-dot::before { content: "VH"; }
+    .nav-item[data-page="students"] .nav-dot::before { content: "HS"; }
+    .nav-item[data-page="classes"] .nav-dot::before { content: "LH"; }
+    .nav-item[data-page="teachers"] .nav-dot::before { content: "GV"; }
+    .nav-item[data-page="tuition"] .nav-dot::before { content: "HP"; }
+    .nav-item[data-page="settings"] .nav-dot::before { content: "CD"; }
+
+    .topbar {
+      padding: 2px 0 4px;
+    }
+
+    .page-title {
+      color: #081126;
+      text-wrap: balance;
+    }
+
+    .btn {
+      transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease, background .14s ease;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 18px rgba(15,23,42,.08);
+    }
+
+    .btn.primary {
+      background: linear-gradient(135deg, #1d4ed8, #1747b8);
+    }
+
+    .input:focus,
+    .select:focus,
+    .textarea:focus {
+      border-color: rgba(29,78,216,.52);
+      box-shadow: 0 0 0 4px rgba(29,78,216,.10);
+    }
+
+    .notice {
+      background:
+        linear-gradient(90deg, rgba(255,247,237,.98), rgba(255,255,255,.96));
+      box-shadow: 0 10px 22px rgba(180,83,9,.08);
+    }
+
+    .stat {
+      position: relative;
+      overflow: hidden;
+      border-color: rgba(220,229,239,.92);
+      background:
+        radial-gradient(circle at 100% 0%, rgba(29,78,216,.06), transparent 5rem),
+        rgba(255,255,255,.98);
+      box-shadow: 0 12px 26px rgba(15,23,42,.07);
+      transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease;
+    }
+
+    .stat::before {
+      content: "";
+      position: absolute;
+      inset: auto 12px 10px auto;
+      width: 44px;
+      height: 44px;
+      border-radius: 16px;
+      background: rgba(29,78,216,.07);
+      z-index: 0;
+    }
+
+    .stat.green { background: radial-gradient(circle at 100% 0%, rgba(4,120,87,.08), transparent 5rem), #fff; }
+    .stat.green::before { background: rgba(4,120,87,.08); }
+    .stat.amber { background: radial-gradient(circle at 100% 0%, rgba(180,83,9,.10), transparent 5rem), #fff; }
+    .stat.amber::before { background: rgba(180,83,9,.10); }
+    .stat.red { background: radial-gradient(circle at 100% 0%, rgba(190,18,60,.10), transparent 5rem), #fff; }
+    .stat.red::before { background: rgba(190,18,60,.09); }
+    .stat:hover { transform: translateY(-2px); box-shadow: 0 16px 32px rgba(15,23,42,.10); }
+    .stat > div, .stat > i { position: relative; z-index: 1; }
+    .stat strong { font-size: 27px; }
+
+    .segmented {
+      width: max-content;
+      max-width: 100%;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.55);
+    }
+
+    .segmented button {
+      transition: background .14s ease, color .14s ease, box-shadow .14s ease;
+    }
+
+    .panel {
+      border-color: rgba(220,229,239,.92);
+      background: rgba(255,255,255,.98);
+      box-shadow: 0 12px 28px rgba(15,23,42,.07);
+    }
+
+    .panel-head {
+      background:
+        linear-gradient(180deg, rgba(251,253,255,.98), rgba(248,250,252,.96));
+    }
+
+    .toolbar {
+      background:
+        linear-gradient(180deg, #ffffff, #fbfdff);
+      gap: 9px;
+    }
+
+    .toolbar .input:first-child {
+      background:
+        linear-gradient(#fff, #fff) padding-box,
+        linear-gradient(135deg, rgba(29,78,216,.25), rgba(4,120,87,.14)) border-box;
+      border-color: transparent;
+      box-shadow: inset 0 0 0 1px rgba(220,229,239,.85);
+    }
+
+    th {
+      background: linear-gradient(180deg, #f8fbff, #f3f7fb);
+      color: #52637a;
+    }
+
+    td {
+      transition: background .12s ease;
+    }
+
+    tbody tr:hover td {
+      background: #f3f8ff;
+    }
+
+    .badge {
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.36);
+    }
+
+    .row-btn {
+      transition: transform .12s ease, background .12s ease, box-shadow .12s ease;
+    }
+
+    .row-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 5px 12px rgba(15,23,42,.07);
+    }
+
+    .queue-item {
+      position: relative;
+      transition: background .12s ease;
+    }
+
+    .queue-item::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 12px;
+      bottom: 12px;
+      width: 3px;
+      border-radius: 99px;
+      background: transparent;
+    }
+
+    .queue-item:hover {
+      background: #f8fbff;
+    }
+
+    .queue-item:has(.badge.red)::before,
+    .queue-item:has(.btn.primary)::before { background: var(--red); }
+    .queue-item:has(.badge.amber)::before { background: var(--amber); }
+    .queue-item:has(.badge.green)::before { background: var(--green); }
+
+    .attendance-row,
+    .mobile-card {
+      box-shadow: 0 8px 18px rgba(15,23,42,.06);
+    }
+
+    .state-group button {
+      min-height: 30px;
+      transition: transform .12s ease, box-shadow .12s ease;
+    }
+
+    .state-group button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 5px 12px rgba(15,23,42,.07);
+    }
+
+    .bar {
+      background: linear-gradient(90deg, #1d4ed8, #059669);
+      box-shadow: 0 0 0 1px rgba(255,255,255,.32) inset;
+    }
+
+    .empty {
+      margin: 10px;
+      border: 1px dashed var(--line);
+      border-radius: var(--radius);
+      background: #fbfdff;
+    }
+
+    .bottom-nav {
+      box-shadow: 0 18px 44px rgba(15,23,42,.18);
+    }
+
+    .bottom-nav button {
+      display: grid;
+      place-items: center;
+      gap: 2px;
+      transition: background .14s ease, color .14s ease;
+    }
+
+    .bottom-nav button::before {
+      content: "";
+      width: 5px;
+      height: 5px;
+      border-radius: 99px;
+      background: currentColor;
+      opacity: .45;
+    }
+
+    .bottom-nav button.active::before {
+      width: 18px;
+      height: 3px;
+      opacity: 1;
+    }
+
+    .bottom-nav button::before {
+      display: none;
+    }
+
+    .bottom-icon {
+      width: 18px;
+      height: 18px;
+      display: block;
+      color: currentColor;
+      opacity: .82;
+    }
+
+    .bottom-nav button.active .bottom-icon {
+      opacity: 1;
+    }
+
+    .brand-logo {
+      width: 26px;
+      height: 26px;
+      display: block;
+    }
+
+    .nav-icon {
+      width: 22px;
+      height: 22px;
+      flex: 0 0 22px;
+      padding: 4px;
+      border-radius: 8px;
+      color: currentColor;
+      background: rgba(100,116,139,.12);
+      transition: background .14s ease, box-shadow .14s ease, transform .14s ease;
+    }
+
+    .nav-item.active .nav-icon {
+      background: #fff;
+      box-shadow: 0 4px 10px rgba(29,78,216,.12);
+      transform: scale(1.02);
+    }
+
+    .stat i {
+      width: 42px;
+      height: 42px;
+      border-radius: 15px;
+      display: grid;
+      place-items: center;
+      color: var(--blue);
+      background: var(--blue-soft);
+      font-style: normal;
+      font-size: 18px;
+      font-weight: 900;
+    }
+
+    .stat i::before { content: "•"; }
+    .stat.green i { color: var(--green); background: var(--green-soft); }
+    .stat.green i::before { content: "✓"; }
+    .stat.amber i { color: var(--amber); background: var(--amber-soft); }
+    .stat.amber i::before { content: "!"; }
+    .stat.red i { color: var(--red); background: var(--red-soft); }
+    .stat.red i::before { content: "!"; }
+
+    .stat i.stat-icon::before { content: none; }
+    .stat-icon svg {
+      width: 21px;
+      height: 21px;
+      display: block;
+    }
+
+    .setting-icon {
+      width: 30px;
+      height: 30px;
+      border-radius: 11px;
+      display: grid;
+      place-items: center;
+      color: var(--blue);
+      background: var(--blue-soft);
+      flex: 0 0 30px;
+    }
+
+    .setting-icon svg {
+      width: 17px;
+      height: 17px;
+    }
+
+    .setting-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .settings-grid .panel-head {
+      justify-content: flex-start;
+    }
+
+    .danger-zone .setting-icon {
+      color: var(--red);
+      background: var(--red-soft);
+    }
+
+    .mobile-card .actions {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--line-soft);
+      justify-content: flex-start;
+    }
+
+    .mobile-card .row-btn {
+      min-height: 32px;
+      padding: 0 10px;
+    }
+
+    .empty {
+      display: grid;
+      gap: 4px;
+      margin: 10px;
+      padding: 18px;
+      border: 1px dashed var(--line);
+      border-radius: var(--radius);
+      background: linear-gradient(180deg, #fbfdff, #f8fafc);
+      color: var(--muted);
+      text-align: center;
+      font-weight: 700;
+    }
+
+    .empty strong {
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 900;
+    }
+
+    .empty p {
+      margin: 0;
+      font-size: 12px;
+    }
+
+    /* V3.5 app-informed UI pass */
+    .stat.actionable {
+      cursor: pointer;
+    }
+
+    .stat.actionable:hover {
+      border-color: rgba(29,78,216,.32);
+    }
+
+    .stat small {
+      display: block;
+      margin-top: 3px;
+      color: var(--faint);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0;
+      white-space: nowrap;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 0;
+    }
+
+    .timeline .queue-item {
+      grid-template-columns: 70px minmax(0, 1fr) auto;
+    }
+
+    .time-chip {
+      display: inline-flex;
+      min-height: 28px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 10px;
+      background: var(--soft-2);
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .fee-progress {
+      display: grid;
+      gap: 5px;
+      min-width: 92px;
+    }
+
+    .fee-progress strong {
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .fee-progress .bar-track {
+      height: 7px;
+    }
+
+    .fee-progress.good .bar { background: var(--green); }
+    .fee-progress.warn .bar { background: var(--amber); }
+    .fee-progress.bad .bar { background: var(--red); }
+
+    .micro-actions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    /* V3.4 lightweight text, filters and overview mini charts */
+    .nav-item,
+    .btn,
+    .segmented button,
+    .input,
+    .select,
+    .textarea {
+      font-weight: 700;
+    }
+
+    .page-sub,
+    .panel-sub,
+    td,
+    .meta,
+    .queue-item p,
+    .mobile-line {
+      font-weight: 600;
+    }
+
+    .stat p,
+    .bar-row,
+    .mobile-line span:first-child {
+      font-weight: 700;
+    }
+
+    .panel-title,
+    .cell-title,
+    .queue-item strong {
+      font-weight: 800;
+    }
+
+    th,
+    .badge,
+    .row-btn,
+    .state-group button {
+      font-weight: 800;
+    }
+
+    .page-title,
+    .stat strong,
+    .money {
+      font-weight: 900;
+    }
+
+    .overview-charts {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .mini-chart {
+      padding: 12px 14px 14px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .mini-row {
+      display: grid;
+      grid-template-columns: 86px minmax(0, 1fr) 72px;
+      gap: 10px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .mini-track {
+      height: 10px;
+      border-radius: 999px;
+      background: #e9eef5;
+      overflow: hidden;
+    }
+
+    .mini-bar {
+      height: 100%;
+      border-radius: inherit;
+      background: var(--blue);
+    }
+
+    .mini-bar.green { background: var(--green); }
+    .mini-bar.amber { background: var(--amber); }
+    .mini-bar.red { background: var(--red); }
+
+    /* Color pass inspired by education dashboards: richer, still operational */
+    :root {
+      --bg: #e7f2fb;
+      --blue: #1358d8;
+      --blue-soft: #e5f0ff;
+      --cyan: #0891b2;
+      --cyan-soft: #e6fbff;
+      --orange: #f97316;
+      --orange-soft: #fff3e8;
+      --green: #059669;
+      --green-soft: #e8fff5;
+      --amber: #d97706;
+      --amber-soft: #fff7db;
+      --red: #e11d48;
+      --red-soft: #fff0f4;
+      --violet: #6d5dfc;
+      --violet-soft: #f0edff;
+    }
+
+    body {
+      background:
+        radial-gradient(circle at 6% 0%, rgba(19, 88, 216, .22), transparent 24rem),
+        radial-gradient(circle at 88% -8%, rgba(8, 145, 178, .20), transparent 24rem),
+        radial-gradient(circle at 22% 105%, rgba(249, 115, 22, .10), transparent 22rem),
+        linear-gradient(180deg, #f8fbff 0%, #edf6ff 44%, #e7f2fb 100%);
+    }
+
+    .sidebar {
+      background:
+        radial-gradient(circle at 0 0, rgba(19,88,216,.16), transparent 15rem),
+        linear-gradient(180deg, rgba(255,255,255,.99), rgba(245,250,255,.95));
+    }
+
+    .brand {
+      position: relative;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 92% 16%, rgba(249,115,22,.86), transparent 2.7rem),
+        linear-gradient(135deg, #082f73 0%, #1358d8 52%, #0891b2 100%);
+    }
+
+    .brand::after {
+      content: "";
+      position: absolute;
+      left: 70px;
+      right: 16px;
+      bottom: 10px;
+      height: 3px;
+      border-radius: 99px;
+      background: linear-gradient(90deg, #38bdf8, #f97316);
+      opacity: .9;
+    }
+
+    .btn.primary {
+      border-color: #1358d8;
+      background: linear-gradient(135deg, #1358d8 0%, #1464e8 52%, #0891b2 100%);
+      box-shadow: 0 10px 22px rgba(19,88,216,.22);
+    }
+
+    .btn.green {
+      border-color: #059669;
+      background: linear-gradient(135deg, #059669, #0d9488);
+    }
+
+    .panel {
+      position: relative;
+      border-color: rgba(189, 211, 235, .95);
+      box-shadow: 0 14px 30px rgba(15, 52, 96, .09);
+    }
+
+    .panel::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, rgba(19,88,216,.92), rgba(8,145,178,.70), rgba(249,115,22,.62));
+      pointer-events: none;
+    }
+
+    .panel-head {
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.98), rgba(242,248,255,.96));
+    }
+
+    .stat {
+      border-color: rgba(185, 207, 232, .92);
+      background:
+        radial-gradient(circle at 100% 0%, rgba(19,88,216,.14), transparent 5.2rem),
+        linear-gradient(180deg, #fff, #f8fbff);
+    }
+
+    .stat::before {
+      background: linear-gradient(135deg, rgba(19,88,216,.14), rgba(8,145,178,.10));
+    }
+
+    .stat.green {
+      background:
+        radial-gradient(circle at 100% 0%, rgba(5,150,105,.16), transparent 5.2rem),
+        linear-gradient(180deg, #fff, #f7fffb);
+    }
+
+    .stat.amber {
+      background:
+        radial-gradient(circle at 100% 0%, rgba(249,115,22,.18), transparent 5.2rem),
+        linear-gradient(180deg, #fff, #fffaf2);
+    }
+
+    .stat.red {
+      background:
+        radial-gradient(circle at 100% 0%, rgba(225,29,72,.17), transparent 5.2rem),
+        linear-gradient(180deg, #fff, #fff8fa);
+    }
+
+    .stat i {
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.65), 0 8px 16px rgba(15,52,96,.08);
+    }
+
+    .stat:not(.green):not(.amber):not(.red) i {
+      color: #0f4fc8;
+      background: linear-gradient(135deg, #e8f2ff, #dff8ff);
+    }
+
+    .stat.green i {
+      background: linear-gradient(135deg, #e4fff3, #d6fbe8);
+    }
+
+    .stat.amber i {
+      color: var(--orange);
+      background: linear-gradient(135deg, #fff4de, #ffe5cf);
+    }
+
+    .stat.red i {
+      background: linear-gradient(135deg, #fff0f4, #ffe1e9);
+    }
+
+    .notice {
+      border-color: #fed7aa;
+      background:
+        linear-gradient(90deg, rgba(255,246,225,.98), rgba(232,246,255,.94));
+    }
+
+    .badge.blue {
+      color: #0f4fc8;
+      background: #e5f0ff;
+      border-color: #b7d4ff;
+    }
+
+    .badge.green {
+      color: #047857;
+      background: #e8fff5;
+      border-color: #9ee8c2;
+    }
+
+    .badge.amber {
+      color: #b45309;
+      background: #fff2ce;
+      border-color: #ffd38a;
+    }
+
+    .badge.red {
+      color: #be123c;
+      background: #fff0f4;
+      border-color: #ffb6c7;
+    }
+
+    .row-btn.blue {
+      color: #0f4fc8;
+      background: #e5f0ff;
+      border-color: #b7d4ff;
+    }
+
+    .time-chip {
+      color: #0f4fc8;
+      background: linear-gradient(135deg, #e5f0ff, #dff8ff);
+    }
+
+    .bar-row:nth-child(1) .bar { background: linear-gradient(90deg, #1358d8, #0891b2); }
+    .bar-row:nth-child(2) .bar { background: linear-gradient(90deg, #0891b2, #059669); }
+    .bar-row:nth-child(3) .bar { background: linear-gradient(90deg, #6d5dfc, #1358d8); }
+    .bar-row:nth-child(4) .bar { background: linear-gradient(90deg, #f97316, #d97706); }
+
+    .mini-bar.green { background: linear-gradient(90deg, #059669, #10b981); }
+    .mini-bar.amber { background: linear-gradient(90deg, #f97316, #f59e0b); }
+    .mini-bar.red { background: linear-gradient(90deg, #e11d48, #fb7185); }
+
+    .fee-progress.good .bar { background: linear-gradient(90deg, #059669, #10b981); }
+    .fee-progress.warn .bar { background: linear-gradient(90deg, #f97316, #f59e0b); }
+    .fee-progress.bad .bar { background: linear-gradient(90deg, #e11d48, #fb7185); }
+
+    /* V3.5.1 color discipline: one education-blue surface system, status colors only where semantic */
+    body {
+      background:
+        radial-gradient(circle at 8% 0%, rgba(19,88,216,.18), transparent 24rem),
+        radial-gradient(circle at 100% 0%, rgba(8,145,178,.12), transparent 22rem),
+        linear-gradient(180deg, #eef7ff 0%, #e8f3fc 52%, #e4eff8 100%);
+    }
+
+    .panel {
+      background: #f5faff;
+      border-color: #c9dcef;
+      box-shadow: 0 14px 30px rgba(15,52,96,.08);
+    }
+
+    .panel::after {
+      height: 3px;
+      background: #1358d8;
+      opacity: .82;
+    }
+
+    .panel-head,
+    .toolbar,
+    th {
+      background: #eaf4ff;
+    }
+
+    td {
+      background: #f8fbff;
+    }
+
+    tbody tr:hover td {
+      background: #eef7ff;
+    }
+
+    .stat {
+      background: #eaf4ff;
+      border-color: #bed7f3;
+    }
+
+    .stat::before {
+      background: #dbeafe;
+    }
+
+    .stat.green {
+      background: #e8fff5;
+      border-color: #a8e8c9;
+    }
+
+    .stat.green::before {
+      background: #d6fbe8;
+    }
+
+    .stat.amber {
+      background: #fff3df;
+      border-color: #ffd5a1;
+    }
+
+    .stat.amber::before {
+      background: #ffe7c8;
+    }
+
+    .stat.red {
+      background: #fff0f4;
+      border-color: #ffc2d0;
+    }
+
+    .stat.red::before {
+      background: #ffe1e9;
+    }
+
+    .bar-row .bar {
+      background: linear-gradient(90deg, #1358d8, #0891b2);
+    }
+
+    .bar-row:nth-child(4) .bar {
+      background: linear-gradient(90deg, #f97316, #f59e0b);
+    }
+
+    .mini-track,
+    .bar-track {
+      background: #dbe7f4;
+    }
+
+    /* V3.5.2 NK identity: white canvas, stronger sky-blue surfaces */
+    :root {
+      --bg: #ffffff;
+      --blue: #0ea5e9;
+      --blue-soft: #dff3ff;
+      --cyan: #0284c7;
+      --cyan-soft: #d8f1ff;
+      --line: #b9d8ee;
+      --line-soft: #d8e9f6;
+      --green: #16a34a;
+      --green-soft: #daf7e5;
+      --amber: #d99a00;
+      --amber-soft: #fff0bf;
+      --red: #e11d48;
+      --red-soft: #ffe0e8;
+    }
+
+    body {
+      background: #ffffff;
+    }
+
+    .main {
+      background: #ffffff;
+    }
+
+    .sidebar {
+      background: #ffffff;
+      border-right-color: #d4e7f5;
+      box-shadow: 10px 0 28px rgba(14, 165, 233, .08);
+    }
+
+    .brand {
+      background:
+        radial-gradient(circle at 96% 12%, rgba(125, 211, 252, .34), transparent 3rem),
+        linear-gradient(135deg, #0369a1 0%, #0ea5e9 62%, #38bdf8 100%);
+      box-shadow: 0 14px 28px rgba(14, 165, 233, .26);
+    }
+
+    .brand::after {
+      background: #facc15;
+      opacity: .92;
+    }
+
+    .nav-item.active {
+      color: #0369a1;
+      background: #dff3ff;
+      box-shadow: inset 3px 0 0 #0ea5e9, 0 8px 18px rgba(14,165,233,.12);
+    }
+
+    .btn.primary {
+      border-color: #0284c7;
+      background: linear-gradient(135deg, #0284c7 0%, #0ea5e9 100%);
+      box-shadow: 0 10px 22px rgba(14,165,233,.26);
+    }
+
+    .panel {
+      background: #e0f2fe;
+      border-color: #9bd3f3;
+      box-shadow: 0 14px 30px rgba(14, 116, 144, .11);
+    }
+
+    .panel::after {
+      background: #0ea5e9;
+      opacity: 1;
+    }
+
+    .panel-head,
+    .toolbar,
+    th {
+      background: #bae6fd;
+      border-color: #8dcced;
+    }
+
+    td {
+      background: #f0f9ff;
+    }
+
+    tbody tr:hover td {
+      background: #e0f2fe;
+    }
+
+    .stat {
+      background: #bae6fd;
+      border-color: #7dd3fc;
+      box-shadow: 0 12px 26px rgba(14, 116, 144, .13);
+    }
+
+    .stat::before {
+      background: rgba(255,255,255,.38);
+    }
+
+    .stat.green {
+      background: #bbf7d0;
+      border-color: #86efac;
+    }
+
+    .stat.green::before {
+      background: rgba(255,255,255,.42);
+    }
+
+    .stat.amber {
+      background: #fde68a;
+      border-color: #facc15;
+    }
+
+    .stat.amber::before {
+      background: rgba(255,255,255,.38);
+    }
+
+    .stat.red {
+      background: #fecdd3;
+      border-color: #fda4af;
+    }
+
+    .stat.red::before {
+      background: rgba(255,255,255,.38);
+    }
+
+    .stat:not(.green):not(.amber):not(.red) i {
+      color: #0369a1;
+      background: #e0f7ff;
+    }
+
+    .stat.green i {
+      color: #15803d;
+      background: #dcfce7;
+    }
+
+    .stat.amber i {
+      color: #a16207;
+      background: #fef3c7;
+    }
+
+    .stat.red i {
+      color: #be123c;
+      background: #ffe4e6;
+    }
+
+    .notice {
+      background: #fff7d6;
+      border-color: #facc15;
+    }
+
+    .badge.blue,
+    .row-btn.blue {
+      color: #0369a1;
+      background: #dff3ff;
+      border-color: #7dd3fc;
+    }
+
+    .badge.green {
+      color: #166534;
+      background: #dcfce7;
+      border-color: #86efac;
+    }
+
+    .badge.amber {
+      color: #854d0e;
+      background: #fef3c7;
+      border-color: #facc15;
+    }
+
+    .badge.red {
+      color: #be123c;
+      background: #ffe4e6;
+      border-color: #fda4af;
+    }
+
+    .mobile-card,
+    .attendance-row {
+      background: #f0f9ff;
+      border-color: #b7ddf3;
+    }
+
+    .time-chip {
+      color: #0369a1;
+      background: #bae6fd;
+    }
+
+    .bar-row .bar,
+    .mini-bar.green,
+    .fee-progress.good .bar {
+      background: linear-gradient(90deg, #16a34a, #22c55e);
+    }
+
+    .bar-row:nth-child(1) .bar,
+    .bar-row:nth-child(2) .bar,
+    .bar-row:nth-child(3) .bar {
+      background: linear-gradient(90deg, #0284c7, #0ea5e9);
+    }
+
+    .mini-bar.amber,
+    .fee-progress.warn .bar,
+    .bar-row:nth-child(4) .bar {
+      background: linear-gradient(90deg, #d99a00, #facc15);
+    }
+
+    .mini-bar.red,
+    .fee-progress.bad .bar {
+      background: linear-gradient(90deg, #e11d48, #fb7185);
+    }
+
+    .mini-track,
+    .bar-track {
+      background: rgba(255,255,255,.72);
+    }
+
+    /* V3.5.3 stronger NK color system: white canvas, saturated blocks, no pastel wash */
+    :root {
+      --bg: #ffffff;
+      --surface: #ffffff;
+      --soft: #f8fafc;
+      --soft-2: #eef4f8;
+      --line: #d7e2eb;
+      --line-soft: #e7eef5;
+      --blue: #0284c7;
+      --blue-soft: #eaf7ff;
+      --green: #16a34a;
+      --green-soft: #eefbf3;
+      --amber: #ca8a04;
+      --amber-soft: #fff8e1;
+      --red: #dc1745;
+      --red-soft: #fff0f4;
+    }
+
+    body,
+    .main {
+      background: #ffffff;
+    }
+
+    .sidebar {
+      background: linear-gradient(180deg, #075985 0%, #0369a1 58%, #0284c7 100%);
+      border-right-color: transparent;
+      box-shadow: 12px 0 28px rgba(3,105,161,.18);
+    }
+
+    .brand {
+      background: rgba(255,255,255,.14);
+      border: 1px solid rgba(255,255,255,.22);
+      box-shadow: none;
+    }
+
+    .brand::after {
+      background: #fbbf24;
+    }
+
+    .brand-sub {
+      color: #dff6ff;
+    }
+
+    .nav-label {
+      color: rgba(255,255,255,.64);
+    }
+
+    .nav-item {
+      color: rgba(255,255,255,.78);
+    }
+
+    .nav-item:hover {
+      background: rgba(255,255,255,.12);
+      color: #fff;
+    }
+
+    .nav-item.active {
+      color: #075985;
+      background: #ffffff;
+      box-shadow: inset 3px 0 0 #fbbf24, 0 10px 22px rgba(8,47,73,.20);
+    }
+
+    .nav-icon {
+      background: rgba(255,255,255,.15);
+    }
+
+    .nav-item.active .nav-icon {
+      background: #e0f2fe;
+    }
+
+    .account {
+      color: #dff6ff;
+      background: rgba(255,255,255,.12);
+      border-color: rgba(255,255,255,.18);
+    }
+
+    .account strong {
+      color: #fff;
+    }
+
+    .panel {
+      background: #ffffff;
+      border-color: #d7e2eb;
+      box-shadow: 0 10px 24px rgba(15,23,42,.08);
+    }
+
+    .panel::after {
+      height: 4px;
+      background: #0284c7;
+    }
+
+    .panel-head {
+      background: #ffffff;
+      border-bottom-color: #d7e2eb;
+    }
+
+    .toolbar,
+    th {
+      background: #f4f8fb;
+    }
+
+    td {
+      background: #ffffff;
+    }
+
+    tbody tr:hover td {
+      background: #f0f9ff;
+    }
+
+    .notice {
+      background: #fff7e0;
+      border-color: #fbbf24;
+      border-left-color: #ca8a04;
+    }
+
+    .stat {
+      color: #ffffff;
+      background: linear-gradient(135deg, #0369a1, #0284c7);
+      border-color: transparent;
+      box-shadow: 0 14px 28px rgba(2,132,199,.24);
+    }
+
+    .stat::before {
+      background: rgba(255,255,255,.16);
+    }
+
+    .stat p,
+    .stat strong,
+    .stat small {
+      color: #ffffff;
+    }
+
+    .stat i,
+    .stat:not(.green):not(.amber):not(.red) i {
+      color: #075985;
+      background: rgba(255,255,255,.88);
+    }
+
+    .stat.green {
+      color: #ffffff;
+      background: linear-gradient(135deg, #15803d, #16a34a);
+      border-color: transparent;
+      box-shadow: 0 14px 28px rgba(22,163,74,.22);
+    }
+
+    .stat.green i {
+      color: #166534;
+      background: rgba(255,255,255,.88);
+    }
+
+    .stat.amber {
+      color: #ffffff;
+      background: linear-gradient(135deg, #b45309, #ca8a04);
+      border-color: transparent;
+      box-shadow: 0 14px 28px rgba(202,138,4,.22);
+    }
+
+    .stat.amber i {
+      color: #92400e;
+      background: rgba(255,255,255,.88);
+    }
+
+    .stat.red {
+      color: #ffffff;
+      background: linear-gradient(135deg, #be123c, #dc1745);
+      border-color: transparent;
+      box-shadow: 0 14px 28px rgba(220,23,69,.20);
+    }
+
+    .stat.red i {
+      color: #be123c;
+      background: rgba(255,255,255,.88);
+    }
+
+    .badge.blue,
+    .row-btn.blue {
+      color: #075985;
+      background: #e0f2fe;
+      border-color: #7dd3fc;
+    }
+
+    .badge.green {
+      color: #166534;
+      background: #dcfce7;
+      border-color: #86efac;
+    }
+
+    .badge.amber {
+      color: #92400e;
+      background: #fef3c7;
+      border-color: #fbbf24;
+    }
+
+    .badge.red {
+      color: #be123c;
+      background: #ffe4e6;
+      border-color: #fda4af;
+    }
+
+    .mobile-card,
+    .attendance-row {
+      background: #ffffff;
+      border-color: #d7e2eb;
+    }
+
+    .time-chip {
+      color: #ffffff;
+      background: #0284c7;
+    }
+
+    .mini-track,
+    .bar-track {
+      background: #e6edf3;
+    }
+
+    /* Modal prototypes */
+    .clickable-row {
+      cursor: pointer;
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 22px;
+      background: rgba(8, 47, 73, .42);
+      backdrop-filter: blur(10px);
+    }
+
+    .modal-backdrop.open {
+      display: flex;
+    }
+
+    .modal {
+      display: none;
+      width: min(920px, 100%);
+      max-height: min(88vh, 780px);
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,.42);
+      border-radius: 20px;
+      background: #ffffff;
+      box-shadow: 0 28px 80px rgba(8,47,73,.28);
+    }
+
+    .modal.open {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+    }
+
+    .modal.wide {
+      width: min(920px, 100%);
+    }
+
+    .modal-header {
+      min-height: 70px;
+      padding: 16px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(135deg, #f8fcff, #eef9ff);
+    }
+
+    .modal-title {
+      margin: 0;
+      font-size: 20px;
+      line-height: 1.2;
+      font-weight: 900;
+      letter-spacing: -.035em;
+    }
+
+    .modal-sub {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .modal-close {
+      width: 36px;
+      height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      color: var(--muted);
+      font-size: 18px;
+      font-weight: 900;
+    }
+
+    .modal-body {
+      min-height: 0;
+      overflow: auto;
+      padding: 16px 18px;
+      background: #fff;
+    }
+
+    .modal-footer {
+      min-height: 64px;
+      padding: 12px 18px;
+      border-top: 1px solid var(--line);
+      background: #f8fbff;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 9px;
+      flex-wrap: wrap;
+    }
+
+    .modal-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 260px;
+      gap: 14px;
+      align-items: start;
+    }
+
+    .modal-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 11px;
+    }
+
+    .modal-grid.three {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .modal-section {
+      display: grid;
+      gap: 11px;
+      padding: 13px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #ffffff;
+    }
+
+    .modal-section + .modal-section {
+      margin-top: 12px;
+    }
+
+    .section-label {
+      margin: 0;
+      color: #075985;
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+
+    .field {
+      display: grid;
+      gap: 5px;
+    }
+
+    .field label {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: .03em;
+      text-transform: uppercase;
+    }
+
+    .readonly {
+      background: #eef6fb;
+      color: #075985;
+    }
+
+    .quick-money {
+      display: flex;
+      gap: 7px;
+      flex-wrap: wrap;
+      margin-top: 2px;
+    }
+
+    .summary-card {
+      display: grid;
+      gap: 10px;
+      padding: 13px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, #0284c7, #0ea5e9);
+      color: #fff;
+    }
+
+    .summary-card.amber {
+      background: linear-gradient(135deg, #ca8a04, #f59e0b);
+    }
+
+    .summary-card.green {
+      background: linear-gradient(135deg, #16a34a, #22c55e);
+    }
+
+    .summary-card strong {
+      font-size: 24px;
+      line-height: 1;
+      letter-spacing: -.04em;
+    }
+
+    .summary-card span,
+    .summary-card p {
+      margin: 0;
+      color: rgba(255,255,255,.86);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .detail-hero {
+      display: grid;
+      gap: 12px;
+      padding: 16px;
+      border-radius: 18px;
+      color: #fff;
+      background: linear-gradient(135deg, #0369a1, #0ea5e9);
+    }
+
+    .detail-hero h3 {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.1;
+      font-weight: 900;
+      letter-spacing: -.04em;
+    }
+
+    .detail-hero p {
+      margin: 0;
+      color: rgba(255,255,255,.86);
+      font-weight: 700;
+    }
+
+    .detail-kpis {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 9px;
+    }
+
+    .detail-kpi {
+      padding: 11px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #f8fbff;
+    }
+
+    .detail-kpi span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 900;
+      text-transform: uppercase;
+    }
+
+    .detail-kpi strong {
+      display: block;
+      margin-top: 4px;
+      color: var(--text);
+      font-size: 19px;
+      line-height: 1;
+      font-weight: 900;
+      letter-spacing: -.035em;
+    }
+
+    .modal-tabs {
+      display: flex;
+      gap: 6px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: #f4f8fb;
+      width: max-content;
+      max-width: 100%;
+      overflow-x: auto;
+    }
+
+    .modal-tabs button {
+      min-height: 30px;
+      border: 0;
+      border-radius: 9px;
+      padding: 0 10px;
+      background: transparent;
+      color: var(--muted);
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .modal-tabs button.active {
+      color: #075985;
+      background: #fff;
+      box-shadow: 0 1px 5px rgba(15,23,42,.08);
+    }
+
+    .detail-list {
+      display: grid;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+
+    .detail-list div {
+      min-height: 42px;
+      padding: 9px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      border-bottom: 1px solid var(--line-soft);
+      background: #fff;
+      font-weight: 700;
+    }
+
+    .detail-list div:last-child {
+      border-bottom: 0;
+    }
+
+    .detail-list span {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    /* V3.5.4 brighter NK tuning: fresher blue, same structure */
+    :root {
+      --blue: #0ea5e9;
+      --blue-soft: #eef9ff;
+      --green: #22c55e;
+      --green-soft: #f0fdf4;
+      --amber: #f59e0b;
+      --amber-soft: #fffbeb;
+      --red: #f43f5e;
+      --red-soft: #fff1f2;
+    }
+
+    .sidebar {
+      background: linear-gradient(180deg, #0ea5e9 0%, #0284c7 62%, #0369a1 100%);
+      box-shadow: 12px 0 28px rgba(14,165,233,.16);
+    }
+
+    .brand {
+      background: rgba(255,255,255,.18);
+      border-color: rgba(255,255,255,.28);
+    }
+
+    .nav-item.active {
+      color: #0369a1;
+      box-shadow: inset 3px 0 0 #fde047, 0 10px 22px rgba(14,165,233,.18);
+    }
+
+    .btn.primary {
+      border-color: #0ea5e9;
+      background: linear-gradient(135deg, #0ea5e9 0%, #38bdf8 100%);
+      box-shadow: 0 10px 22px rgba(14,165,233,.24);
+    }
+
+    .panel {
+      box-shadow: 0 10px 22px rgba(15,23,42,.065);
+    }
+
+    .panel::after {
+      background: #0ea5e9;
+    }
+
+    .stat {
+      background: linear-gradient(135deg, #0ea5e9, #38bdf8);
+      box-shadow: 0 13px 24px rgba(14,165,233,.22);
+    }
+
+    .stat.green {
+      background: linear-gradient(135deg, #22c55e, #4ade80);
+      box-shadow: 0 13px 24px rgba(34,197,94,.18);
+    }
+
+    .stat.amber {
+      background: linear-gradient(135deg, #f59e0b, #facc15);
+      box-shadow: 0 13px 24px rgba(245,158,11,.18);
+    }
+
+    .stat.red {
+      background: linear-gradient(135deg, #f43f5e, #fb7185);
+      box-shadow: 0 13px 24px rgba(244,63,94,.16);
+    }
+
+    .time-chip {
+      background: #0ea5e9;
+    }
+
+    .bar-row .bar,
+    .bar-row:nth-child(1) .bar,
+    .bar-row:nth-child(2) .bar,
+    .bar-row:nth-child(3) .bar {
+      background: linear-gradient(90deg, #0ea5e9, #38bdf8);
+    }
+
+    .mini-bar.green,
+    .fee-progress.good .bar {
+      background: linear-gradient(90deg, #22c55e, #4ade80);
+    }
+
+    .mini-bar.amber,
+    .fee-progress.warn .bar,
+    .bar-row:nth-child(4) .bar {
+      background: linear-gradient(90deg, #f59e0b, #facc15);
+    }
+
+    .mini-bar.red,
+    .fee-progress.bad .bar {
+      background: linear-gradient(90deg, #f43f5e, #fb7185);
+    }
+
+    @media (max-width: 1120px) {
+      .app { grid-template-columns: 76px minmax(0, 1fr); }
+      .sidebar { padding: 12px 9px; }
+      .brand { justify-content: center; padding: 8px; }
+      .brand > div:not(.brand-mark), .nav-label, .nav-item span, .account { display: none; }
+      .nav-item { justify-content: center; padding: 0; }
+      .grid-2, .grid-ops, .settings-grid { grid-template-columns: 1fr; }
+      .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .toolbar, .toolbar.slim, .toolbar.wide { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 760px) {
+      .app { display: block; }
+      .sidebar { display: none; }
+      .main { padding: 12px 12px 82px; }
+      .view { gap: 10px; }
+      .topbar { display: grid; gap: 9px; align-items: start; }
+      .top-actions { justify-content: flex-start; overflow-x: auto; padding-bottom: 1px; }
+      .page-title { font-size: 27px; }
+      .notice { display: grid; align-items: start; }
+      .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+      .toolbar, .toolbar.slim, .toolbar.wide, .form-grid { grid-template-columns: 1fr; }
+      .span-2 { grid-column: auto; }
+      .stat { min-height: 68px; padding: 10px; }
+      .stat strong { font-size: 21px; }
+      .stat p { font-size: 11px; }
+      .stat i { width: 34px; height: 34px; border-radius: 12px; font-size: 15px; }
+      .panel-head { display: grid; align-items: start; min-height: auto; }
+      .overview-charts { grid-template-columns: 1fr; }
+      .mini-row { grid-template-columns: 72px minmax(0, 1fr) 64px; }
+      .desktop-table { display: none; }
+      .mobile-cards { display: grid; }
+      .queue-item, .attendance-row { grid-template-columns: 1fr; }
+      .state-group { justify-content: flex-start; }
+      .mobile-settings { display: inline-flex; position: fixed; right: 14px; bottom: 68px; z-index: 21; min-height: 38px; padding: 0 11px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--blue); font-size: 12px; font-weight: 900; box-shadow: var(--shadow); }
+      .bottom-nav { display: grid; }
+      .modal-backdrop { padding: 0; align-items: stretch; }
+      .modal,
+      .modal.wide { width: 100%; max-height: none; min-height: 100dvh; border-radius: 0; }
+      .modal-header { min-height: 64px; padding: 14px; }
+      .modal-body { padding: 12px; }
+      .modal-footer { justify-content: stretch; padding: 12px; }
+      .modal-footer .btn { flex: 1; }
+      .modal-layout,
+      .modal-grid,
+      .modal-grid.three,
+      .detail-kpis { grid-template-columns: 1fr; }
+      .modal-tabs { width: 100%; }
+      .modal-tabs button { flex: 1; }
+    }
+  </style>
+</head>
+<body>
+  <svg aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">
+    <symbol id="i-logo" viewBox="0 0 24 24">
+      <path d="M4 17.5h16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      <path d="M5 16c2.8-7.5 5.2-9.8 7-6.8 1.7 3 3.8 3.1 7-2.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M7 5h10M12 5v13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="i-dashboard" viewBox="0 0 24 24">
+      <rect x="4" y="4" width="7" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      <rect x="13" y="4" width="7" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      <rect x="4" y="13" width="7" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      <rect x="13" y="13" width="7" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/>
+    </symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24">
+      <path d="M7 3v4M17 3v4M4 9h16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      <rect x="4" y="5" width="16" height="15" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      <path d="m9 15 2 2 4-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="i-users" viewBox="0 0 24 24">
+      <circle cx="9" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      <path d="M3.8 19c.8-3.2 2.6-5 5.2-5s4.4 1.8 5.2 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      <path d="M15.5 11a2.6 2.6 0 1 0 0-5M16 14c2.2.4 3.6 2 4.2 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="i-school" viewBox="0 0 24 24">
+      <path d="M3 10.5 12 5l9 5.5-9 5.5-9-5.5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+      <path d="M6 13.5V18c2 1.2 4 1.8 6 1.8s4-.6 6-1.8v-4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="i-teacher" viewBox="0 0 24 24">
+      <circle cx="8" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      <path d="M3.5 19c.7-3.2 2.2-5 4.5-5s3.8 1.8 4.5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      <path d="M14 7h6v8h-5M16 11h2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="i-wallet" viewBox="0 0 24 24">
+      <path d="M5 7.5h13a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3v-9a3 3 0 0 1 3-3h11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M17 13h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      <path d="M19 12a7 7 0 0 0-.1-1l2-1.6-2-3.4-2.5 1a7.8 7.8 0 0 0-1.8-1L14.3 3h-4.6L9.4 6a7.8 7.8 0 0 0-1.8 1L5.1 6l-2 3.4L5.1 11a7 7 0 0 0 0 2l-2 1.6 2 3.4 2.5-1a7.8 7.8 0 0 0 1.8 1l.3 3h4.6l.3-3a7.8 7.8 0 0 0 1.8-1l2.5 1 2-3.4-2-1.6c.1-.3.1-.7.1-1Z" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round"/>
+    </symbol>
+  </svg>
+  <div class="app">
+    <aside class="sidebar">
+      <section class="brand">
+        <div class="brand-mark"><svg class="brand-logo"><use href="#i-logo"></use></svg></div>
+        <div><p class="brand-title">Lớp Toán NK</p><p class="brand-sub">Quản lý giảng dạy</p></div>
+      </section>
+
+      <nav class="nav" aria-label="Điều hướng chính">
+        <p class="nav-label">Tổng quan</p>
+        <button class="nav-item active" data-page="overview"><svg class="nav-icon"><use href="#i-dashboard"></use></svg><span>Tổng quan</span></button>
+        <p class="nav-label">Vận hành</p>
+        <button class="nav-item" data-page="operations"><svg class="nav-icon"><use href="#i-calendar"></use></svg><span>Vận hành</span></button>
+        <p class="nav-label">Đào tạo</p>
+        <button class="nav-item" data-page="students"><svg class="nav-icon"><use href="#i-users"></use></svg><span>Học sinh</span></button>
+        <button class="nav-item" data-page="classes"><svg class="nav-icon"><use href="#i-school"></use></svg><span>Lớp học</span></button>
+        <button class="nav-item" data-page="teachers"><svg class="nav-icon"><use href="#i-teacher"></use></svg><span>Giáo viên</span></button>
+        <p class="nav-label">Tài chính</p>
+        <button class="nav-item" data-page="tuition"><svg class="nav-icon"><use href="#i-wallet"></use></svg><span>Học phí</span></button>
+        <p class="nav-label">Hệ thống</p>
+        <button class="nav-item" data-page="settings"><svg class="nav-icon"><use href="#i-settings"></use></svg><span>Cài đặt</span></button>
+      </nav>
+
+      <aside class="account"><strong>Nguyễn Kiên</strong>Năm học 2025-2026</aside>
+    </aside>
+
+    <main class="main">
+      <section class="view active" id="overview">
+        <header class="topbar">
+          <div><h1 class="page-title">Tổng quan</h1><p class="page-sub">Việc cần xử lý hôm nay</p></div>
+          <div class="top-actions"><select class="select" style="width:132px"><option>T6/2026</option></select><button class="btn primary" data-modal="modal-lesson-form">+ Ghi buổi học</button></div>
+        </header>
+        <section class="notice"><div><strong>Ưu tiên:</strong> <span>1 ca chưa ghi</span> · <span>23 HS còn nợ</span> · <span>9 vắng, 4 có phép</span></div><button class="btn small">Xem hàng đợi</button></section>
+        <section class="stats">
+          <article class="stat actionable" data-page="operations" data-target="op-today"><div><p>Ca hôm nay</p><strong class="num">3</strong><small>Xem lịch</small></div><i class="stat-icon"><svg><use href="#i-calendar"></use></svg></i></article>
+          <article class="stat red actionable" data-page="operations" data-target="op-today"><div><p>Chưa ghi</p><strong class="num">1</strong><small>Ghi buổi</small></div><i class="stat-icon"><svg><use href="#i-dashboard"></use></svg></i></article>
+          <article class="stat amber actionable" data-page="tuition" data-target="fee-debt"><div><p>Chưa đóng</p><strong class="num">23 HS</strong><small>Nhắc phí</small></div><i class="stat-icon"><svg><use href="#i-wallet"></use></svg></i></article>
+          <article class="stat actionable" data-page="operations" data-target="op-diary"><div><p>Vắng / phép</p><strong class="num">9 / 4</strong><small>Theo dõi</small></div><i class="stat-icon"><svg><use href="#i-users"></use></svg></i></article>
+        </section>
+        <section class="grid-2">
+          <section class="panel">
+            <div class="panel-head"><div><h2 class="panel-title">Lịch hôm nay</h2><p class="panel-sub">Theo ca dạy và trạng thái ghi buổi</p></div><span class="badge blue">01/06/2026</span></div>
+            <div class="queue timeline">
+              <article class="queue-item"><span class="time-chip">15:30</span><div><strong>KIEN_7A</strong><p>Đã ghi · 1 vắng</p></div><span class="badge green">xong</span></article>
+              <article class="queue-item"><span class="time-chip">17:30</span><div><strong>KIEN_10A</strong><p>Đã ghi · đủ sĩ số</p></div><span class="badge green">xong</span></article>
+              <article class="queue-item"><span class="time-chip">19:30</span><div><strong>KIEN_11A</strong><p>Chưa ghi nhật ký và điểm danh.</p></div><button class="btn small primary" data-modal="modal-lesson-form">Ghi</button></article>
+            </div>
+          </section>
+          <aside class="panel">
+            <div class="panel-head"><div><h2 class="panel-title">Hàng đợi xử lý</h2><p class="panel-sub">Việc ảnh hưởng vận hành</p></div></div>
+            <div class="queue">
+              <article class="queue-item"><div><strong>Công nợ T6</strong><p>23 học sinh · 13.800.000đ</p></div><button class="row-btn blue">Zalo</button></article>
+              <article class="queue-item"><div><strong>Vắng cần theo dõi</strong><p>9 vắng · 4 có phép.</p></div><span class="badge red">chuyên cần</span></article>
+              <article class="queue-item"><div><strong>KIEN_12A</strong><p>5 học sinh chưa đóng phí.</p></div><span class="badge amber">ưu tiên</span></article>
+            </div>
+          </aside>
+        </section>
+        <section class="overview-charts">
+          <section class="panel">
+            <div class="panel-head"><h2 class="panel-title">Thu chi tháng</h2><span class="badge blue">T6/2026</span></div>
+            <div class="mini-chart">
+              <div class="mini-row"><span>Đã thu</span><div class="mini-track"><div class="mini-bar green" style="width: 82%"></div></div><strong class="money good">42,0tr</strong></div>
+              <div class="mini-row"><span>Còn thu</span><div class="mini-track"><div class="mini-bar amber" style="width: 38%"></div></div><strong class="money warn">13,8tr</strong></div>
+              <div class="mini-row"><span>Chi phí</span><div class="mini-track"><div class="mini-bar red" style="width: 22%"></div></div><strong class="money bad">7,5tr</strong></div>
+            </div>
+          </section>
+          <section class="panel">
+            <div class="panel-head"><h2 class="panel-title">Tiến độ vận hành</h2><span class="badge amber">hôm nay</span></div>
+            <div class="mini-chart">
+              <div class="mini-row"><span>Đã ghi</span><div class="mini-track"><div class="mini-bar green" style="width: 66%"></div></div><strong class="money good">2</strong></div>
+              <div class="mini-row"><span>Chưa ghi</span><div class="mini-track"><div class="mini-bar amber" style="width: 34%"></div></div><strong class="money warn">1</strong></div>
+              <div class="mini-row"><span>Vắng</span><div class="mini-track"><div class="mini-bar red" style="width: 45%"></div></div><strong class="money bad">9</strong></div>
+            </div>
+          </section>
+        </section>
+      </section>
+
+      <section class="view" id="operations">
+        <header class="topbar">
+          <div><h1 class="page-title">Vận hành</h1><p class="page-sub">Lịch dạy, ghi buổi, nhật ký</p></div>
+          <button class="btn primary" data-modal="modal-lesson-form">+ Ghi buổi học</button>
+        </header>
+        <section class="stats">
+          <article class="stat"><div><p>Ca hôm nay</p><strong class="num">3</strong></div><i class="stat-icon"><svg><use href="#i-calendar"></use></svg></i></article>
+          <article class="stat red"><div><p>Chưa ghi</p><strong class="num">1</strong></div><i class="stat-icon"><svg><use href="#i-dashboard"></use></svg></i></article>
+          <article class="stat red"><div><p>Vắng</p><strong class="num">9</strong></div><i class="stat-icon"><svg><use href="#i-users"></use></svg></i></article>
+          <article class="stat"><div><p>Có phép</p><strong class="num">4</strong></div><i class="stat-icon"><svg><use href="#i-users"></use></svg></i></article>
+        </section>
+        <div class="segmented" data-subnav="operations">
+          <button class="active" data-target="op-today">Hôm nay</button>
+          <button data-target="op-schedule">Thời khóa biểu</button>
+          <button data-target="op-diary">Nhật ký</button>
+        </div>
+
+        <section class="subview active" id="op-today">
+          <section class="grid-ops">
+            <aside class="panel">
+              <div class="panel-head"><h2 class="panel-title">Ca dạy hôm nay</h2><span class="badge blue">3 ca</span></div>
+              <div class="queue timeline">
+                <article class="queue-item"><span class="time-chip">15:30</span><div><strong>KIEN_7A</strong><p>Đã ghi · 1 vắng</p></div><span class="badge green">đã ghi</span></article>
+                <article class="queue-item"><span class="time-chip">17:30</span><div><strong>KIEN_10A</strong><p>Đã ghi · đủ sĩ số</p></div><span class="badge green">đã ghi</span></article>
+                <article class="queue-item"><span class="time-chip">19:30</span><div><strong>KIEN_11A</strong><p>Có thể ghi sau ca học.</p></div><span class="badge amber">chờ ghi</span></article>
+              </div>
+            </aside>
+            <section class="panel">
+              <div class="panel-head"><h2 class="panel-title">Ghi buổi học</h2><button class="btn green">Lưu buổi</button></div>
+              <div class="lesson-form">
+                <div class="form-grid">
+                  <input class="input" value="01/06/2026" aria-label="Ngày">
+                  <select class="select"><option>KIEN_11A</option></select>
+                  <input class="input" value="T2 19:30" aria-label="Ca dạy">
+                  <input class="input" value="Nguyễn Thị Kiên" aria-label="Giáo viên">
+                  <textarea class="textarea span-2">Ôn tập hàm số bậc hai, luyện bài vận dụng.</textarea>
+                  <textarea class="textarea span-2">BTVN: đề 12, câu 1-8.</textarea>
+                </div>
+              </div>
+              <div class="attendance-list">
+                <article class="attendance-row"><div><p class="cell-title">Hà Văn Đạt</p><p class="meta mono">HS001</p></div><div class="state-group"><button class="present">Có mặt</button><button>Vắng</button><button>Có phép</button></div></article>
+                <article class="attendance-row"><div><p class="cell-title">Nguyễn Minh Anh</p><p class="meta mono">HS002 · báo phụ huynh</p></div><div class="state-group"><button>Có mặt</button><button class="absent">Vắng</button><button>Có phép</button></div></article>
+                <article class="attendance-row"><div><p class="cell-title">Lê Phương Linh</p><p class="meta mono">HS003 · ốm</p></div><div class="state-group"><button>Có mặt</button><button>Vắng</button><button class="excused">Có phép</button></div></article>
+              </div>
+            </section>
+          </section>
+        </section>
+
+        <section class="subview" id="op-schedule">
+          <section class="panel">
+            <div class="toolbar"><input class="input" placeholder="Tìm lớp"><select class="select"><option>GV</option></select><select class="select"><option>Cơ sở</option></select><select class="select"><option>Thứ</option></select><button class="btn ghost">Xóa lọc</button></div>
+            <div class="table-wrap desktop-table"><table>
+              <colgroup><col style="width:22%"><col style="width:28%"><col style="width:22%"><col style="width:16%"><col style="width:12%"></colgroup>
+              <thead><tr><th>Lớp</th><th>Lịch học</th><th>Giáo viên</th><th>Cơ sở</th><th style="text-align:right">Thao tác</th></tr></thead>
+              <tbody>
+                <tr><td><p class="cell-title">KIEN_10A</p><p class="meta">Khối 10 · 14 HS</p></td><td>T3, T5, T7 · 17:30</td><td>Nguyễn Thị Kiên</td><td>15/80 Đào Tấn</td><td><div class="actions"><button class="row-btn">Sửa</button></div></td></tr>
+                <tr><td><p class="cell-title">KIEN_11A</p><p class="meta">Khối 11 · 10 HS</p></td><td>T2, T4, T6 · 19:30</td><td>Nguyễn Thị Kiên</td><td>15/80 Đào Tấn</td><td><div class="actions"><button class="row-btn">Sửa</button></div></td></tr>
+              </tbody>
+            </table></div>
+            <div class="mobile-cards">
+              <article class="mobile-card"><div class="mobile-card-head"><div><p class="cell-title">KIEN_10A</p><p class="meta">Khối 10 · 14 HS</p></div><span class="badge blue">17:30</span></div><div class="mobile-lines"><div class="mobile-line"><span>Lịch</span><strong>T3, T5, T7</strong></div><div class="mobile-line"><span>Giáo viên</span><strong>Nguyễn Thị Kiên</strong></div><div class="mobile-line"><span>Cơ sở</span><strong>15/80 Đào Tấn</strong></div></div></article>
+              <article class="mobile-card"><div class="mobile-card-head"><div><p class="cell-title">KIEN_11A</p><p class="meta">Khối 11 · 10 HS</p></div><span class="badge amber">19:30</span></div><div class="mobile-lines"><div class="mobile-line"><span>Lịch</span><strong>T2, T4, T6</strong></div><div class="mobile-line"><span>Giáo viên</span><strong>Nguyễn Thị Kiên</strong></div><div class="mobile-line"><span>Cơ sở</span><strong>15/80 Đào Tấn</strong></div></div></article>
+            </div>
+          </section>
+        </section>
+
+        <section class="subview" id="op-diary">
+          <section class="panel">
+            <div class="toolbar wide"><input class="input" value="01/06/2026"><select class="select"><option>Lớp</option></select><select class="select"><option>GV</option></select><input class="input" placeholder="Tìm nội dung"><button class="btn ghost">Xóa lọc</button></div>
+            <div class="table-wrap desktop-table"><table>
+              <colgroup><col style="width:20%"><col style="width:16%"><col style="width:20%"><col style="width:28%"><col style="width:16%"></colgroup>
+              <thead><tr><th>Ngày / ca</th><th>Lớp</th><th>Giáo viên</th><th>Nội dung</th><th>Điểm danh</th></tr></thead>
+              <tbody>
+                <tr><td><p class="cell-title">01/06/2026</p><p class="meta">T2 17:30</p></td><td><span class="badge blue">KIEN_10A</span></td><td>Nguyễn Thị Kiên</td><td><p class="cell-title">Ôn hàm số</p><p class="meta">BTVN đề 12</p></td><td><span class="badge green">13 có mặt</span></td></tr>
+                <tr><td><p class="cell-title">31/05/2026</p><p class="meta">CN 17:30</p></td><td><span class="badge blue">KIEN_9A</span></td><td>Nguyễn Thị Kiên</td><td><p class="cell-title">Luyện đề vào 10</p><p class="meta">1 học sinh vắng</p></td><td><span class="badge amber">1 vắng</span></td></tr>
+              </tbody>
+            </table></div>
+            <div class="mobile-cards">
+              <article class="mobile-card"><div class="mobile-card-head"><div><p class="cell-title">01/06/2026 · T2 17:30</p><p class="meta">KIEN_10A · Nguyễn Thị Kiên</p></div><span class="badge green">13 có mặt</span></div><div class="mobile-lines"><div class="mobile-line"><span>Nội dung</span><strong>Ôn hàm số</strong></div><div class="mobile-line"><span>Bài tập</span><strong>Đề 12</strong></div></div></article>
+              <article class="mobile-card"><div class="mobile-card-head"><div><p class="cell-title">31/05/2026 · CN 17:30</p><p class="meta">KIEN_9A · Nguyễn Thị Kiên</p></div><span class="badge amber">1 vắng</span></div><div class="mobile-lines"><div class="mobile-line"><span>Nội dung</span><strong>Luyện đề vào 10</strong></div><div class="mobile-line"><span>Ghi chú</span><strong>1 học sinh vắng</strong></div></div></article>
+            </div>
+          </section>
+        </section>
+      </section>
+
+      <section class="view" id="students">
+        <header class="topbar"><div><h1 class="page-title">Học sinh</h1><p class="page-sub">Hồ sơ, lớp, liên hệ, học phí</p></div><button class="btn primary" data-modal="modal-student-form">+ Thêm học sinh</button></header>
+        <section class="stats">
+          <article class="stat green"><div><p>Đang học</p><strong class="num">89</strong></div><i class="stat-icon"><svg><use href="#i-users"></use></svg></i></article>
+          <article class="stat"><div><p>Tạm nghỉ</p><strong class="num">3</strong></div><i class="stat-icon"><svg><use href="#i-users"></use></svg></i></article>
+          <article class="stat amber"><div><p>Chưa xếp</p><strong class="num">4</strong></div><i class="stat-icon"><svg><use href="#i-school"></use></svg></i></article>
+          <article class="stat amber actionable" data-page="tuition" data-target="fee-debt"><div><p>Còn nợ</p><strong class="num">23</strong></div><i class="stat-icon"><svg><use href="#i-wallet"></use></svg></i></article>
+        </section>
+        <section class="panel">
+          <div class="toolbar"><input class="input" placeholder="Tìm học sinh"><select class="select"><option>Lớp</option></select><select class="select"><option>Đang học</option></select><select class="select"><option>Học phí</option></select><button class="btn ghost">Xóa lọc</button></div>
+          <div class="table-wrap desktop-table"><table>
+            <colgroup><col style="width:30%"><col style="width:16%"><col style="width:24%"><col style="width:15%"><col style="width:15%"></colgroup>
+            <thead><tr><th>Học sinh</th><th>Lớp</th><th>Phụ huynh</th><th style="text-align:right">Học phí</th><th style="text-align:right">Thao tác</th></tr></thead>
+            <tbody>
+              <tr class="clickable-row" data-modal="modal-student-detail"><td><p class="cell-title">Lê Phương Linh</p><p class="meta"><span class="mono">HS003</span> · THPT Lê Quý Đôn · Khối 12</p></td><td><span class="badge blue">KIEN_12A</span><p class="meta">Đang học</p></td><td><p class="cell-title">Nguyễn Thị Hoa</p><p class="meta mono">0901 234 567</p></td><td class="money bad">1.800.000đ</td><td><div class="actions"><button class="row-btn green" data-modal="modal-receipt-form">Thu</button><button class="row-btn" data-modal="modal-student-detail">Hồ sơ</button></div></td></tr>
+              <tr class="clickable-row" data-modal="modal-student-detail"><td><p class="cell-title">Hà Văn Đạt</p><p class="meta"><span class="mono">HS001</span> · THPT Chuyên Nguyễn Huệ · Khối 10</p></td><td><span class="badge blue">KIEN_10A</span><p class="meta">Đang học</p></td><td><p class="cell-title">Nguyễn Thị Hồng Hoa</p><p class="meta mono">0987 123 456</p></td><td class="money warn">600.000đ</td><td><div class="actions"><button class="row-btn green" data-modal="modal-receipt-form">Thu</button><button class="row-btn" data-modal="modal-student-detail">Hồ sơ</button></div></td></tr>
+              <tr class="clickable-row" data-modal="modal-student-detail"><td><p class="cell-title">Nguyễn Minh Anh</p><p class="meta"><span class="mono">HS002</span> · THPT Kim Liên · Khối 11</p></td><td><span class="badge gray">Chưa xếp</span></td><td><p class="cell-title">Chưa cập nhật</p><p class="meta">Thiếu số phụ huynh</p></td><td class="money good">0đ</td><td><div class="actions"><button class="row-btn blue" data-modal="modal-student-form">Bổ sung</button></div></td></tr>
+            </tbody>
+          </table></div>
+          <div class="mobile-cards"><article class="mobile-card"><div class="mobile-card-head"><div><p class="cell-title">Lê Phương Linh</p><p class="meta">HS003 · KIEN_12A</p></div><span class="badge red">Nợ 3 tháng</span></div><div class="mobile-lines"><div class="mobile-line"><span>Phụ huynh</span><strong>Nguyễn Thị Hoa</strong></div><div class="mobile-line"><span>SĐT</span><strong class="mono">0901 234 567</strong></div></div></article></div>
+        </section>
+      </section>
+
+      <section class="view" id="classes">
+        <header class="topbar"><div><h1 class="page-title">Lớp học</h1><p class="page-sub">Lịch, sĩ số, giáo viên, học phí</p></div><button class="btn primary" data-modal="modal-class-form">+ Thêm lớp</button></header>
+        <section class="stats">
+          <article class="stat green"><div><p>Lớp đang mở</p><strong class="num">19</strong></div><i class="stat-icon"><svg><use href="#i-school"></use></svg></i></article>
+          <article class="stat"><div><p>Tổng học sinh</p><strong class="num">89</strong></div><i class="stat-icon"><svg><use href="#i-users"></use></svg></i></article>
+          <article class="stat amber"><div><p>Lớp hôm nay</p><strong class="num">3</strong></div><i class="stat-icon"><svg><use href="#i-calendar"></use></svg></i></article>
+          <article class="stat red"><div><p>Lớp còn nợ phí</p><strong class="num">6</strong></div><i class="stat-icon"><svg><use href="#i-wallet"></use></svg></i></article>
+        </section>
+        <section class="panel">
+          <div class="toolbar"><input class="input" placeholder="Tìm lớp"><select class="select"><option>GV</option></select><select class="select"><option>Cơ sở</option></select><select class="select"><option>Khối</option></select><button class="btn ghost">Xóa lọc</button></div>
+          <div class="table-wrap desktop-table"><table>
+            <colgroup><col style="width:21%"><col style="width:25%"><col style="width:12%"><col style="width:24%"><col style="width:10%"><col style="width:8%"></colgroup>
+            <thead><tr><th>Lớp</th><th>Lịch học</th><th>Sĩ số</th><th>Giáo viên / Cơ sở</th><th>Đóng phí</th><th style="text-align:right">Sửa</th></tr></thead>
+            <tbody>
+              <tr class="clickable-row" data-modal="modal-class-detail"><td><p class="cell-title">KIEN_10A</p><p class="meta">Khối 10</p></td><td>T3, T5, T7 · 17:30</td><td class="num">14</td><td><p class="cell-title">Nguyễn Thị Kiên</p><p class="meta">15/80 Đào Tấn</p></td><td><div class="fee-progress warn"><strong>11/14 · 79%</strong><div class="bar-track"><div class="bar" style="width:79%"></div></div></div></td><td><div class="actions"><button class="row-btn" data-modal="modal-class-form">Sửa</button></div></td></tr>
+              <tr class="clickable-row" data-modal="modal-class-detail"><td><p class="cell-title">KIEN_11A</p><p class="meta">Khối 11</p></td><td>T2, T4, T6 · 19:30</td><td class="num">10</td><td><p class="cell-title">Nguyễn Thị Kiên</p><p class="meta">15/80 Đào Tấn</p></td><td><div class="fee-progress good"><strong>10/10 · 100%</strong><div class="bar-track"><div class="bar" style="width:100%"></div></div></div></td><td><div class="actions"><button class="row-btn" data-modal="modal-class-form">Sửa</button></div></td></tr>
+              <tr class="clickable-row" data-modal="modal-class-detail"><td><p class="cell-title">KIEN_12A</p><p class="meta">Khối 12</p></td><td>T3, T5, T7 · 19:30</td><td class="num">12</td><td><p class="cell-title">Nguyễn Thị Kiên</p><p class="meta">15/80 Đào Tấn</p></td><td><div class="fee-progress bad"><strong>7/12 · 58%</strong><div class="bar-track"><div class="bar" style="width:58%"></div></div></div></td><td><div class="actions"><button class="row-btn" data-modal="modal-class-form">Sửa</button></div></td></tr>
+            </tbody>
+          </table></div>
+          <div class="mobile-cards">
+            <article class="mobile-card"><div class="mobile-card-head"><div><p class="cell-title">KIEN_10A</p><p class="meta">Khối 10 · Nguyễn Thị Kiên</p></div><span class="badge amber">79%</span></div><div class="mobile-lines"><div class="mobile-line"><span>Lịch</span><strong>T3, T5, T7 · 17:30</strong></div><div class="mobile-line"><span>Sĩ số</span><strong>14 HS</strong></div><div class="mobile-line"><span>Đóng phí</span><strong>11/14</strong></div></div></article>
+            <article class="mobile-card"><div class="mobile-card-head"><div><p class="cell-title">KIEN_11A</p><p class="meta">Khối 11 · Nguyễn Thị Kiên</p></div><span class="badge green">100%</span></div><div class="mobile-lines"><div class="mobile-line"><span>Lịch</span><strong>T2, T4, T6 · 19:30</strong></div><div class="mobile-line"><span>Sĩ số</span><strong>10 HS</strong></div><div class="mobile-line"><span>Đóng phí</span><strong>10/10</strong></div></div></article>
+            <article class="mobile-card"><div class="mobile-card-head"><div><p class="cell-title">KIEN_12A</p><p class="meta">Khối 12 · Nguyễn Thị Kiên</p></div><span class="badge red">58%</span></div><div class="mobile-lines"><div class="mobile-line"><span>Lịch</span><strong>T3, T5, T7 · 19:30</strong></div><div class="mobile-line"><span>Sĩ số</span><strong>12 HS</strong></div><div class="mobile-line"><span>Đóng phí</span><strong>7/12</strong></div></div></article>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" id="teachers">
+        <header class="topbar"><div><h1 class="page-title">Giáo viên</h1><p class="page-sub">Lớp, lịch dạy, số buổi</p></div><button class="btn primary" data-modal="modal-teacher-form">+ Thêm giáo viên</button></header>
+        <section class="stats">
+          <article class="stat green"><div><p>Đang dạy</p><strong class="num">4</strong></div><i class="stat-icon"><svg><use href="#i-teacher"></use></svg></i></article>
+          <article class="stat"><div><p>Lớp phụ trách</p><strong class="num">19</strong></div><i class="stat-icon"><svg><use href="#i-school"></use></svg></i></article>
+          <article class="stat amber"><div><p>Ca hôm nay</p><strong class="num">3</strong></div><i class="stat-icon"><svg><use href="#i-calendar"></use></svg></i></article>
+          <article class="stat red actionable" data-page="operations" data-target="op-today"><div><p>Chưa ghi</p><strong class="num">1</strong></div><i class="stat-icon"><svg><use href="#i-dashboard"></use></svg></i></article>
+        </section>
+        <section class="panel">
+          <div class="toolbar slim"><input class="input" placeholder="Tìm GV"><select class="select"><option>Đang dạy</option></select><select class="select"><option>Hôm nay</option></select><button class="btn ghost">Xóa lọc</button></div>
+          <div class="table-wrap desktop-table"><table>
+            <colgroup><col style="width:30%"><col style="width:30%"><col style="width:16%"><col style="width:12%"><col style="width:12%"></colgroup>
+            <thead><tr><th>Giáo viên</th><th>Lớp phụ trách</th><th>Hôm nay</th><th>Buổi T6</th><th style="text-align:right">Thao tác</th></tr></thead>
+            <tbody>
+              <tr class="clickable-row" data-modal="modal-teacher-detail"><td><p class="cell-title">Nguyễn Thị Kiên</p><p class="meta mono">GV001 · 0909 111 222</p></td><td>KIEN_7A, KIEN_9A, KIEN_10A, KIEN_11A</td><td><span class="badge amber">3 lớp</span></td><td class="num">28</td><td><div class="actions"><button class="row-btn blue" data-modal="modal-lesson-form">Ghi buổi</button></div></td></tr>
+              <tr class="clickable-row" data-modal="modal-teacher-detail"><td><p class="cell-title">Trần Văn Minh</p><p class="meta mono">GV002 · 0918 222 333</p></td><td>KIEN_12B</td><td><span class="badge gray">Không có</span></td><td class="num">8</td><td><div class="actions"><button class="row-btn" data-modal="modal-teacher-detail">Hồ sơ</button></div></td></tr>
+            </tbody>
+          </table></div>
+          <div class="mobile-cards">
+            <article class="mobile-card"><div class="mobile-card-head"><div><p class="cell-title">Nguyễn Thị Kiên</p><p class="meta mono">GV001 · 0909 111 222</p></div><span class="badge amber">3 lớp hôm nay</span></div><div class="mobile-lines"><div class="mobile-line"><span>Lớp</span><strong>KIEN_7A, 9A, 10A, 11A</strong></div><div class="mobile-line"><span>Buổi T6</span><strong>28</strong></div></div></article>
+            <article class="mobile-card"><div class="mobile-card-head"><div><p class="cell-title">Trần Văn Minh</p><p class="meta mono">GV002 · 0918 222 333</p></div><span class="badge gray">Không có lịch</span></div><div class="mobile-lines"><div class="mobile-line"><span>Lớp</span><strong>KIEN_12B</strong></div><div class="mobile-line"><span>Buổi T6</span><strong>8</strong></div></div></article>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" id="tuition">
+        <header class="topbar">
+          <div><h1 class="page-title">Học phí</h1><p class="page-sub">Công nợ, thu chi</p></div>
+          <div class="top-actions"><button class="btn primary" data-modal="modal-receipt-form">+ Ghi phiếu thu</button></div>
+        </header>
+        <section class="stats">
+          <article class="stat green actionable" data-page="tuition" data-target="fee-income"><div><p>Đã thu</p><strong class="num">42,0tr</strong><small>Phiếu thu</small></div><i class="stat-icon"><svg><use href="#i-wallet"></use></svg></i></article>
+          <article class="stat amber actionable" data-page="tuition" data-target="fee-debt"><div><p>Còn thu</p><strong class="num">13,8tr</strong><small>Công nợ</small></div><i class="stat-icon"><svg><use href="#i-wallet"></use></svg></i></article>
+          <article class="stat red actionable" data-page="tuition" data-target="fee-debt"><div><p>Chưa đóng</p><strong class="num">23 HS</strong><small>Nhắc phí</small></div><i class="stat-icon"><svg><use href="#i-users"></use></svg></i></article>
+          <article class="stat actionable" data-page="tuition" data-target="fee-expense"><div><p>Chi phí</p><strong class="num">7,5tr</strong><small>Phiếu chi</small></div><i class="stat-icon"><svg><use href="#i-wallet"></use></svg></i></article>
+        </section>
+        <div class="segmented" data-subnav="tuition"><button class="active" data-target="fee-summary">Tổng hợp</button><button data-target="fee-debt">Công nợ</button><button data-target="fee-income">Phiếu thu</button><button data-target="fee-expense">Phiếu chi</button></div>
+
+        <section class="subview active" id="fee-summary">
+          <section class="grid-2">
+            <section class="panel"><div class="panel-head"><h2 class="panel-title">Doanh thu theo lớp</h2><span class="badge blue">T6/2026</span></div><div class="chart">
+              <div class="bar-row"><span>KIEN_10A</span><div class="bar-track"><div class="bar" style="width:92%"></div></div><strong class="money good">8,4tr</strong></div>
+              <div class="bar-row"><span>KIEN_11A</span><div class="bar-track"><div class="bar" style="width:78%"></div></div><strong class="money good">7,2tr</strong></div>
+              <div class="bar-row"><span>KIEN_12A</span><div class="bar-track"><div class="bar" style="width:66%"></div></div><strong class="money good">6,0tr</strong></div>
+              <div class="bar-row"><span>KIEN_9A</span><div class="bar-track"><div class="bar" style="width:55%"></div></div><strong class="money warn">4,8tr</strong></div>
+            </div></section>
+            <aside class="panel"><div class="panel-head"><h2 class="panel-title">Top công nợ</h2><button class="row-btn blue">Nhắc Zalo</button></div><div class="queue">
+              <article class="queue-item"><div><strong>KIEN_12A</strong><p>5 học sinh · 4.200.000đ</p></div><div class="micro-actions"><span class="badge red">cao</span><button class="row-btn blue">Zalo</button></div></article>
+              <article class="queue-item"><div><strong>KIEN_10A</strong><p>3 học sinh · 1.800.000đ</p></div><div class="micro-actions"><span class="badge amber">nhắc</span><button class="row-btn blue">Zalo</button></div></article>
+            </div></aside>
+          </section>
+          <section class="panel">
+            <div class="panel-head"><h2 class="panel-title">Giao dịch gần đây</h2><span class="badge green">3 phiếu</span></div>
+            <div class="queue">
+              <article class="queue-item"><div><strong>PT001 · Hà Văn Đạt</strong><p>HP T6/2026 · 03/06/2026</p></div><span class="badge green">600.000đ</span></article>
+              <article class="queue-item"><div><strong>PT002 · Lê Phương Linh</strong><p>Thu học phí còn nợ · 02/06/2026</p></div><span class="badge green">1.200.000đ</span></article>
+              <article class="queue-item"><div><strong>PC001 · Thuê phòng học</strong><p>Nguyễn Kiên · 05/06/2026</p></div><span class="badge red">5.000.000đ</span></article>
+            </div>
+          </section>
+        </section>
+
+        <section class="subview" id="fee-debt">
+          <section class="panel"><div class="toolbar"><input class="input" placeholder="Tìm học sinh"><select class="select"><option>T6/2026</option></select><select class="select"><option>Lớp</option></select><select class="select"><option>Nợ cao</option></select><button class="btn ghost">Xóa lọc</button></div>
+            <div class="table-wrap desktop-table"><table><colgroup><col style="width:30%"><col style="width:17%"><col style="width:18%"><col style="width:17%"><col style="width:18%"></colgroup><thead><tr><th>Học sinh</th><th>Lớp</th><th>Tháng nợ</th><th style="text-align:right">Tổng nợ</th><th style="text-align:right">Thao tác</th></tr></thead><tbody>
+              <tr class="clickable-row" data-modal="modal-student-detail"><td><p class="cell-title">Lê Phương Linh</p><p class="meta mono">HS003 · thu gần nhất 03/03</p></td><td><span class="badge blue">KIEN_12A</span></td><td><span class="badge red">3 tháng</span></td><td class="money bad">1.800.000đ</td><td><div class="actions"><button class="row-btn blue">Zalo</button><button class="row-btn green" data-modal="modal-receipt-form">Thu</button></div></td></tr>
+              <tr class="clickable-row" data-modal="modal-student-detail"><td><p class="cell-title">Hà Văn Đạt</p><p class="meta mono">HS001 · thu gần nhất 03/05</p></td><td><span class="badge blue">KIEN_10A</span></td><td><span class="badge amber">1 tháng</span></td><td class="money warn">600.000đ</td><td><div class="actions"><button class="row-btn blue">Zalo</button><button class="row-btn green" data-modal="modal-receipt-form">Thu</button></div></td></tr>
+            </tbody></table></div>
+            <div class="mobile-cards">
+              <article class="mobile-card"><div class="mobile-card-head"><div><p class="cell-title">Lê Phương Linh</p><p class="meta mono">HS003 · KIEN_12A</p></div><span class="badge red">3 tháng</span></div><div class="mobile-lines"><div class="mobile-line"><span>Tổng nợ</span><strong class="money bad">1.800.000đ</strong></div><div class="mobile-line"><span>Thu gần nhất</span><strong>03/03</strong></div></div><div class="actions" style="margin-top:10px"><button class="row-btn blue">Zalo</button><button class="row-btn green">Thu</button></div></article>
+              <article class="mobile-card"><div class="mobile-card-head"><div><p class="cell-title">Hà Văn Đạt</p><p class="meta mono">HS001 · KIEN_10A</p></div><span class="badge amber">1 tháng</span></div><div class="mobile-lines"><div class="mobile-line"><span>Tổng nợ</span><strong class="money warn">600.000đ</strong></div><div class="mobile-line"><span>Thu gần nhất</span><strong>03/05</strong></div></div><div class="actions" style="margin-top:10px"><button class="row-btn blue">Zalo</button><button class="row-btn green">Thu</button></div></article>
+            </div>
+          </section>
+        </section>
+
+        <section class="subview" id="fee-income">
+          <section class="panel"><div class="toolbar slim"><input class="input" placeholder="Tìm phiếu thu"><select class="select"><option>T6/2026</option></select><select class="select"><option>Lớp</option></select><button class="btn ghost">CSV</button></div>
+            <div class="table-wrap desktop-table"><table><colgroup><col style="width:22%"><col style="width:28%"><col style="width:26%"><col style="width:14%"><col style="width:10%"></colgroup><thead><tr><th>Ngày / số phiếu</th><th>Học sinh</th><th>Nội dung</th><th style="text-align:right">Số tiền</th><th></th></tr></thead><tbody>
+              <tr class="clickable-row" data-modal="modal-receipt-detail"><td><p class="cell-title">03/06/2026</p><p class="meta mono">PT001</p></td><td>Hà Văn Đạt</td><td>HP T6/2026</td><td class="money good">600.000đ</td><td><div class="actions"><button class="row-btn" data-modal="modal-receipt-form">Sửa</button></div></td></tr>
+            </tbody></table></div>
+            <div class="mobile-cards">
+              <article class="mobile-card"><div class="mobile-card-head"><div><p class="cell-title">PT001 · 03/06/2026</p><p class="meta">Hà Văn Đạt</p></div><span class="badge green">600.000đ</span></div><div class="mobile-lines"><div class="mobile-line"><span>Nội dung</span><strong>HP T6/2026</strong></div></div></article>
+            </div>
+          </section>
+        </section>
+
+        <section class="subview" id="fee-expense">
+          <section class="panel"><div class="toolbar wide"><input class="input" placeholder="Tìm phiếu chi"><select class="select"><option>T6/2026</option></select><select class="select"><option>Hạng mục</option></select><select class="select"><option>Người chi</option></select><button class="btn primary" data-modal="modal-expense-form">+ Chi</button></div>
+            <div class="table-wrap desktop-table"><table><colgroup><col style="width:24%"><col style="width:28%"><col style="width:22%"><col style="width:16%"><col style="width:10%"></colgroup><thead><tr><th>Ngày / số phiếu</th><th>Hạng mục</th><th>Người chi</th><th style="text-align:right">Số tiền</th><th></th></tr></thead><tbody>
+              <tr class="clickable-row" data-modal="modal-expense-detail"><td><p class="cell-title">05/06/2026</p><p class="meta mono">PC001</p></td><td>Thuê phòng học</td><td>Nguyễn Kiên</td><td class="money bad">5.000.000đ</td><td><div class="actions"><button class="row-btn" data-modal="modal-expense-form">Sửa</button></div></td></tr>
+            </tbody></table></div>
+            <div class="mobile-cards">
+              <article class="mobile-card"><div class="mobile-card-head"><div><p class="cell-title">PC001 · 05/06/2026</p><p class="meta">Thuê phòng học</p></div><span class="badge red">5.000.000đ</span></div><div class="mobile-lines"><div class="mobile-line"><span>Người chi</span><strong>Nguyễn Kiên</strong></div></div></article>
+            </div>
+            <div class="empty"><strong>Không có phiếu chi khác</strong><p>Đổi tháng hoặc xóa bộ lọc để xem thêm dữ liệu.</p></div>
+          </section>
+        </section>
+      </section>
+
+      <section class="view" id="settings">
+        <header class="topbar"><div><h1 class="page-title">Cài đặt</h1><p class="page-sub">Học phí, năm học, dữ liệu, kết nối</p></div><button class="btn primary">Lưu cài đặt</button></header>
+        <section class="settings-grid">
+          <section class="panel"><div class="panel-head"><div class="setting-title"><span class="setting-icon"><svg><use href="#i-wallet"></use></svg></span><h2 class="panel-title">Cấu hình học phí</h2></div></div><div class="setting-body"><input class="input" value="600.000đ" aria-label="Học phí chuẩn"><select class="select"><option>Tháng hiện tại: T6/2026</option></select><input class="input" value="Ngày nhắc học phí: 15" aria-label="Ngày nhắc"></div></section>
+          <section class="panel"><div class="panel-head"><div class="setting-title"><span class="setting-icon"><svg><use href="#i-calendar"></use></svg></span><h2 class="panel-title">Năm học</h2></div></div><div class="setting-body"><input class="input" value="2025-2026"><input class="input" value="Bắt đầu: 01/06/2025"><input class="input" value="Kết thúc: 31/05/2026"></div></section>
+          <section class="panel"><div class="panel-head"><div class="setting-title"><span class="setting-icon"><svg><use href="#i-settings"></use></svg></span><h2 class="panel-title">Kết nối</h2></div></div><div class="setting-body"><input class="input" value="Google Apps Script URL"><div><span class="badge green">Đã kết nối</span></div><button class="btn ghost">Kiểm tra kết nối</button></div></section>
+          <section class="panel danger-zone"><div class="panel-head"><div class="setting-title"><span class="setting-icon"><svg><use href="#i-settings"></use></svg></span><h2 class="panel-title">Dữ liệu năm học</h2></div></div><div class="setting-body"><button class="btn ghost">Backup / Export</button><button class="btn ghost">Archive năm học</button><button class="btn danger">Reset năm học</button></div></section>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <button class="mobile-settings" data-page="settings">Cài đặt</button>
+
+  <nav class="bottom-nav" aria-label="Điều hướng mobile">
+    <button class="active" data-page="overview"><svg class="bottom-icon"><use href="#i-dashboard"></use></svg><span>Tổng quan</span></button>
+    <button data-page="operations"><svg class="bottom-icon"><use href="#i-calendar"></use></svg><span>Vận hành</span></button>
+    <button data-page="students"><svg class="bottom-icon"><use href="#i-users"></use></svg><span>Học sinh</span></button>
+    <button data-page="classes"><svg class="bottom-icon"><use href="#i-school"></use></svg><span>Lớp</span></button>
+    <button data-page="tuition"><svg class="bottom-icon"><use href="#i-wallet"></use></svg><span>Học phí</span></button>
+  </nav>
+
+  <div class="modal-backdrop" id="modalLayer" aria-hidden="true">
+    <section class="modal" id="modal-receipt-form" role="dialog" aria-modal="true" aria-labelledby="receiptTitle">
+      <header class="modal-header"><div><h2 class="modal-title" id="receiptTitle">Ghi phiếu thu</h2><p class="modal-sub">Thu học phí hoặc khoản thu khác</p></div><button class="modal-close" data-close-modal>×</button></header>
+      <div class="modal-body">
+        <div class="modal-layout">
+          <div>
+            <section class="modal-section">
+              <p class="section-label">Thông tin thu</p>
+              <div class="modal-grid">
+                <div class="field"><label>Học sinh</label><input class="input" value="Hà Văn Đạt"></div>
+                <div class="field"><label>Lớp</label><select class="select"><option>KIEN_10A</option></select></div>
+                <div class="field"><label>Tháng học phí</label><select class="select"><option>T6/2026</option></select></div>
+                <div class="field"><label>Số tiền</label><input class="input" value="600.000đ"></div>
+                <div class="field"><label>Ngày thu</label><input class="input" value="03/06/2026"></div>
+                <div class="field"><label>Phương thức</label><select class="select"><option>Tiền mặt</option><option>Chuyển khoản</option></select></div>
+              </div>
+              <div class="quick-money"><button class="row-btn blue">600.000đ</button><button class="row-btn blue">1.200.000đ</button><button class="row-btn green">Tất toán</button></div>
+            </section>
+            <section class="modal-section">
+              <p class="section-label">Nội dung</p>
+              <div class="field"><label>Người nộp</label><input class="input" value="Nguyễn Thị Hồng Hoa"></div>
+              <div class="field"><label>Nội dung phiếu</label><input class="input" value="HP T6/2026"></div>
+              <div class="field"><label>Ghi chú</label><textarea class="textarea">Đã nhắc phụ huynh qua Zalo.</textarea></div>
+            </section>
+          </div>
+          <aside class="summary-card amber"><span>Công nợ hiện tại</span><strong>600.000đ</strong><p>1 tháng chưa đóng · thu gần nhất 03/05</p><button class="btn small">Xem công nợ</button></aside>
+        </div>
+      </div>
+      <footer class="modal-footer"><button class="btn ghost" data-close-modal>Hủy</button><button class="btn primary">Lưu phiếu thu</button></footer>
+    </section>
+
+    <section class="modal" id="modal-expense-form" role="dialog" aria-modal="true" aria-labelledby="expenseTitle">
+      <header class="modal-header"><div><h2 class="modal-title" id="expenseTitle">Ghi phiếu chi</h2><p class="modal-sub">Theo dõi chi phí vận hành</p></div><button class="modal-close" data-close-modal>×</button></header>
+      <div class="modal-body">
+        <section class="modal-section">
+          <p class="section-label">Thông tin chi</p>
+          <div class="modal-grid">
+            <div class="field"><label>Ngày chi</label><input class="input" value="05/06/2026"></div>
+            <div class="field"><label>Số phiếu</label><input class="input readonly" value="PC002" readonly></div>
+            <div class="field"><label>Hạng mục</label><select class="select"><option>Thuê phòng học</option><option>Lương giáo viên</option><option>Văn phòng phẩm</option><option>Marketing</option></select></div>
+            <div class="field"><label>Người chi</label><select class="select"><option>Nguyễn Kiên</option></select></div>
+            <div class="field"><label>Số tiền</label><input class="input" value="5.000.000đ"></div>
+            <div class="field"><label>Liên quan lớp</label><select class="select"><option>Không gắn lớp</option><option>KIEN_10A</option></select></div>
+          </div>
+          <div class="field"><label>Nội dung</label><input class="input" value="Thuê phòng học tháng 6"></div>
+          <div class="field"><label>Ghi chú</label><textarea class="textarea">Chi phí cố định, thanh toán đầu tháng.</textarea></div>
+        </section>
+      </div>
+      <footer class="modal-footer"><button class="btn ghost" data-close-modal>Hủy</button><button class="btn primary">Lưu phiếu chi</button></footer>
+    </section>
+
+    <section class="modal" id="modal-lesson-form" role="dialog" aria-modal="true" aria-labelledby="lessonTitle">
+      <header class="modal-header"><div><h2 class="modal-title" id="lessonTitle">Ghi buổi học</h2><p class="modal-sub">Nhật ký buổi học và điểm danh cùng một lần</p></div><button class="modal-close" data-close-modal>×</button></header>
+      <div class="modal-body">
+        <section class="modal-section">
+          <p class="section-label">Thông tin buổi học</p>
+          <div class="modal-grid">
+            <div class="field"><label>Ngày học</label><input class="input" value="01/06/2026"></div>
+            <div class="field"><label>Lớp</label><select class="select"><option>KIEN_11A</option><option>KIEN_10A</option><option>KIEN_7A</option></select></div>
+            <div class="field"><label>Ca dạy</label><select class="select"><option>T2 19:30</option><option>T2 17:30</option></select></div>
+            <div class="field"><label>Giáo viên</label><select class="select"><option>Nguyễn Thị Kiên</option></select></div>
+          </div>
+          <div class="field"><label>Nội dung học</label><textarea class="textarea">Ôn tập hàm số bậc hai, luyện bài vận dụng.</textarea></div>
+          <div class="field"><label>Bài tập về nhà</label><textarea class="textarea">BTVN: đề 12, câu 1-8.</textarea></div>
+          <div class="field"><label>Ghi chú giáo viên</label><input class="input" placeholder="Nhận xét nhanh nếu có"></div>
+        </section>
+        <section class="modal-section">
+          <p class="section-label">Điểm danh</p>
+          <div class="attendance-list" style="padding:0">
+            <article class="attendance-row"><div><p class="cell-title">Hà Văn Đạt</p><p class="meta mono">HS001</p></div><div class="state-group"><button class="present">Có mặt</button><button>Vắng</button><button>Có phép</button></div></article>
+            <article class="attendance-row"><div><p class="cell-title">Nguyễn Minh Anh</p><p class="meta mono">HS002 · báo phụ huynh</p></div><div class="state-group"><button>Có mặt</button><button class="absent">Vắng</button><button>Có phép</button></div></article>
+            <article class="attendance-row"><div><p class="cell-title">Lê Phương Linh</p><p class="meta mono">HS003 · ốm</p></div><div class="state-group"><button>Có mặt</button><button>Vắng</button><button class="excused">Có phép</button></div></article>
+          </div>
+        </section>
+      </div>
+      <footer class="modal-footer"><button class="btn ghost" data-close-modal>Hủy</button><button class="btn primary">Lưu buổi học</button></footer>
+    </section>
+
+    <section class="modal wide" id="modal-student-form" role="dialog" aria-modal="true" aria-labelledby="studentFormTitle">
+      <header class="modal-header"><div><h2 class="modal-title" id="studentFormTitle">Thêm học sinh</h2><p class="modal-sub">Mã học sinh tự tạo, chỉ nhập thông tin cần vận hành</p></div><button class="modal-close" data-close-modal>×</button></header>
+      <div class="modal-body">
+        <section class="modal-section">
+          <p class="section-label">Thông tin học sinh</p>
+          <div class="modal-grid three">
+            <div class="field"><label>Mã HS</label><input class="input readonly" value="HS090" readonly></div>
+            <div class="field"><label>Họ tên</label><input class="input" placeholder="Nhập họ tên"></div>
+            <div class="field"><label>Ngày sinh</label><input class="input" placeholder="dd/mm/yyyy"></div>
+            <div class="field"><label>Khối</label><select class="select"><option>Khối 10</option><option>Khối 11</option><option>Khối 12</option></select></div>
+            <div class="field"><label>Trường</label><input class="input" placeholder="Tên trường"></div>
+            <div class="field"><label>Trạng thái</label><select class="select"><option>Đang học</option><option>Tạm nghỉ</option></select></div>
+          </div>
+        </section>
+        <section class="modal-section">
+          <p class="section-label">Liên hệ & xếp lớp</p>
+          <div class="modal-grid">
+            <div class="field"><label>Phụ huynh</label><input class="input" placeholder="Tên phụ huynh"></div>
+            <div class="field"><label>SĐT phụ huynh</label><input class="input" placeholder="09xx xxx xxx"></div>
+            <div class="field"><label>Lớp</label><select class="select"><option>Chưa xếp lớp</option><option>KIEN_10A</option><option>KIEN_11A</option></select></div>
+            <div class="field"><label>Ngày bắt đầu</label><input class="input" value="01/06/2026"></div>
+          </div>
+          <div class="field"><label>Mục tiêu học tập</label><input class="input" placeholder="Ví dụ: thi vào 10, nâng điểm toán"></div>
+          <div class="field"><label>Ghi chú</label><textarea class="textarea" placeholder="Năng lực hiện tại, điểm cần hỗ trợ"></textarea></div>
+        </section>
+      </div>
+      <footer class="modal-footer"><button class="btn ghost" data-close-modal>Hủy</button><button class="btn primary">Lưu học sinh</button></footer>
+    </section>
+
+    <section class="modal" id="modal-class-form" role="dialog" aria-modal="true" aria-labelledby="classFormTitle">
+      <header class="modal-header"><div><h2 class="modal-title" id="classFormTitle">Thêm lớp học</h2><p class="modal-sub">Thiết lập lớp, giáo viên và lịch học</p></div><button class="modal-close" data-close-modal>×</button></header>
+      <div class="modal-body">
+        <section class="modal-section">
+          <p class="section-label">Thông tin lớp</p>
+          <div class="modal-grid">
+            <div class="field"><label>Mã lớp</label><input class="input" value="KIEN_10B"></div>
+            <div class="field"><label>Tên lớp</label><input class="input" value="Toán 10B"></div>
+            <div class="field"><label>Khối</label><select class="select"><option>Khối 10</option></select></div>
+            <div class="field"><label>Giáo viên</label><select class="select"><option>Nguyễn Thị Kiên</option></select></div>
+            <div class="field"><label>Cơ sở</label><input class="input" value="15/80 Đào Tấn"></div>
+            <div class="field"><label>Học phí chuẩn</label><input class="input" value="600.000đ"></div>
+          </div>
+        </section>
+        <section class="modal-section">
+          <p class="section-label">Lịch học</p>
+          <div class="modal-grid three">
+            <div class="field"><label>Buổi 1</label><input class="input" value="T2 17:30"></div>
+            <div class="field"><label>Buổi 2</label><input class="input" value="T4 17:30"></div>
+            <div class="field"><label>Buổi 3</label><input class="input" value="T6 17:30"></div>
+          </div>
+          <div class="field"><label>Ghi chú</label><textarea class="textarea">Preview: T2 17:30 · T4 17:30 · T6 17:30</textarea></div>
+        </section>
+      </div>
+      <footer class="modal-footer"><button class="btn ghost" data-close-modal>Hủy</button><button class="btn primary">Lưu lớp</button></footer>
+    </section>
+
+    <section class="modal" id="modal-teacher-form" role="dialog" aria-modal="true" aria-labelledby="teacherFormTitle">
+      <header class="modal-header"><div><h2 class="modal-title" id="teacherFormTitle">Thêm giáo viên</h2><p class="modal-sub">Thông tin giảng dạy và liên hệ</p></div><button class="modal-close" data-close-modal>×</button></header>
+      <div class="modal-body">
+        <section class="modal-section">
+          <p class="section-label">Hồ sơ giáo viên</p>
+          <div class="modal-grid">
+            <div class="field"><label>Mã GV</label><input class="input readonly" value="GV005" readonly></div>
+            <div class="field"><label>Họ tên</label><input class="input" placeholder="Nhập họ tên"></div>
+            <div class="field"><label>SĐT</label><input class="input" placeholder="09xx xxx xxx"></div>
+            <div class="field"><label>Email</label><input class="input" placeholder="email@example.com"></div>
+            <div class="field"><label>Môn dạy</label><input class="input" value="Toán"></div>
+            <div class="field"><label>Kinh nghiệm</label><input class="input" placeholder="Số năm"></div>
+          </div>
+          <div class="field"><label>Lương / thỏa thuận</label><input class="input" placeholder="Ví dụ: theo buổi, theo tháng"></div>
+          <div class="field"><label>Ghi chú</label><textarea class="textarea" placeholder="Thế mạnh, lớp phù hợp, lịch rảnh"></textarea></div>
+        </section>
+      </div>
+      <footer class="modal-footer"><button class="btn ghost" data-close-modal>Hủy</button><button class="btn primary">Lưu giáo viên</button></footer>
+    </section>
+
+    <section class="modal wide" id="modal-student-detail" role="dialog" aria-modal="true" aria-labelledby="studentDetailTitle">
+      <header class="modal-header"><div><h2 class="modal-title" id="studentDetailTitle">Chi tiết học sinh</h2><p class="modal-sub">Hồ sơ, công nợ và nhật ký học tập</p></div><button class="modal-close" data-close-modal>×</button></header>
+      <div class="modal-body">
+        <div class="modal-section">
+          <div class="detail-hero"><h3>Lê Phương Linh · HS003</h3><p>Đang học · KIEN_12A · Phụ huynh: Nguyễn Thị Hoa · 0901 234 567</p></div>
+          <div class="detail-kpis">
+            <div class="detail-kpi"><span>Công nợ</span><strong class="money bad">1.800.000đ</strong></div>
+            <div class="detail-kpi"><span>Lớp</span><strong>KIEN_12A</strong></div>
+            <div class="detail-kpi"><span>Vắng</span><strong>2 buổi</strong></div>
+            <div class="detail-kpi"><span>Trạng thái</span><strong>Đang học</strong></div>
+          </div>
+          <div class="modal-tabs"><button class="active">Tổng quan</button><button>Công nợ</button><button>Nhật ký</button><button>Hồ sơ</button></div>
+          <div class="detail-list">
+            <div><span>Ngày bắt đầu</span><strong>01/03/2026</strong></div>
+            <div><span>Mục tiêu</span><strong>Thi tốt nghiệp, nâng điểm hàm số</strong></div>
+            <div><span>Cần xử lý</span><strong>Nhắc học phí T4-T6</strong></div>
+          </div>
+        </div>
+      </div>
+      <footer class="modal-footer"><button class="btn ghost" data-close-modal>Đóng</button><button class="btn green" data-modal="modal-receipt-form">Ghi phiếu thu</button><button class="btn primary">Sửa hồ sơ</button></footer>
+    </section>
+
+    <section class="modal wide" id="modal-class-detail" role="dialog" aria-modal="true" aria-labelledby="classDetailTitle">
+      <header class="modal-header"><div><h2 class="modal-title" id="classDetailTitle">Chi tiết lớp học</h2><p class="modal-sub">Sĩ số, lịch học, học phí và nhật ký</p></div><button class="modal-close" data-close-modal>×</button></header>
+      <div class="modal-body">
+        <div class="modal-section">
+          <div class="detail-hero"><h3>KIEN_10A</h3><p>Khối 10 · Nguyễn Thị Kiên · T3, T5, T7 17:30 · 15/80 Đào Tấn</p></div>
+          <div class="detail-kpis">
+            <div class="detail-kpi"><span>Sĩ số</span><strong>14 HS</strong></div>
+            <div class="detail-kpi"><span>Đóng phí</span><strong>11/14</strong></div>
+            <div class="detail-kpi"><span>Ca hôm nay</span><strong>17:30</strong></div>
+            <div class="detail-kpi"><span>Chưa ghi</span><strong>0</strong></div>
+          </div>
+          <div class="modal-tabs"><button class="active">Học sinh</button><button>Lịch học</button><button>Nhật ký</button><button>Học phí</button></div>
+          <div class="detail-list">
+            <div><span>Tiến độ phí T6</span><strong>79%</strong></div>
+            <div><span>Học sinh còn nợ</span><strong>3 học sinh</strong></div>
+            <div><span>Buổi gần nhất</span><strong>01/06/2026 · đã ghi</strong></div>
+          </div>
+        </div>
+      </div>
+      <footer class="modal-footer"><button class="btn ghost" data-close-modal>Đóng</button><button class="btn green" data-modal="modal-lesson-form">Ghi buổi học</button><button class="btn primary" data-modal="modal-class-form">Sửa lớp</button></footer>
+    </section>
+
+    <section class="modal wide" id="modal-teacher-detail" role="dialog" aria-modal="true" aria-labelledby="teacherDetailTitle">
+      <header class="modal-header"><div><h2 class="modal-title" id="teacherDetailTitle">Chi tiết giáo viên</h2><p class="modal-sub">Lớp phụ trách, lịch dạy và số buổi</p></div><button class="modal-close" data-close-modal>×</button></header>
+      <div class="modal-body">
+        <div class="modal-section">
+          <div class="detail-hero"><h3>Nguyễn Thị Kiên · GV001</h3><p>Đang dạy · 4 lớp phụ trách · 0909 111 222</p></div>
+          <div class="detail-kpis">
+            <div class="detail-kpi"><span>Lớp</span><strong>4</strong></div>
+            <div class="detail-kpi"><span>Ca hôm nay</span><strong>3</strong></div>
+            <div class="detail-kpi"><span>Buổi T6</span><strong>28</strong></div>
+            <div class="detail-kpi"><span>Chưa ghi</span><strong>1</strong></div>
+          </div>
+          <div class="modal-tabs"><button class="active">Lớp dạy</button><button>Lịch tuần</button><button>Nhật ký</button><button>Hồ sơ</button></div>
+          <div class="detail-list">
+            <div><span>Lớp phụ trách</span><strong>KIEN_7A, 9A, 10A, 11A</strong></div>
+            <div><span>Ca gần nhất</span><strong>KIEN_11A · 19:30</strong></div>
+            <div><span>Cần xử lý</span><strong>1 buổi chưa ghi</strong></div>
+          </div>
+        </div>
+      </div>
+      <footer class="modal-footer"><button class="btn ghost" data-close-modal>Đóng</button><button class="btn primary" data-modal="modal-teacher-form">Sửa giáo viên</button></footer>
+    </section>
+
+    <section class="modal" id="modal-receipt-detail" role="dialog" aria-modal="true" aria-labelledby="receiptDetailTitle">
+      <header class="modal-header"><div><h2 class="modal-title" id="receiptDetailTitle">Chi tiết phiếu thu</h2><p class="modal-sub">PT001 · 03/06/2026</p></div><button class="modal-close" data-close-modal>×</button></header>
+      <div class="modal-body"><div class="modal-section"><div class="summary-card green"><span>Số tiền đã thu</span><strong>600.000đ</strong><p>Hà Văn Đạt · KIEN_10A · HP T6/2026</p></div><div class="detail-list"><div><span>Người nộp</span><strong>Nguyễn Thị Hồng Hoa</strong></div><div><span>Phương thức</span><strong>Tiền mặt</strong></div><div><span>Ghi chú</span><strong>Đã xác nhận</strong></div></div></div></div>
+      <footer class="modal-footer"><button class="btn ghost" data-close-modal>Đóng</button><button class="btn primary" data-modal="modal-receipt-form">Sửa phiếu</button></footer>
+    </section>
+
+    <section class="modal" id="modal-expense-detail" role="dialog" aria-modal="true" aria-labelledby="expenseDetailTitle">
+      <header class="modal-header"><div><h2 class="modal-title" id="expenseDetailTitle">Chi tiết phiếu chi</h2><p class="modal-sub">PC001 · 05/06/2026</p></div><button class="modal-close" data-close-modal>×</button></header>
+      <div class="modal-body"><div class="modal-section"><div class="summary-card amber"><span>Số tiền đã chi</span><strong>5.000.000đ</strong><p>Thuê phòng học · Nguyễn Kiên</p></div><div class="detail-list"><div><span>Hạng mục</span><strong>Thuê phòng học</strong></div><div><span>Liên quan lớp</span><strong>Không gắn lớp</strong></div><div><span>Ghi chú</span><strong>Chi phí cố định tháng 6</strong></div></div></div></div>
+      <footer class="modal-footer"><button class="btn ghost" data-close-modal>Đóng</button><button class="btn primary" data-modal="modal-expense-form">Sửa phiếu</button></footer>
+    </section>
+  </div>
+
+  <script>
+    const modalLayer = document.getElementById("modalLayer");
+    const modals = document.querySelectorAll(".modal");
+
+    function openModal(id) {
+      const modal = document.getElementById(id);
+      if (!modal || !modalLayer) return;
+      modals.forEach((item) => item.classList.toggle("open", item === modal));
+      modalLayer.classList.add("open");
+      modalLayer.setAttribute("aria-hidden", "false");
+      document.body.style.overflow = "hidden";
+    }
+
+    function closeModal() {
+      modals.forEach((item) => item.classList.remove("open"));
+      modalLayer?.classList.remove("open");
+      modalLayer?.setAttribute("aria-hidden", "true");
+      document.body.style.overflow = "";
+    }
+
+    document.addEventListener("click", (event) => {
+      const closeButton = event.target.closest("[data-close-modal]");
+      if (closeButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        closeModal();
+        return;
+      }
+
+      const modalTrigger = event.target.closest("[data-modal]");
+      if (modalTrigger) {
+        event.preventDefault();
+        event.stopPropagation();
+        openModal(modalTrigger.dataset.modal);
+      }
+    });
+
+    modalLayer?.addEventListener("click", (event) => {
+      if (event.target === modalLayer) closeModal();
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeModal();
+    });
+
+    const pageButtons = document.querySelectorAll("[data-page]");
+    const views = document.querySelectorAll(".view");
+    pageButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const page = button.dataset.page;
+        views.forEach((view) => view.classList.toggle("active", view.id === page));
+        pageButtons.forEach((item) => item.classList.toggle("active", item.dataset.page === page));
+        if (button.dataset.target) {
+          const view = document.getElementById(page);
+          view?.querySelectorAll(".subview").forEach((subview) => subview.classList.toggle("active", subview.id === button.dataset.target));
+          view?.querySelectorAll("[data-subnav] button[data-target]").forEach((item) => item.classList.toggle("active", item.dataset.target === button.dataset.target));
+        }
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      });
+    });
+
+    document.querySelectorAll("[data-subnav]").forEach((group) => {
+      group.querySelectorAll("button[data-target]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const target = button.dataset.target;
+          group.querySelectorAll("button").forEach((item) => item.classList.toggle("active", item === button));
+          const container = group.closest(".view");
+          container.querySelectorAll(".subview").forEach((view) => view.classList.toggle("active", view.id === target));
+        });
+      });
+    });
+  </script>
+</body>
+</html>

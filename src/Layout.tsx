@@ -1,6 +1,20 @@
-import React, { memo, useState, useEffect } from 'react';
-import { Activity, ChevronLeft, ChevronRight, GraduationCap, LayoutDashboard, Menu, Settings, Wallet, X } from 'lucide-react';
-import type { Screen } from './types';
+import React, { memo, useEffect, useState } from 'react';
+import {
+  Activity,
+  BarChart3,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  GraduationCap,
+  LayoutDashboard,
+  Menu,
+  School,
+  Settings,
+  Users,
+  Wallet,
+  X,
+} from 'lucide-react';
+import type { FinanceSub, OperationsSub, ReportsSub, Screen, TrainingSub } from './types';
 
 export const NAV_ITEMS: {
   id: Screen;
@@ -9,17 +23,16 @@ export const NAV_ITEMS: {
   icon: React.ComponentType<{ size?: number; className?: string; color?: string }>;
   color: string;
 }[] = [
-  { id: 'overview',    label: 'Tổng quan',  shortLabel: 'Tổng quan', icon: LayoutDashboard, color: 'text-indigo-400' },
-  { id: 'training',    label: 'Đào tạo',    shortLabel: 'Đào tạo',   icon: GraduationCap,   color: 'text-sky-400' },
-  { id: 'operations',  label: 'Vận hành',   shortLabel: 'Vận hành',  icon: Activity,        color: 'text-violet-400' },
-  { id: 'finance',     label: 'Tài chính',  shortLabel: 'Tài chính', icon: Wallet,          color: 'text-orange-400' },
-  { id: 'settings',    label: 'Cài đặt',    shortLabel: 'Cài đặt',   icon: Settings,        color: 'text-slate-400' },
+  { id: 'overview', label: 'Tổng quan', shortLabel: 'Tổng quan', icon: LayoutDashboard, color: 'text-indigo-400' },
+  { id: 'training', label: 'Đào tạo', shortLabel: 'Đào tạo', icon: GraduationCap, color: 'text-sky-400' },
+  { id: 'operations', label: 'Vận hành', shortLabel: 'Vận hành', icon: Activity, color: 'text-violet-400' },
+  { id: 'finance', label: 'Tài chính', shortLabel: 'Tài chính', icon: Wallet, color: 'text-orange-400' },
+  { id: 'reports', label: 'Báo cáo', shortLabel: 'Báo cáo', icon: BarChart3, color: 'text-emerald-400' },
+  { id: 'settings', label: 'Cài đặt', shortLabel: 'Cài đặt', icon: Settings, color: 'text-slate-400' },
 ];
 
-// Bottom nav giữ cùng 5 mục với sidebar.
-export const BOTTOM_NAV_IDS: Screen[] = ['overview','training','operations','finance','settings'];
+export const BOTTOM_NAV_IDS: Screen[] = ['overview', 'training', 'operations', 'finance', 'reports'];
 
-// Export để App.tsx gọi 1 lần duy nhất, truyền xuống props
 export function useIsDesktop() {
   const [isDesktop, setIsDesktop] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth >= 768 : true
@@ -34,168 +47,189 @@ export function useIsDesktop() {
   return isDesktop;
 }
 
-const W_EXPANDED = 200;
-const W_COLLAPSED = 48;  // ~0.8cm ≈ 30px, 48px for icon visibility
+const SIDEBAR_W = 236;
+const SIDEBAR_COLLAPSED_W = 72;
+
+type SidebarNavProps = {
+  active: Screen;
+  set: (s: Screen) => void;
+  centerName: string;
+  onClose?: () => void;
+  trainingSubtab?: TrainingSub;
+  setTrainingSubtab?: (sub: TrainingSub) => void;
+  operationsSubtab?: OperationsSub;
+  setOperationsSubtab?: (sub: OperationsSub) => void;
+  financeSubtab?: FinanceSub;
+  setFinanceSubtab?: (sub: FinanceSub) => void;
+  reportsSubtab?: ReportsSub;
+  setReportsSubtab?: (sub: ReportsSub) => void;
+  collapsed?: boolean;
+  setCollapsed?: (next: boolean) => void;
+};
+
+type FlatNavItem =
+  { key: string; screen: Screen; sub?: TrainingSub | OperationsSub | FinanceSub | ReportsSub; label: string; icon: React.ComponentType<{ size?: number; color?: string; className?: string }> };
+
+const SIDEBAR_ITEMS: FlatNavItem[] = [
+  { key: 'overview', screen: 'overview', label: 'Tổng quan', icon: LayoutDashboard },
+  { key: 'training', screen: 'training', sub: 'students', label: 'Đào tạo', icon: GraduationCap },
+  { key: 'operations', screen: 'operations', sub: 'schedule', label: 'Vận hành', icon: Calendar },
+  { key: 'finance', screen: 'finance', sub: 'debt', label: 'Học phí', icon: Wallet },
+  { key: 'reports', screen: 'reports', sub: 'finance', label: 'Báo cáo', icon: BarChart3 },
+  { key: 'settings', screen: 'settings', label: 'Cài đặt', icon: Settings },
+];
 
 const SidebarContent = memo(({
-  active, set, centerName, collapsed, onClose,
-}: {
-  active: Screen; set: (s: Screen) => void;
-  centerName: string; collapsed?: boolean; onClose?: () => void;
-}) => (
-  <div style={{
-    display: 'flex', flexDirection: 'column', height: '100%',
-    background: 'linear-gradient(180deg,#0f1f3d 0%,#0a1628 100%)',
-    overflow: 'hidden',
-  }}>
-    {/* Logo area */}
-    <div style={{
-      padding: collapsed ? '12px 0' : '14px 12px',
-      borderBottom: '1px solid rgba(255,255,255,0.07)',
-      display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'flex-start',
-      gap: 10, minHeight: 56, flexShrink: 0,
-    }}>
-      <button
-        onClick={() => set('overview')}
-        title="Về Tổng quan"
-        style={{
-          width: 30, height: 30, borderRadius: 8, flexShrink: 0,
-          background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          border: 'none', cursor: 'pointer', padding: 0,
-          transition: 'transform 0.15s, box-shadow 0.15s',
-        }}
-        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform='scale(1.08)'; (e.currentTarget as HTMLElement).style.boxShadow='0 0 0 3px rgba(99,102,241,0.4)'; }}
-        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform='scale(1)'; (e.currentTarget as HTMLElement).style.boxShadow='none'; }}
-      >
-        <GraduationCap size={15} color="white" />
-      </button>
-      {!collapsed && (
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 800, color: '#fff', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {centerName}
-          </div>
-          <div style={{ fontSize: 8, color: 'rgba(147,197,253,0.5)', letterSpacing: '0.1em', fontWeight: 600, textTransform: 'uppercase', marginTop: 1 }}>
-            Quản lý giảng dạy
-          </div>
-        </div>
-      )}
-      {onClose && (
-        <button onClick={onClose} style={{ color: 'rgba(255,255,255,0.35)', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
-          <X size={15} />
-        </button>
-      )}
-    </div>
+  active,
+  set,
+  centerName,
+  onClose,
+  trainingSubtab,
+  setTrainingSubtab,
+  operationsSubtab,
+  setOperationsSubtab,
+  financeSubtab,
+  setFinanceSubtab,
+  reportsSubtab,
+  setReportsSubtab,
+  collapsed = false,
+  setCollapsed,
+}: SidebarNavProps) => {
+  const openItem = (item: FlatNavItem) => {
+    if (item.screen === 'training' && item.sub) setTrainingSubtab?.(item.sub as TrainingSub);
+    if (item.screen === 'operations' && item.sub) setOperationsSubtab?.(item.sub as OperationsSub);
+    if (item.screen === 'finance' && item.sub) setFinanceSubtab?.(item.sub as FinanceSub);
+    if (item.screen === 'reports' && item.sub) setReportsSubtab?.(item.sub as ReportsSub);
+    set(item.screen);
+    onClose?.();
+  };
 
-    {/* Nav */}
-    <nav style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: collapsed ? '8px 6px' : '8px 6px' }}>
-      {NAV_ITEMS.map(({ id, label, icon: Icon, color }) => {
-        const isActive = active === id;
-        return (
-          <button
-            key={id}
-            onClick={() => { set(id); onClose?.(); }}
-            aria-label={label}
-            aria-current={isActive ? 'page' : undefined}
-            title={label}
-            style={{
-              width: '100%',
-              display: 'flex', alignItems: 'center',
-              justifyContent: collapsed ? 'center' : 'flex-start',
-              gap: collapsed ? 0 : 9,
-              padding: collapsed ? '9px 0' : '8px 9px',
-              borderRadius: 7, border: 'none', cursor: 'pointer', marginBottom: 1,
-              fontSize: 11, fontWeight: 700, letterSpacing: '0.03em',
-              textTransform: 'uppercase', transition: 'all 0.13s',
-              background: isActive ? 'linear-gradient(135deg,#6366f1,#4f46e5)' : 'transparent',
-              color: isActive ? '#fff' : 'rgba(255,255,255,0.46)',
-              boxShadow: isActive ? '0 3px 10px rgba(99,102,241,0.4)' : 'none',
-              whiteSpace: 'nowrap', overflow: 'hidden',
-            }}
-            onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.07)'; }}
-            onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-          >
-            <span style={{
-              width: 26, height: 26, borderRadius: 6, flexShrink: 0,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: isActive ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.05)',
-            }}>
-              <Icon size={13} color={isActive ? 'white' : undefined} className={isActive ? '' : color} />
-            </span>
-            {!collapsed && (
-              <span style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {label}
-              </span>
-            )}
-          </button>
-        );
-      })}
-    </nav>
-
-    {/* Footer version */}
-    {!collapsed && (
-      <div style={{ padding: '8px 10px', borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: 8, fontWeight: 700, color: 'rgba(255,255,255,0.15)', letterSpacing: '0.1em', textTransform: 'uppercase', textAlign: 'center' }}>
-        v29.2
-      </div>
-    )}
-  </div>
-));
-
-export const Sidebar = memo(({ active, set, centerName, isDesktop }: {
-  active: Screen; set: (s: Screen) => void; centerName: string; isDesktop: boolean;
-}) => {
-  const [collapsed, setCollapsed] = useState(true);
-  const w = collapsed ? W_COLLAPSED : W_EXPANDED;
-
-  if (!isDesktop) return null;
+  const isActiveItem = (item: FlatNavItem) => {
+    if (active !== item.screen) return false;
+    return true;
+  };
 
   return (
-    <aside style={{
-      width: w, minWidth: w, minHeight: '100dvh', position: 'sticky', top: 0, alignSelf: 'flex-start',
-      transition: 'width 0.2s cubic-bezier(0.4,0,0.2,1)',
-      boxShadow: '3px 0 16px rgba(0,0,0,0.15)',
-      flexShrink: 0, zIndex: 30,
-    }} className="print:hidden">
-      <SidebarContent active={active} set={set} centerName={centerName} collapsed={collapsed} />
-      {/* Toggle button */}
-      <button
-        onClick={() => setCollapsed(c => !c)}
-        style={{
-          position: 'absolute', bottom: 44, right: -11, width: 22, height: 22,
-          borderRadius: '50%', background: '#1e3a5f', border: '2px solid rgba(255,255,255,0.12)',
-          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.3)', zIndex: 10, flexShrink: 0,
-        }}
-        title={collapsed ? 'Mở rộng' : 'Thu gọn'}
-      >
-        {collapsed
-          ? <ChevronRight size={11} color="rgba(255,255,255,0.65)" />
-          : <ChevronLeft  size={11} color="rgba(255,255,255,0.65)" />
-        }
-      </button>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#1E1B4B', overflow: 'hidden' }}>
+      <div style={{ padding: collapsed ? '18px 12px 16px' : '20px 18px 18px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'flex-start', gap: 12, minHeight: 76, flexShrink: 0 }}>
+        <button
+          onClick={() => { set('overview'); onClose?.(); }}
+          title="Về Tổng quan"
+          style={{ width: 38, height: 38, borderRadius: 12, flexShrink: 0, background: '#4F46E5', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer', padding: 0 }}
+        >
+          <GraduationCap size={19} color="white" />
+        </button>
+        {!collapsed && <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 900, color: '#fff', fontSize: 16, letterSpacing: '0.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {centerName}
+          </div>
+          <div style={{ fontSize: 10, color: 'rgba(226,232,240,0.68)', letterSpacing: '0.08em', fontWeight: 700, textTransform: 'uppercase', marginTop: 2 }}>
+            Quản lý giảng dạy
+          </div>
+        </div>}
+        {onClose && (
+          <button onClick={onClose} style={{ color: 'rgba(255,255,255,0.45)', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
+            <X size={15} />
+          </button>
+        )}
+      </div>
+
+      <nav style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: collapsed ? '14px 10px' : '14px 12px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {SIDEBAR_ITEMS.map(item => {
+                const Icon = item.icon;
+                const itemActive = isActiveItem(item);
+                return (
+                  <button
+                    key={item.key}
+                    onClick={() => openItem(item)}
+                    aria-current={itemActive ? 'page' : undefined}
+                    title={item.label}
+                    style={{
+                      width: '100%',
+                      minHeight: 41,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: collapsed ? 'center' : 'flex-start',
+                      gap: collapsed ? 0 : 10,
+                      padding: collapsed ? '9px 0' : '9px 11px',
+                      borderRadius: 11,
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: 13,
+                      fontWeight: 800,
+                      transition: 'all 0.13s',
+                      background: itemActive ? '#4F46E5' : 'transparent',
+                      color: itemActive ? '#fff' : 'rgba(255,255,255,0.72)',
+                      boxShadow: itemActive ? '0 10px 22px rgba(79,70,229,0.28)' : 'none',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                    }}
+                    onMouseEnter={e => { if (!itemActive) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.08)'; }}
+                    onMouseLeave={e => { if (!itemActive) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                  >
+                    <span style={{ width: 26, height: 26, borderRadius: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: itemActive ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.07)' }}>
+                      <Icon size={15} color={itemActive ? 'white' : 'rgba(226,232,240,0.72)'} />
+                    </span>
+                    {!collapsed && <span style={{ flex: 1, minWidth: 0, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {item.label}
+                    </span>}
+                  </button>
+                );
+              })}
+        </div>
+      </nav>
+
+      <div style={{ padding: collapsed ? '10px' : '12px 14px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+        {setCollapsed && (
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            title={collapsed ? 'Mở rộng sidebar' : 'Thu gọn sidebar'}
+            style={{ width: '100%', minHeight: 34, border: 'none', borderRadius: 10, background: 'rgba(255,255,255,0.08)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', marginBottom: collapsed ? 0 : 8 }}
+          >
+            {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          </button>
+        )}
+        {!collapsed && <div style={{ display: 'flex', alignItems: 'center', gap: 10, borderRadius: 13, background: 'rgba(255,255,255,0.07)', padding: '10px 11px' }}>
+          <div style={{ width: 30, height: 30, borderRadius: 10, background: '#312E81', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 900 }}>
+            NK
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ color: '#fff', fontSize: 12, fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Lớp Toán NK</div>
+            <div style={{ color: 'rgba(226,232,240,0.46)', fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' }}>v29.2</div>
+          </div>
+        </div>}
+      </div>
+    </div>
+  );
+});
+
+export const Sidebar = memo(({ isDesktop, ...navProps }: SidebarNavProps & { isDesktop: boolean }) => {
+  const [collapsed, setCollapsedState] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('ltnSidebarCollapsed') === '1';
+  });
+  const setCollapsed = (next: boolean) => {
+    setCollapsedState(next);
+    if (typeof window !== 'undefined') localStorage.setItem('ltnSidebarCollapsed', next ? '1' : '0');
+  };
+  if (!isDesktop) return null;
+  const width = collapsed ? SIDEBAR_COLLAPSED_W : SIDEBAR_W;
+  return (
+    <aside style={{ width, minWidth: width, minHeight: '100dvh', position: 'sticky', top: 0, alignSelf: 'flex-start', boxShadow: '8px 0 28px rgba(30,27,75,0.18)', flexShrink: 0, zIndex: 30, transition: 'width 0.18s ease, min-width 0.18s ease' }} className="print:hidden">
+      <SidebarContent {...navProps} collapsed={collapsed} setCollapsed={setCollapsed} />
     </aside>
   );
 });
 
-export const MobileHeader = memo(({ active, set, centerName, isDesktop }: {
-  active: Screen; set: (s: Screen) => void; centerName: string; isDesktop: boolean;
-}) => {
+export const MobileHeader = memo(({ active, set, centerName, isDesktop, ...navProps }: SidebarNavProps & { isDesktop: boolean }) => {
   const [open, setOpen] = useState(false);
   if (isDesktop) return null;
   const currentItem = NAV_ITEMS.find(n => n.id === active);
 
   return (
     <>
-      <header style={{
-        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 60,
-        background: 'white',
-        borderBottom: '1px solid #e8edf2',
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '0 14px',
-        paddingTop: 'env(safe-area-inset-top, 0px)',
-        minHeight: 56,
-        boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-      }} className="print:hidden">
+      <header style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 60, background: 'white', borderBottom: '1px solid #e8edf2', display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px', paddingTop: 'env(safe-area-inset-top, 0px)', minHeight: 60, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }} className="print:hidden">
         <button onClick={() => setOpen(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: '10px 8px', display: 'flex', minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', margin: '0 -4px' }}>
           <Menu size={22} />
         </button>
@@ -209,7 +243,7 @@ export const MobileHeader = memo(({ active, set, centerName, isDesktop }: {
       </header>
       {open && <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(2px)' }} />}
       <div style={{ position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 100, width: 240, transform: open ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform 0.22s cubic-bezier(0.4,0,0.2,1)', boxShadow: '8px 0 32px rgba(0,0,0,0.35)' }} className="print:hidden">
-        <SidebarContent active={active} set={set} centerName={centerName} onClose={() => setOpen(false)} />
+        <SidebarContent active={active} set={set} centerName={centerName} {...navProps} onClose={() => setOpen(false)} />
       </div>
     </>
   );
@@ -222,45 +256,18 @@ export const BottomNav = memo(({ active, set, isDesktop }: {
 }) => {
   if (isDesktop) return null;
   return (
-    <>
-      <nav className="ltn-bnav print:hidden"
-        style={{
-          position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50,
-          background: 'white',
-          borderTop: '1px solid #e8edf2',
-          display: 'flex', alignItems: 'stretch',
-          paddingBottom: 'env(safe-area-inset-bottom,0px)',
-          boxShadow: '0 -2px 12px rgba(0,0,0,0.08)',
-        }}>
-        {BOTTOM_NAV_ITEMS.map(({ id, shortLabel = '', icon: Icon }) => {
-          const isActive = active === id;
-          return (
-            <button key={id} onClick={() => set(id)}
-              style={{
-                flex: 1, minWidth: 0,
-                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                gap: 3, padding: '8px 4px 7px',
-                background: 'none', border: 'none', cursor: 'pointer',
-                color: isActive ? '#6366f1' : '#94a3b8',
-                transition: 'color 0.15s',
-              }}>
-              <span style={{
-                width: 32, height: 24, borderRadius: 8,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: isActive ? '#eef2ff' : 'transparent',
-                transition: 'background 0.15s',
-              }}>
-                <Icon size={16} color={isActive ? '#6366f1' : '#94a3b8'} />
-              </span>
-              <span style={{
-                fontSize: 9, fontWeight: 700, letterSpacing: '0.03em',
-                textTransform: 'uppercase', whiteSpace: 'nowrap',
-                color: isActive ? '#6366f1' : '#94a3b8',
-              }}>{shortLabel || id}</span>
-            </button>
-          );
-        })}
-      </nav>
-    </>
+    <nav className="ltn-bnav print:hidden" style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50, background: 'white', borderTop: '1px solid #e8edf2', display: 'flex', alignItems: 'stretch', minHeight: 64, paddingBottom: 'env(safe-area-inset-bottom,0px)', boxShadow: '0 -2px 12px rgba(0,0,0,0.08)' }}>
+      {BOTTOM_NAV_ITEMS.map(({ id, shortLabel = '', icon: Icon }) => {
+        const isActive = active === id;
+        return (
+          <button key={id} onClick={() => set(id)} style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, padding: '8px 4px 7px', minHeight: 64, background: 'none', border: 'none', cursor: 'pointer', color: isActive ? '#6366f1' : '#94a3b8', transition: 'color 0.15s' }}>
+            <span style={{ width: 32, height: 24, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isActive ? '#eef2ff' : 'transparent', transition: 'background 0.15s' }}>
+              <Icon size={16} color={isActive ? '#6366f1' : '#94a3b8'} />
+            </span>
+            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase', whiteSpace: 'nowrap', color: isActive ? '#6366f1' : '#94a3b8' }}>{shortLabel || id}</span>
+          </button>
+        );
+      })}
+    </nav>
   );
 });

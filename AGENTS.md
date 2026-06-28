@@ -1,15 +1,17 @@
 # AGENTS.md
 
-## Project status
+## Project Status
 
-Dự án đang chạy được và đã qua kiểm tra:
+Du an dang chay on dinh. Uu tien cao nhat la giu app dung logic nghiep vu, khong refactor qua tay va khong doi schema neu task khong yeu cau ro.
+
+Sau moi thay doi quan trong phai chay:
 
 ```bash
-npm run lint
-npm run build
+npm.cmd run lint
+npm.cmd run build
 ```
 
-Ưu tiên cao nhất là giữ app ổn định, không refactor quá tay.
+Trong do `npm.cmd run lint` la TypeScript check (`tsc --noEmit`). Neu lint hoac build loi, phai sua truoc khi tiep tuc task moi.
 
 ## Stack
 
@@ -21,89 +23,94 @@ npm run build
 - better-sqlite3
 - Google Apps Script / Google Sheets data source
 - LocalStorage cache
+- lucide-react
+- recharts
+- react-hot-toast
 
-## Required commands
+## Current IA And Navigation
 
-Sau mỗi thay đổi quan trọng phải chạy:
+Desktop dung sidebar phang co nhom. Item nghiep vu con duoc bam truc tiep tu sidebar; content khong render them subtab lap lai neu sidebar da chon dung man.
 
-```bash
-npm run lint
-npm run build
+```text
+TONG QUAN
+- Tong quan
+
+DAO TAO
+- Hoc sinh
+- Lop hoc
+- Giao vien
+
+VAN HANH
+- Lich day & Van hanh
+
+TAI CHINH
+- Hoc phi & Thu chi
+
+BAO CAO
+- Bao cao & Thong ke
+
+HE THONG
+- Cai dat
 ```
 
-Trong đó:
+Mobile bottom nav hien co 5 vung chinh:
 
-```bash
-npm run lint
+```text
+Tong quan | Dao tao | Van hanh | Tai chinh | Bao cao
 ```
 
-thực chất là:
+`Cai dat` nam trong nhom `He thong`, khong phai item chinh cua bottom nav.
 
-```bash
-tsc --noEmit
-```
+Khong dua lai cac muc demo/cu vao navigation chinh:
 
-Nếu lint hoặc build lỗi, phải sửa lỗi trước khi tiếp tục task mới.
+- Hoc lieu
+- Dashboard demo
+- Bao cao tach 3 item rieng
+- Hoc sinh rieng ngoai nhom Dao tao
+- Lop hoc rieng ngoai nhom Dao tao
+- Diem danh/Hoc phi kieu tab cap chinh cu
 
-## Main navigation
+## Current Product Decisions
 
-Navigation chính hiện tại chỉ gồm 5 vùng nghiệp vụ:
+- `LearningTab` la wrapper cho `StudentsTab`, `ClassesTab`, `TeachersTab`.
+- `OperationsTab` la mot man gop: `Lich day & Van hanh`.
+- `FinanceTab` la mot man gop: `Hoc phi & Thu chi`.
+- `ReportsTab` la mot man gop: `Bao cao & Thong ke`.
+- Cac key noi bo van duoc giu de tranh doi rong:
+  - `TrainingSub = students | classes | teachers`
+  - `OperationsSub = schedule | lessons | attendance`
+  - `FinanceSub = ledger | debt | expense`
+  - `ReportsSub = training | operations | finance`
+- Hoc lieu khong thuoc app quan ly hien tai. Neu can, sau nay tach thanh app hoc tap rieng.
+- Diem danh va nhat ky duoc hieu la mot thao tac chung: `Ghi buoi hoc`.
 
-1. Tổng quan
-2. Vận hành
-3. Lớp & Học sinh
-4. Tài chính
-5. Giáo viên
+## Architecture Map
 
-Cài đặt là mục phụ ở cuối sidebar/menu.
-
-Không đưa lại các mục sau vào navigation chính:
-
-- Học liệu
-- Báo cáo
-- Học sinh riêng
-- Lớp học riêng
-
-## Current product decisions
-
-- `LearningTab` gộp `ClassesTab` và `StudentsTab`.
-- `FinanceTab` chứa Tổng hợp, Công nợ, Phiếu thu, Phiếu chi.
-- Báo cáo doanh thu nằm trong `FinanceTab`, không còn là tab riêng.
-- `TeachersTab` là tab vận hành giáo viên, không chỉ là danh bạ.
-- Học liệu không thuộc app quản lý hiện tại. Nếu cần, sau này tách thành app học tập riêng.
-- Điểm danh và nhật ký nên được hiểu là một thao tác chung: Ghi buổi học.
-
-## Architecture map
-
-- `App.tsx`: app shell, routing, settings, modal state, gọi hooks, render tabs.
-- `Layout.tsx`: sidebar, mobile header, bottom nav, settings nav item.
+- `App.tsx`: app shell, routing state, settings, modal state, goi hooks, render tabs.
+- `Layout.tsx`: desktop sidebar, mobile header, bottom nav, settings nav item.
 - `useAppData.ts`: fetch data, transform data, cache localStorage, auto reload.
-- `useDomains.ts`: save/update/delete, optimistic update, gọi Google Apps Script.
+- `useDomains.ts`: save/update/delete, optimistic update, goi Google Apps Script.
 - `helpers.ts`: date helpers, sanitize, teacher resolving, fetch timeout, export utilities.
 - `rules.ts`: business constants, thresholds, pagination, network timing.
-- `types.ts`: shared domain types.
-- `dsComponents.tsx`: UI controls nền như Button, Input, Select, SearchBar, TableActions, Pager.
-- `AppComponents.tsx`: shared UI cũ như StatBlock, StatGrid, TABLE_WRAP, FAB.
-- `uiSystem.tsx`: UI system mới hơn như PageScaffold, ContextBar, ActionableKpi, DataTable, StatusBadge.
+- `types.ts`: shared domain types and navigation types.
+- `dsComponents.tsx`: UI controls nen nhu Button, Input, Select, SearchBar, TableActions, Pager.
+- `AppComponents.tsx`: shared UI cu/bridge nhu StatBlock, StatGrid, TABLE_WRAP, FAB.
+- `uiSystem.tsx`: UI system chinh moi hon nhu PageToolbar, DataTable, EmptyState, StatusBadge, MoneyText, DateText, MonthText, MobileCard.
 
-## Safety rules
+## Safety Rules
 
-- Không tự ý thêm thư viện mới.
-- Không tự ý rename component, function hoặc file nếu không cần.
-- Không đổi UI khi task chỉ là sửa logic.
-- Không đổi business logic khi task chỉ là UI hoặc navigation.
-- Không xóa file cũ nếu chưa kiểm tra import.
-- Không sửa Google Apps Script contract nếu chưa kiểm tra frontend/backend.
-- Không đổi field dữ liệu nếu chưa cập nhật đầy đủ ở:
-  - `types.ts`
-  - `useAppData.ts`
-  - `useDomains.ts`
-  - Google Apps Script
-  - Google Sheets headers
+- Khong tu y them thu vien moi.
+- Khong tu y rename component, function hoac file neu khong can.
+- Khong doi UI khi task chi la sua logic.
+- Khong doi business logic khi task chi la UI hoac navigation.
+- Khong xoa file cu neu chua kiem tra import.
+- Khong sua Google Apps Script contract neu chua kiem tra frontend/backend.
+- Khong doi field du lieu neu chua cap nhat day du o `types.ts`, `useAppData.ts`, `useDomains.ts`, Google Apps Script va Google Sheets headers.
+- Khong refactor `useAppData.ts` hoac `useDomains.ts` neu task khong lien quan truc tiep den data flow.
 
-## Refactor rules
+## Refactor Rules
 
-Mỗi task chỉ xử lý một nhóm việc:
+Moi task chi xu ly mot nhom viec:
 
 - Navigation
 - Folder structure
@@ -113,72 +120,96 @@ Mỗi task chỉ xử lý một nhóm việc:
 - Teachers
 - Operations
 - Learning
+- Reports
 - Performance
 
-Không gộp nhiều mục tiêu trong cùng một task, ví dụ:
+Khong gop nhieu muc tieu lon trong cung mot task, vi du vua refactor structure, vua redesign UI, vua sua nghiep vu.
 
-- refactor structure
-- redesign UI
-- sửa nghiệp vụ
-- tối ưu performance
+Neu task lon, phai lap plan ngan truoc khi code.
 
-Nếu task lớn, phải lập plan trước khi code.
+## Data Rules
 
-## Data rules
+### Date Handling
 
-### Date handling
-
-Dữ liệu ngày có thể đến từ Google Sheets / GAS ở nhiều dạng:
+Du lieu ngay co the den tu Google Sheets / GAS o nhieu dang:
 
 - `DD/MM/YYYY`
 - `YYYY-MM-DD`
 - ISO UTC string
-- timestamp dạng chuỗi
+- timestamp dang chuoi
 
-Luôn dùng helper có sẵn:
+Luon dung helper co san:
 
 - `formatDate`
 - `parseDMY`
 
-Không tự parse date thủ công nếu không cần.
+Khong tu parse date thu cong neu khong can.
 
-### Tuition/debt logic
+### Tuition And Debt Logic
 
-Khi xử lý công nợ:
+Khi xu ly hoc phi/cong no:
 
-- Không tính nợ trước `startDate`.
-- Không tính nợ sau `endDate`.
-- Không tính tháng tương lai là nợ.
-- Phải tôn trọng `thangHP` và `namHP` nếu payment có dữ liệu tháng học phí.
+- Khong tinh no truoc `startDate`.
+- Khong tinh no sau `endDate`.
+- Khong tinh thang tuong lai la no.
+- Phai ton trong `thangHP` va `namHP` neu payment co du lieu thang hoc phi.
+- Chi tinh hoc sinh billable theo logic hien co.
 
-### Teacher logic
+### Attendance Logic
 
-Tên giáo viên có thể có alias hoặc nhập không đồng nhất.
+Chi dung 3 trang thai chuyen can:
 
-Ưu tiên dùng logic chuẩn hóa/resolve teacher hiện có thay vì so sánh string thô.
+```text
+Co mat
+Vang
+Co phep
+```
 
-### Save/reload logic
+Khong them trang thai moi neu chua co yeu cau nghiep vu ro.
 
-`useAppData.ts` và `useDomains.ts` có cơ chế:
+### Teacher Logic
+
+Giao vien uu tien lien ket bang `MaGV`, fallback theo `GiaoVien`/ten giao vien de tuong thich du lieu cu. Uu tien helper resolve/normalize hien co thay vi so sanh string tho.
+
+### Phone Logic
+
+So dien thoai phai giu dang string de khong mat so `0` dau. Khong ep sang number.
+
+### Save And Reload Logic
+
+`useAppData.ts` va `useDomains.ts` co co che:
 
 - optimistic update
 - silent reload
 - auto reload
-- chặn reload khi đang save
+- chan reload khi dang save
 
-Không refactor vùng này nếu task không liên quan trực tiếp đến data flow.
+Khong refactor vung nay neu task khong lien quan truc tiep den data flow.
 
-## UI rules
+## UI Rules
 
-- Ưu tiên UI rõ, nhanh, dễ thao tác hằng ngày.
-- Không tạo thêm UI system mới nếu `dsComponents.tsx`, `AppComponents.tsx`, hoặc `uiSystem.tsx` đã có component phù hợp.
-- Mobile bottom nav chỉ chứa 5 vùng chính.
-- App nội bộ ưu tiên ít click, rõ nghiệp vụ, dễ kiểm tra dữ liệu.
-- Tránh hiệu ứng phức tạp nếu không tăng giá trị sử dụng.
+- Uu tien UI ro, nhanh, de thao tac hang ngay.
+- Khong tao UI system moi neu `dsComponents.tsx`, `AppComponents.tsx`, hoac `uiSystem.tsx` da co component phu hop.
+- App noi bo uu tien it click, ro nghiep vu, de kiem tra du lieu.
+- Desktop dung sidebar grouped flat navigation.
+- Mobile bottom nav chi chua 5 vung chinh.
+- Tranh hieu ung phuc tap neu khong tang gia tri su dung.
 
-## Known large files
+## Lop Toan NK UI Rules
 
-Các file đang lớn, chưa nên refactor mạnh nếu chưa có task riêng:
+- UI task phai giu nguyen data, filter, action, modal behavior va row/card click behavior neu user khong yeu cau doi.
+- Khong doi GAS/API fields, Google Sheets headers, schema hoac business logic trong task chi lien quan UI.
+- Uu tien dung lai `uiSystem.tsx`, `dsComponents.tsx`, `AppComponents.tsx` va pattern hien co.
+- Desktop cua man data-heavy phai lay DataTable lam trong tam. KPI/card chi la thong tin phu, compact.
+- Mobile dung card sach, de doc, giu du action va click behavior tuong ung voi row desktop.
+- Filter phai ro, compact, nam gan data, khong tao filter panel cong kenh neu khong can.
+- Tranh AI slop: khong gradient trang tri, khong hero section, khong oversized cards, khong icon ngau nhien, khong visual noise.
+- Thiet ke app noi bo theo huong scan nhanh, it click, on dinh, de kiem tra du lieu.
+- Rieng man Hoc sinh: desktop uu tien bang hoc sinh; mobile uu tien student cards; khong doi student schema, API, modal data shape.
+
+## Known Large Files
+
+Cac file dang lon, chua nen refactor manh neu chua co task rieng:
 
 - `FinanceTab.tsx`
 - `TeachersTab.tsx`
@@ -187,9 +218,9 @@ Các file đang lớn, chưa nên refactor mạnh nếu chưa có task riêng:
 - `useAppData.ts`
 - `useDomains.ts`
 
-Sau khi ổn định, có thể tách dần theo module nhỏ.
+Sau khi on dinh, co the tach dan theo module nho.
 
-## Preferred workflow
+## Preferred Workflow
 
 1. Read `AGENTS.md`.
 2. Read `PROJECT_CONTEXT.md` if available.
@@ -199,8 +230,8 @@ Sau khi ổn định, có thể tách dần theo module nhỏ.
 6. Run:
 
 ```bash
-npm run lint
-npm run build
+npm.cmd run lint
+npm.cmd run build
 ```
 
 7. Report:

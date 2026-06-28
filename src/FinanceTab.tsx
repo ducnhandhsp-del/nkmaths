@@ -1,9 +1,7 @@
-/**
+﻿/**
  * FinanceTab.tsx — v29.0
  * ✅ Áp layout compact kiểu Lớp & Học sinh: header + subtab + filter row
- * ✅ Báo cáo doanh thu dùng MonthNavigator, ChartPanel, DataTable
  * ✅ Giữ nguyên logic nghiệp vụ công nợ/startDate/endDate
- * ✅ Tổng hợp đặt ĐẦU TIÊN
  * ✅ [v28.1] Tính nợ chỉ từ tháng học sinh bắt đầu học (startDate-aware)
  * ✅ [v28.1] Tháng sau endDate không tính là nợ
  * ✅ [v28.1] Sổ cái: phân trang thay vì cắt cứng 30 bản ghi
@@ -14,42 +12,18 @@
  * ✅ [v28.2] Chi tiêu: phân trang tương tự Sổ cái
  * ✅ [v28.2] Zalo: thêm nút copy message vào clipboard
  */
-import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
-import { DollarSign, TrendingDown, TrendingUp, Eye, Edit3, Trash2, Plus, Copy, Check, BarChart3, Printer, School, ReceiptText } from 'lucide-react';
-import { fmtVND, formatDate, capitalizeName, exportCSV, parseDMY, isStudentActive, normalizePaymentMethod } from './helpers';
-import { Badge, Button, FilterTabs, Pager, SearchBar, Select } from './dsComponents';
-import { TABLE_WRAP, TH_SHARED, TD_SHARED, trStyle, fmtM } from './AppComponents';
-import { EmptyState } from './UIComponents';
-import {
-  ActionableKpi,
-  ActionableKpiGrid,
-  ChartPanel,
-  ContextBar,
-  DataTable,
-  EntityLink,
-  MonthNavigator,
-  PageScaffold,
-  StatusBadge,
-} from './uiSystem';
-import type { Payment, Expense, Student, SummaryData, FinanceSub } from './types';
-
-const ZaloIcon = () => (
-  <svg viewBox="0 0 48 48" style={{ width:16, height:16 }} fill="currentColor">
-    <path d="M24 4C12.954 4 4 12.954 4 24c0 3.594.945 6.97 2.6 9.89L4 44l10.374-2.554A19.9 19.9 0 0024 44c11.046 0 20-8.954 20-20S35.046 4 24 4zm-6.5 13h3v10h-3V17zm4.5 0h3v1.5c.8-.95 1.95-1.5 3-1.5 2.75 0 4 1.9 4 4.5V27h-3v-5.5c0-1.4-.55-2.5-2-2.5s-2 1.1-2 2.5V27h-3V17z"/>
-  </svg>
-);
-
-const MessengerIcon = () => (
-  <svg viewBox="0 0 24 24" style={{ width:15, height:15 }} fill="currentColor">
-    <path d="M12 2C6.477 2 2 6.145 2 11.259c0 2.84 1.32 5.38 3.4 7.1v3.461l3.154-1.737A10.7 10.7 0 0012 20.518c5.523 0 10-4.145 10-9.259C22 6.145 17.523 2 12 2zm1.045 12.447l-2.55-2.72-4.98 2.72 5.474-5.806 2.614 2.72 4.915-2.72-5.473 5.806z"/>
-  </svg>
-);
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
+import { Plus, Copy, Check, TrendingDown, TrendingUp, Wallet, AlertTriangle, MessageCircle } from 'lucide-react';
+import { fmtVND, capitalizeName, parseDMY, isStudentActive, normalizePaymentMethod, resolveTeacher, buildSchoolYearMonths } from './helpers';
+import { Badge, Button, Pager, Select } from './dsComponents';
+import { ActionableKpi, ActionableKpiGrid, DataTable, DateText, EmptyState, MobileCard, MoneyText, MonthText, PageToolbar, StatusBadge, ToolbarTabs } from './uiSystem';
+import type { Payment, Expense, Student, FinanceSub } from './types';
 
 interface Props {
   financeSubtab?: FinanceSub;
   setFinanceSubtab?: (sub: FinanceSub) => void;
-  summary: SummaryData | null; payments: Payment[]; expenses: Expense[];
-  students: Student[]; uClasses: any[]; tlogs: any[];
+  payments: Payment[]; expenses: Expense[];
+  students: Student[]; uClasses: any[];
   curMo: number; curYr: number;
   qF: string; setQF: (v: string) => void;
   fMo: string; setFMo: (v: string) => void;
@@ -59,23 +33,39 @@ interface Props {
   pgF: number; setPgF: (p: number) => void;
   filtFin: Student[];
   isPaid: (sid: string, mo: number, yr: number) => boolean;
-  zaloTpl: string; baseTuition: number; schoolYear: string;
+  baseTuition: number; schoolYear: string; tuitionDueDay: number;
   onViewInvoice: (p: Payment) => void;
   onViewFinance: (s: Student) => void;
-  onShowFAB: () => void;
+  onShowFAB: (tab?: 'income' | 'expense') => void;
   onEditPayment: (p: Payment) => void; onDeletePayment: (p: Payment) => void;
   onEditExpense: (e: Expense) => void; onDeleteExpense: (e: Expense) => void;
   onViewExpense: (e: Expense) => void;
+}
+
+type DebtStatus = 'paid' | 'unpaid' | 'overdue' | 'inactive';
+
+interface DebtTableRow {
+  id: string;
+  student: Student;
+  billableMonths: { m: number; y: number; label: string }[];
+  unpaidMonths: { m: number; y: number; label: string }[];
+  paidCount: number;
+  paidPct: number;
+  debtAmount: number;
+  isInactive: boolean;
+  isProblem: boolean;
+  isWarning: boolean;
+  status: DebtStatus;
 }
 
 const IPP = 25;
 const LEDGER_IPP = 20; // phân trang sổ cái
 const EXPENSE_IPP = 20; // phân trang chi tiêu
 const FILTER_SELECT: React.CSSProperties = {
-  height: 38,
-  padding: '0 12px',
+  height: 34,
+  padding: '0 10px',
   border: '1.5px solid #e2e8f0',
-  borderRadius: 10,
+  borderRadius: 8,
   fontSize: 12,
   fontWeight: 700,
   color: '#334155',
@@ -83,37 +73,11 @@ const FILTER_SELECT: React.CSSProperties = {
   cursor: 'pointer',
   outline: 'none',
 };
-const FIN_HEADER: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  flexWrap: 'wrap',
-  gap: 10,
-  background: 'white',
-  border: '1px solid #e2e8f0',
-  borderRadius: 12,
-  padding: '12px 14px',
-  boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-};
-const FIN_FILTER_ROW: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  flexWrap: 'wrap',
-  gap: 10,
-};
-const SUMMARY_CHIP: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 7,
-  minHeight: 38,
-  padding: '0 12px',
-  borderRadius: 10,
-  background: 'white',
-  border: '1px solid #e2e8f0',
-  boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-  fontSize: 12,
-  fontWeight: 800,
-  color: '#334155',
-  whiteSpace: 'nowrap',
+const debtStatusMeta = (status: DebtStatus): { label: string; tone: 'success' | 'danger' | 'warning' | 'neutral' } => {
+  if (status === 'paid') return { label: 'Đã thu', tone: 'success' };
+  if (status === 'overdue') return { label: 'Quá hạn', tone: 'danger' };
+  if (status === 'inactive') return { label: 'Đã nghỉ', tone: 'neutral' };
+  return { label: 'Chưa thu', tone: 'warning' };
 };
 
 /**
@@ -148,7 +112,7 @@ function isMonthBillable(s: Student, fm: { m: number; y: number }): boolean {
 function MonthSelect({ value, onChange, allowAll = true }: { value: string; onChange: (v: string) => void; allowAll?: boolean }) {
   const options = React.useMemo(() => {
     const now = new Date();
-    const list = allowAll ? [{ value: '', label: 'Tất cả tháng' }] : [];
+    const list = allowAll ? [{ value: '', label: 'Tháng' }] : [];
     for (let i = 0; i < 24; i++) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const m = d.getMonth() + 1;
@@ -183,281 +147,46 @@ function getPaymentTuitionPeriod(p: Payment): { m: number; y: number } | null {
   return parseMoYr(p.date || '');
 }
 
-function tuitionPeriodLabel(p: Payment): string {
-  const period = getPaymentTuitionPeriod(p);
-  return period ? `T${period.m}/${period.y}` : '---';
-}
-
 function paymentClassId(p: Payment, students: Student[]): string {
   const raw = p as any;
   return String(raw.maLop || raw.MaLop || raw['Mã Lớp'] || raw.classId || students.find(s => s.id === p.studentId)?.classId || '');
 }
 
-function FinanceReportTab({ students, payments, expenses, tlogs, uClasses, summary, curMo, curYr, isPaid, baseTuition, onOpenSub }: {
-  students: Student[]; payments: Payment[]; expenses: Expense[]; tlogs: any[]; uClasses: any[];
-  summary: SummaryData | null; curMo: number; curYr: number;
-  isPaid: (sid: string, mo: number, yr: number) => boolean;
-  baseTuition: number;
-  onOpenSub: (sub: FinanceSub, period?: string) => void;
-}) {
-  const [filterMo, setFilterMo] = useState(curMo);
-  const [filterYr, setFilterYr] = useState(curYr);
-  const prevCurMoRef = useRef(curMo);
-  const prevCurYrRef = useRef(curYr);
+function classIdOf(c: any): string {
+  return String(c?.['Mã Lớp'] || c?.['Mã lớp'] || c?.MaLop || c?.classId || '').trim();
+}
 
-  useEffect(() => {
-    if (curMo !== prevCurMoRef.current || curYr !== prevCurYrRef.current) {
-      if (filterMo === prevCurMoRef.current && filterYr === prevCurYrRef.current) {
-        setFilterMo(curMo);
-        setFilterYr(curYr);
-      }
-      prevCurMoRef.current = curMo;
-      prevCurYrRef.current = curYr;
-    }
-  }, [curMo, curYr, filterMo, filterYr]);
+function paymentCollector(p: Payment, students: Student[], classes: any[]): string {
+  const raw = p as any;
+  const direct = String(raw.collector || raw.nguoiThu || raw.NguoiThu || raw['Người thu'] || '').trim();
+  if (direct) return resolveTeacher(direct) || direct;
 
-  const prevMonth = () => {
-    if (filterMo === 1) { setFilterMo(12); setFilterYr(y => y - 1); }
-    else setFilterMo(m => m - 1);
-  };
-  const nextMonth = () => {
-    if (filterMo === 12) { setFilterMo(1); setFilterYr(y => y + 1); }
-    else setFilterMo(m => m + 1);
-  };
-  const isCurrentMonth = filterMo === curMo && filterYr === curYr;
-
-  const moPayments = useMemo(() => payments.filter(p => {
-    const r = getPaymentTuitionPeriod(p);
-    return r?.m === filterMo && r?.y === filterYr;
-  }), [payments, filterMo, filterYr]);
-  const moExpenses = useMemo(() => expenses.filter(e => {
-    const r = parseMoYr(e.date || '');
-    return r?.m === filterMo && r?.y === filterYr;
-  }), [expenses, filterMo, filterYr]);
-  const moTlogs = useMemo(() => tlogs.filter(l => {
-    const ts = parseDMY(l.date || '');
-    if (!ts) return false;
-    const d = new Date(ts);
-    return d.getMonth() + 1 === filterMo && d.getFullYear() === filterYr;
-  }), [tlogs, filterMo, filterYr]);
-
-  const moRevenue = moPayments.reduce((s, p) => s + p.amount, 0);
-  const moExpense = moExpenses.reduce((s, e) => s + e.amount, 0);
-  const activeStudents = useMemo(() => students.filter(isStudentActive), [students]);
-  const reportPeriodKey = `${String(filterMo).padStart(2, '0')}/${filterYr}`;
-  const unpaidInReportMonth = useMemo(() =>
-    activeStudents.filter(s => isMonthBillable(s, { m: filterMo, y: filterYr }) && !isPaid(s.id, filterMo, filterYr)).length,
-  [activeStudents, filterMo, filterYr, isPaid]);
-
-  const revenueByClass = useMemo(() => {
-    const map: Record<string, { revenue: number; count: number; teacher: string }> = {};
-    uClasses.forEach(c => { map[c['Mã Lớp']] = { revenue: 0, count: 0, teacher: c['Giáo viên'] || '---' }; });
-    moPayments.forEach(p => {
-      const cls = paymentClassId(p, students) || 'Không rõ';
-      if (!map[cls]) map[cls] = { revenue: 0, count: 0, teacher: '---' };
-      map[cls].revenue += p.amount;
-      map[cls].count++;
-    });
-    return Object.entries(map)
-      .filter(([, v]) => v.revenue > 0)
-      .map(([cls, v]) => ({ cls, ...v }))
-      .sort((a, b) => b.revenue - a.revenue);
-  }, [moPayments, students, uClasses]);
-
-  const teacherRevenue = useMemo(() => {
-    const map: Record<string, { revenue: number; students: number; paid: number; sessions: number; classes: Set<string> }> = {};
-    activeStudents.forEach(s => {
-      const t = s.teacher || 'Chưa xác định';
-      if (!map[t]) map[t] = { revenue: 0, students: 0, paid: 0, sessions: 0, classes: new Set() };
-      map[t].students++;
-      if (isPaid(s.id, filterMo, filterYr)) map[t].paid++;
-      if (s.classId) map[t].classes.add(s.classId);
-    });
-    moPayments.forEach(p => {
-      const st = students.find(s => s.id === p.studentId);
-      const t = st?.teacher || 'Chưa xác định';
-      if (!map[t]) map[t] = { revenue: 0, students: 0, paid: 0, sessions: 0, classes: new Set() };
-      map[t].revenue += p.amount;
-    });
-    moTlogs.forEach(l => {
-      const cls = uClasses.find(c => c['Mã Lớp'] === l.classId);
-      const t = cls?.['Giáo viên'] || 'Chưa xác định';
-      if (!map[t]) map[t] = { revenue: 0, students: 0, paid: 0, sessions: 0, classes: new Set() };
-      map[t].sessions++;
-      if (l.classId) map[t].classes.add(l.classId);
-    });
-    return Object.entries(map)
-      .map(([fullName, v]) => ({ fullName, ...v, classList: [...v.classes].join(', ') }))
-      .sort((a, b) => b.revenue - a.revenue);
-  }, [activeStudents, students, moPayments, moTlogs, isPaid, filterMo, filterYr, uClasses]);
-
-  const topClassRevenue = useMemo(() => revenueByClass.slice(0, 10), [revenueByClass]);
-  const maxClassRevenue = topClassRevenue.reduce((max, r) => Math.max(max, r.revenue), 0) || 1;
-
-  const handleExport = () => {
-    exportCSV(`doanh-thu-t${filterMo}-${filterYr}`,
-      ['Lớp', 'Giáo viên', 'Số phiếu', 'Doanh thu'],
-      revenueByClass.map(r => [r.cls, r.teacher, r.count, r.revenue])
-    );
-  };
-
-  return (
-    <PageScaffold
-      gap={12}
-      context={
-        <ContextBar
-          items={[
-            { label: 'Kỳ báo cáo', value: `T${filterMo}/${filterYr}`, icon: BarChart3, tone: 'primary' },
-            { label: 'Phiếu thu', value: moPayments.length, icon: ReceiptText, tone: 'success' },
-            { label: 'Phiếu chi', value: moExpenses.length, icon: TrendingDown, tone: 'danger' },
-          ]}
-          actions={
-            <>
-              <MonthNavigator
-                month={filterMo}
-                year={filterYr}
-                onPrev={prevMonth}
-                onNext={nextMonth}
-                onToday={!isCurrentMonth ? () => { setFilterMo(curMo); setFilterYr(curYr); } : undefined}
-              />
-              <Button size="sm" intent="success" variant="outline" onClick={handleExport}>Xuất CSV</Button>
-              <Button size="sm" intent="danger" variant="outline" icon={<Printer size={13} />} onClick={() => window.print()}>In</Button>
-            </>
-          }
-        />
-      }
-      kpis={
-        <ActionableKpiGrid>
-          <ActionableKpi
-            icon={TrendingUp}
-            value={fmtM(moRevenue)}
-            label="Thu"
-            sub={`${moPayments.length} phiếu`}
-            tone="success"
-            onClick={() => onOpenSub('ledger', reportPeriodKey)}
-            actionLabel="Xem phiếu thu"
-          />
-          <ActionableKpi
-            icon={TrendingDown}
-            value={fmtM(moExpense)}
-            label="Chi"
-            sub={`${moExpenses.length} phiếu`}
-            tone="danger"
-            onClick={() => onOpenSub('expense', reportPeriodKey)}
-            actionLabel="Xem phiếu chi"
-          />
-          <ActionableKpi icon={DollarSign} value={fmtM(moRevenue - moExpense)} label="Lợi nhuận" sub={`T${filterMo}/${filterYr}`} tone={(moRevenue - moExpense) >= 0 ? 'primary' : 'warning'} />
-          <ActionableKpi
-            icon={ReceiptText}
-            value={unpaidInReportMonth}
-            label="Chưa đóng"
-            sub={fmtM(unpaidInReportMonth * baseTuition)}
-            tone={unpaidInReportMonth > 0 ? 'danger' : 'success'}
-            onClick={() => onOpenSub('debt', reportPeriodKey)}
-            actionLabel="Xem công nợ"
-          />
-        </ActionableKpiGrid>
-      }
-    >
-      <ChartPanel
-        title="Doanh thu theo lớp"
-        subtitle={`Kỳ T${filterMo}/${filterYr}`}
-        legend={<span style={{ fontSize: 11, color: '#64748b', fontWeight: 700 }}>{revenueByClass.length} lớp có doanh thu</span>}
-      >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
-          {topClassRevenue.length === 0 ? (
-            <div style={{ padding: '26px 12px', textAlign: 'center', color: '#94a3b8', fontSize: 13, fontStyle: 'italic' }}>
-              Chưa có dữ liệu để vẽ biểu đồ
-            </div>
-          ) : topClassRevenue.map((row, idx) => {
-            const pct = Math.max(4, Math.round(row.revenue / maxClassRevenue * 100));
-            return (
-              <div key={row.cls} style={{ display: 'grid', gridTemplateColumns: 'minmax(54px,76px) minmax(80px,1fr) minmax(66px,86px)', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 12, fontWeight: 800, color: idx === 0 ? '#4338ca' : '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {row.cls}
-                </span>
-                <div style={{ height: 20, borderRadius: 999, background: '#f1f5f9', overflow: 'hidden', position: 'relative' }}>
-                  <div style={{ width: `${pct}%`, height: '100%', borderRadius: 999, background: idx === 0 ? 'linear-gradient(90deg,#4f46e5,#06b6d4)' : 'linear-gradient(90deg,#60a5fa,#22c55e)', transition: 'width 0.25s ease' }} />
-                </div>
-                <span style={{ fontSize: 12, fontWeight: 800, color: '#059669', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                  {fmtM(row.revenue)}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-        <DataTable
-          data={revenueByClass}
-          rowKey="cls"
-          emptyText="Chưa có doanh thu tháng này"
-          columns={[
-            { key: 'cls', label: 'Lớp', align: 'center', render: v => <span style={{ fontWeight: 800, color: '#4338ca' }}>{v}</span> },
-            { key: 'teacher', label: 'Giáo viên', render: v => <span style={{ color: '#475569', fontSize: 12 }}>{v}</span> },
-            { key: 'count', label: 'Phiếu', align: 'center' },
-            { key: 'revenue', label: 'Tổng thu', align: 'right', render: v => <span style={{ fontWeight: 800, color: '#059669' }}>+{fmtVND(v)}</span> },
-          ]}
-        />
-      </ChartPanel>
-
-      <ChartPanel
-        title="Tổng quan theo giáo viên"
-        subtitle={`Học sinh, lớp, đóng phí và doanh thu T${filterMo}/${filterYr}`}
-      >
-        <DataTable
-          data={teacherRevenue}
-          rowKey="fullName"
-          emptyText="Chưa có dữ liệu giáo viên trong kỳ này"
-          columns={[
-            { key: 'fullName', label: 'Giáo viên', render: v => <EntityLink label={v} tone="teal" icon={School} /> },
-            { key: 'classList', label: 'Lớp', align: 'center', render: v => <span style={{ color: '#64748b', fontSize: 12 }}>{v || '---'}</span> },
-            { key: 'students', label: 'HS', align: 'center' },
-            {
-              key: 'paid',
-              label: 'Đóng phí',
-              align: 'center',
-              render: (_v, row) => (
-                <StatusBadge
-                  domain="tuition"
-                  status={row.students > 0 && row.paid / row.students >= 0.8 ? 'paid' : 'partial'}
-                  label={`${row.paid}/${row.students}`}
-                />
-              ),
-            },
-            { key: 'revenue', label: 'Doanh thu', align: 'right', render: v => <span style={{ fontWeight: 800, color: '#059669' }}>+{fmtVND(v)}</span> },
-          ]}
-        />
-      </ChartPanel>
-    </PageScaffold>
-  );
+  const classId = paymentClassId(p, students).trim();
+  const student = students.find(s => s.id === p.studentId);
+  const cls = classes.find(c => classIdOf(c) === classId);
+  const teacher = String(student?.teacher || cls?.GiaoVien || cls?.['Giáo viên'] || cls?.teacherName || '').trim();
+  return teacher ? (resolveTeacher(teacher) || teacher) : '—';
 }
 
 export default function FinanceTab({
-  financeSubtab, setFinanceSubtab,
-  summary, payments, expenses, students, uClasses, tlogs,
-  curMo, curYr, qF, setQF, fMo, setFMo, fTch, setFTch, fFC, setFFC, fSt, setFSt,
-  pgF, setPgF, filtFin, isPaid, zaloTpl, baseTuition, schoolYear,
+  financeSubtab,
+  setFinanceSubtab,
+  payments, expenses, students, uClasses,
+  curMo, curYr, fMo, setFMo, fTch, setFTch, fFC, setFFC,
+  pgF, setPgF, isPaid, baseTuition, schoolYear, tuitionDueDay,
   onViewInvoice, onViewFinance, onShowFAB, onEditPayment, onDeletePayment, onEditExpense, onDeleteExpense, onViewExpense,
 }: Props) {
-  const [internalFinSub, setInternalFinSub] = useState<FinanceSub>('report');
-  const finSub = financeSubtab ?? internalFinSub;
-  const setFinSub = setFinanceSubtab ?? setInternalFinSub;
-  const pagedFin = filtFin.slice((pgF - 1) * IPP, pgF * IPP);
+  const finSub: FinanceSub = financeSubtab === 'debt' || financeSubtab === 'expense' || financeSubtab === 'ledger'
+    ? financeSubtab
+    : 'debt';
 
   // FIX Bug 4: dùng fM (tháng đang filter) thay vì curMo (tháng thực tế)
   // để nội dung Zalo đúng với tháng user đang xem công nợ
   const [fM, fY] = (fMo || `${String(curMo).padStart(2,'0')}/${curYr}`).split('/').map(Number);
-  const makeZaloMsg = (s: Student) => {
-    const msgDate = formatDate(new Date().toISOString());
-    return zaloTpl
-      .replace(/\[Ten\]/g, s.name || '')
-      .replace(/\[Lop\]/g, s.classId || '---')
-      .replace(/\[Thang\]/g, String(fM || curMo))
-      .replace(/\[Nam\]/g, String(fY || curYr))
-      .replace(/\[SoTien\]/g, fmtVND(baseTuition))
-      .replace(/\[Ngay\]/g, msgDate);
+  const makeZaloMsg = (s: Student, debtAmount = baseTuition) => {
+    const amount = debtAmount > 0 ? debtAmount : baseTuition;
+    return `Chào phụ huynh em ${s.name || ''}, LỚP TOÁN NK thông báo học phí tháng ${fM || curMo}/${fY || curYr} của em hiện còn ${fmtVND(amount)}. Phụ huynh vui lòng kiểm tra và thanh toán giúp lớp. Em cảm ơn ạ.`;
   };
-  const fmtDesc = (desc: string) => (desc||'').replace(/[Hh]ọc phí\s+tháng\s+0?(\d{1,2})\s+năm\s+(\d{4})/i, 'HP T$1/$2');
-
   // FIX: dùng isStudentActive từ helpers, nhất quán toàn app
   const activeStudents = useMemo(() => students.filter(isStudentActive), [students]);
   // Phân trang sổ cái
@@ -487,10 +216,9 @@ export default function FinanceTab({
   // Phân trang chi tiêu
   const [pgExpense, setPgExpense] = useState(1);
   const [eFilterMo, setEFilterMo] = useState('');
-  const [eFilterCat, setEFilterCat] = useState('');
   const [eFilterSpender, setEFilterSpender] = useState('');
   // FIX Bug 3: reset về trang 1 khi có phiếu chi mới
-  useEffect(() => { setPgExpense(1); }, [expenses.length, eFilterMo, eFilterCat, eFilterSpender]);
+  useEffect(() => { setPgExpense(1); }, [expenses.length, eFilterMo, eFilterSpender]);
   const filteredExpenses = useMemo(() => {
     const [eFM, eFY] = (eFilterMo || '').split('/').map(Number);
     return expenses.slice().reverse().filter(e => {
@@ -498,11 +226,10 @@ export default function FinanceTab({
         const r = parseMoYr(e.date || '');
         if (!r || r.m !== eFM || r.y !== eFY) return false;
       }
-      if (eFilterCat && e.category !== eFilterCat) return false;
       if (eFilterSpender && e.spender !== eFilterSpender) return false;
       return true;
     });
-  }, [expenses, eFilterMo, eFilterCat, eFilterSpender]);
+  }, [expenses, eFilterMo, eFilterSpender]);
   const pagedExpense = useMemo(() => {
     return filteredExpenses.slice((pgExpense - 1) * EXPENSE_IPP, pgExpense * EXPENSE_IPP);
   }, [filteredExpenses, pgExpense]);
@@ -526,16 +253,8 @@ export default function FinanceTab({
   }, []);
 
   const schoolYearMonths = useMemo(() => {
-    const parts = (schoolYear || '2025-2026').split('-').map(Number);
-    const y1 = parts[0] || new Date().getFullYear(), y2 = parts[1] || y1 + 1;
-    const m: { m: number; y: number; label: string }[] = [];
-    for (let mo = 7; mo <= 12; mo++) m.push({ m: mo, y: y1, label: `T${mo}` });
-    for (let mo = 1; mo <= 6; mo++)  m.push({ m: mo, y: y2, label: `T${mo}` });
-    return m;
+    return buildSchoolYearMonths(schoolYear);
   }, [schoolYear]);
-
-  const [hovPay, setHovPay] = useState<number|null>(null);
-  const [hovExp, setHovExp] = useState<number|null>(null);
 
   const currentMonthKey = `${String(curMo).padStart(2,'0')}/${curYr}`;
   const unpaidNow = useMemo(() => activeStudents.filter(s =>
@@ -552,497 +271,673 @@ export default function FinanceTab({
     const [m, y] = debtPeriodValue.split('/').map(Number);
     return { m: m || curMo, y: y || curYr };
   }, [debtPeriodValue, curMo, curYr]);
-  const debtSummary = useMemo(() => {
-    const unpaid = activeStudents.filter(s =>
-      isMonthBillable(s, selectedDebtMonth) && !isPaid(s.id, selectedDebtMonth.m, selectedDebtMonth.y)
-    ).length;
+  const buildDebtRow = useCallback((s: Student): DebtTableRow => {
+    const isInactive = s.status === 'inactive' || (s.endDate && s.endDate !== '---' && s.endDate !== '');
+    const billableMonths = schoolYearMonths.filter(fm => {
+      if (!isMonthBillable(s, fm)) return false;
+      if (fm.y > curYr) return false;
+      if (fm.y === curYr && fm.m > curMo) return false;
+      return true;
+    });
+    const unpaidMonths = billableMonths.filter(fm => !isPaid(s.id, fm.m, fm.y));
+    const paidCount = billableMonths.length - unpaidMonths.length;
+    const paidPct = billableMonths.length > 0 ? Math.round(paidCount / billableMonths.length * 100) : 100;
+    const debtAmount = unpaidMonths.length * baseTuition;
+    const isProblem = !isInactive && unpaidMonths.length > 2;
+    const isWarning = !isInactive && unpaidMonths.length === 2;
+    const status: DebtStatus = isInactive ? 'inactive' : unpaidMonths.length === 0 ? 'paid' : isProblem ? 'overdue' : 'unpaid';
     return {
-      unpaid,
-      estimatedDebt: unpaid * baseTuition,
-      label: `T${selectedDebtMonth.m}/${selectedDebtMonth.y}`,
+      id: s.id,
+      student: s,
+      billableMonths,
+      unpaidMonths,
+      paidCount,
+      paidPct,
+      debtAmount,
+      isInactive,
+      isProblem,
+      isWarning,
+      status,
     };
-  }, [activeStudents, selectedDebtMonth, isPaid, baseTuition]);
-  const hasDebtFilter = !!qF || debtPeriodValue !== currentMonthKey || !!fFC || fSt !== 'unpaid';
-  const resetDebtFilters = () => {
-    setQF('');
-    setFMo(currentMonthKey);
-    setFFC('');
-    setFSt('unpaid');
-    setPgF(1);
-  };
-  const exportPayments = () => exportCSV('phieu-thu',
-    ['Ngày thu', 'Số CT', 'Mã HS', 'Mã lớp', 'Học sinh', 'Kỳ HP', 'Tháng HP', 'Năm HP', 'Người nộp', 'Hình thức', 'Số tiền (đ)'],
-    filteredLedger.map(p => {
-      const period = getPaymentTuitionPeriod(p);
-      return [
-        p.date,
-        p.docNum,
-        p.studentId,
-        paymentClassId(p, students),
-        p.studentName,
-        tuitionPeriodLabel(p),
-        period?.m || '',
-        period?.y || '',
-        p.payer || '',
-        normalizePaymentMethod(p.method),
-        p.amount,
-      ];
-    })
-  );
-  const exportExpenses = () => exportCSV('phieu-chi',
-    ['Ngày', 'Số CT', 'Nội dung', 'Hạng mục', 'Người chi', 'Số tiền (đ)'],
-    filteredExpenses.map(e => [e.date, e.docNum, e.description, e.category, e.spender || '', e.amount])
-  );
+  }, [baseTuition, curMo, curYr, isPaid, schoolYearMonths]);
+  const financeStudents = useMemo(() => {
+    return activeStudents.filter(s => {
+      if (!isMonthBillable(s, selectedDebtMonth)) return false;
+      if (fFC && s.classId !== fFC) return false;
+      return true;
+    });
+  }, [activeStudents, fFC, selectedDebtMonth]);
 
+  const debtTableRows = useMemo(() => financeStudents
+    .map(buildDebtRow)
+    .sort((a, b) => {
+      const rank = (row: DebtTableRow) => row.status === 'overdue' ? 0 : row.status === 'unpaid' ? 1 : row.status === 'paid' ? 2 : 3;
+      return rank(a) - rank(b) || a.student.name.localeCompare(b.student.name, 'vi');
+    }),
+  [buildDebtRow, financeStudents]);
+
+  const pagedDebtRows = useMemo(() => debtTableRows.slice((pgF - 1) * IPP, pgF * IPP), [debtTableRows, pgF]);
   const classOptions = useMemo(() => [
-    { value: '', label: 'Tất cả lớp' },
+    { value: '', label: 'Lớp' },
     ...uClasses.map(c => ({ value: c['Mã Lớp'], label: c['Mã Lớp'] })),
   ], [uClasses]);
-  const expenseCategoryOptions = useMemo(() => [
-    { value: '', label: 'Tất cả hạng mục' },
-    ...[...new Set(expenses.map(e => e.category).filter(Boolean))]
-      .sort((a, b) => a.localeCompare(b, 'vi'))
-      .map(v => ({ value: v, label: v })),
-  ], [expenses]);
   const expenseSpenderOptions = useMemo(() => [
-    { value: '', label: 'Tất cả người chi' },
+    { value: '', label: 'Người chi' },
     ...[...new Set(expenses.map(e => e.spender).filter(Boolean))]
       .sort((a, b) => a.localeCompare(b, 'vi'))
       .map(v => ({ value: v, label: v })),
   ], [expenses]);
-  const debtStatusOptions = useMemo(() => [
-    { value: 'unpaid', label: 'Chưa đóng' },
-    { value: 'paid', label: 'Đã đóng' },
-    { value: '', label: 'Tất cả' },
-  ], []);
-  const openFinanceSub = useCallback((sub: FinanceSub, period?: string) => {
-    if (sub === 'debt' && period) setFMo(period);
-    if (sub === 'ledger' && period) setLFilterMo(period);
-    if (sub === 'expense' && period) setEFilterMo(period);
-    setFinSub(sub);
-  }, [setFMo]);
 
-  const financeFilterRow = finSub === 'debt' ? (
-    <div style={FIN_FILTER_ROW}>
-      <span style={{ ...SUMMARY_CHIP, color: debtSummary.unpaid > 0 ? '#be123c' : '#059669' }}>
-        <DollarSign size={14} />
-        {debtSummary.label} · {debtSummary.unpaid} chưa đóng · Dự kiến {fmtM(debtSummary.estimatedDebt)}
-      </span>
-      <SearchBar
-        value={qF}
-        onChange={v => { setQF(v); setPgF(1); }}
-        placeholder="Tìm học sinh, mã HS..."
-        width={230}
-      />
-      <MonthSelect value={debtPeriodValue} allowAll={false} onChange={v => { setFMo(v); setPgF(1); }} />
-      <Select value={fSt} onChange={v => { setFSt(v); setPgF(1); }} options={debtStatusOptions} size="md" style={{ width: 138 }} />
-      <Select value={fFC} onChange={v => { setFFC(v); setPgF(1); }} options={classOptions} size="md" style={{ width: 150 }} />
-      {hasDebtFilter && <Button size="sm" intent="neutral" variant="outline" onClick={resetDebtFilters}>Reset</Button>}
-    </div>
-  ) : finSub === 'ledger' ? (
-    <div style={FIN_FILTER_ROW}>
-      <span style={SUMMARY_CHIP}>
-        <ReceiptText size={14} color="#059669" />
-        {filteredLedger.length}/{payments.length} phiếu thu
-      </span>
-      <MonthSelect value={lFilterMo} onChange={setLFilterMo} />
-      <Select value={lFilterCls} onChange={setLFilterCls} options={classOptions} size="md" style={{ width: 150 }} />
-      {(lFilterMo || lFilterCls) && <Button size="sm" intent="neutral" variant="outline" onClick={() => { setLFilterMo(''); setLFilterCls(''); }}>Reset</Button>}
-      <div style={{ marginLeft: 'auto' }}>
-        <Button size="sm" intent="success" variant="outline" onClick={exportPayments}>Xuất CSV</Button>
-      </div>
-    </div>
-  ) : finSub === 'expense' ? (
-    <div style={FIN_FILTER_ROW}>
-      <span style={SUMMARY_CHIP}>
-        <TrendingDown size={14} color="#e11d48" />
-        {filteredExpenses.length}/{expenses.length} phiếu chi
-      </span>
-      <MonthSelect value={eFilterMo} onChange={setEFilterMo} />
-      <Select value={eFilterCat} onChange={setEFilterCat} options={expenseCategoryOptions} size="md" style={{ width: 170 }} />
-      <Select value={eFilterSpender} onChange={setEFilterSpender} options={expenseSpenderOptions} size="md" style={{ width: 170 }} />
-      {(eFilterMo || eFilterCat || eFilterSpender) && (
-        <Button size="sm" intent="neutral" variant="outline" onClick={() => { setEFilterMo(''); setEFilterCat(''); setEFilterSpender(''); }}>
-          Reset
-        </Button>
+  const getDebtPeriodAmount = useCallback((row: DebtTableRow) => (
+    isMonthBillable(row.student, selectedDebtMonth) ? baseTuition : 0
+  ), [baseTuition, selectedDebtMonth]);
+
+  const getDebtPeriodPayment = useCallback((row: DebtTableRow) => payments.find(p => {
+    if (p.studentId !== row.student.id) return false;
+    const period = getPaymentTuitionPeriod(p);
+    return period?.m === selectedDebtMonth.m && period?.y === selectedDebtMonth.y;
+  }), [payments, selectedDebtMonth]);
+  const normalizedDueDay = Math.min(31, Math.max(1, Number(tuitionDueDay) || 15));
+  const debtDueLabel = useCallback(() => {
+    const lastDay = new Date(selectedDebtMonth.y, selectedDebtMonth.m, 0).getDate();
+    const dueDay = Math.min(normalizedDueDay, lastDay);
+    return `${String(dueDay).padStart(2, '0')}/${String(selectedDebtMonth.m).padStart(2, '0')}/${selectedDebtMonth.y}`;
+  }, [normalizedDueDay, selectedDebtMonth]);
+  const isSelectedPeriodPastDue = useCallback(() => {
+    const now = new Date();
+    const lastDay = new Date(selectedDebtMonth.y, selectedDebtMonth.m, 0).getDate();
+    const dueDay = Math.min(normalizedDueDay, lastDay);
+    const due = new Date(selectedDebtMonth.y, selectedDebtMonth.m - 1, dueDay, 23, 59, 59, 999);
+    return now.getTime() > due.getTime();
+  }, [normalizedDueDay, selectedDebtMonth]);
+  const getDebtPeriodStatus = useCallback((row: DebtTableRow): DebtStatus => {
+    if (row.isInactive) return 'inactive';
+    if (isPaid(row.student.id, selectedDebtMonth.m, selectedDebtMonth.y)) return 'paid';
+    return isSelectedPeriodPastDue() ? 'overdue' : 'unpaid';
+  }, [isPaid, isSelectedPeriodPastDue, selectedDebtMonth]);
+
+  const selectedMonthPayments = useMemo(() => {
+    return payments.slice().reverse().filter(p => {
+      const period = getPaymentTuitionPeriod(p);
+      if (period?.m !== selectedDebtMonth.m || period?.y !== selectedDebtMonth.y) return false;
+      if (fFC && paymentClassId(p, students) !== fFC) return false;
+      return true;
+    });
+  }, [fFC, payments, selectedDebtMonth, students]);
+
+  const selectedMonthExpenses = useMemo(() => {
+    return expenses.slice().reverse().filter(e => {
+      const period = parseMoYr(e.date || '');
+      if (period?.m !== selectedDebtMonth.m || period?.y !== selectedDebtMonth.y) return false;
+      return true;
+    });
+  }, [expenses, selectedDebtMonth]);
+
+  const totalDueAmount = financeStudents.length * baseTuition;
+  const collectedAmount = selectedMonthPayments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
+  const remainingAmount = financeStudents.filter(s => !isPaid(s.id, selectedDebtMonth.m, selectedDebtMonth.y)).length * baseTuition;
+  const spentAmount = selectedMonthExpenses.reduce((sum, expense) => sum + (expense.amount || 0), 0);
+  const recentPayments = selectedMonthPayments.slice(0, 5);
+  const recentExpenses = selectedMonthExpenses.slice(0, 5);
+
+  const debtColumns = useMemo(() => [
+    {
+      key: 'student',
+      label: 'Học sinh',
+      width: '21%',
+      render: (_: unknown, row: DebtTableRow) => {
+        const s = row.student;
+        return (
+          <div style={{ minWidth: 0, opacity: row.isInactive ? 0.62 : 1 }}>
+            <p style={{ margin: 0, fontSize: 14, fontWeight: 900, color: row.isProblem ? '#be123c' : '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {capitalizeName(s.name)}
+            </p>
+            <p style={{ margin: '2px 0 0', fontSize: 11, color: '#94a3b8', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {s.id || '—'}{s.grade ? ` · Khối ${s.grade}` : ''}
+            </p>
+          </div>
+        );
+      },
+    },
+    {
+      key: 'class',
+      label: 'Lớp',
+      align: 'center' as const,
+      width: '12%',
+      render: (_: unknown, row: DebtTableRow) => row.student.classId ? <Badge color="indigo">{row.student.classId}</Badge> : <span style={{ color: '#94a3b8', fontWeight: 800 }}>—</span>,
+    },
+    {
+      key: 'sessions',
+      label: 'Số buổi',
+      align: 'center' as const,
+      width: '9%',
+      render: () => (
+        <span style={{ color: '#94a3b8', fontWeight: 900 }}>—</span>
+      ),
+    },
+    {
+      key: 'amount',
+      label: 'Thành tiền',
+      align: 'right' as const,
+      width: '13%',
+      render: (_: unknown, row: DebtTableRow) => (
+        <MoneyText value={getDebtPeriodAmount(row)} compact tone={row.status === 'paid' ? 'success' : row.status === 'overdue' ? 'danger' : undefined} />
+      ),
+    },
+    {
+      key: 'due',
+      label: 'Hạn đóng',
+      align: 'center' as const,
+      width: '11%',
+      render: () => (
+        <span style={{ color: '#475569', fontWeight: 900, whiteSpace: 'nowrap' }}>{debtDueLabel()}</span>
+      ),
+    },
+    {
+      key: 'status',
+      label: 'Trạng thái',
+      align: 'center' as const,
+      width: '12%',
+      render: (_: unknown, row: DebtTableRow) => {
+        const periodStatus = getDebtPeriodStatus(row);
+        const meta = debtStatusMeta(periodStatus);
+        return <StatusBadge domain="tuition" status={periodStatus} label={meta.label} tone={meta.tone} />;
+      },
+    },
+    {
+      key: 'actions',
+      label: 'Thao tác',
+      align: 'center' as const,
+      width: '18%',
+      render: (_: unknown, row: DebtTableRow) => {
+        const s = row.student;
+        const ph = String(s.parentPhone || '').replace(/\D/g, '');
+        const sh = String(s.studentPhone || '').replace(/\D/g, '');
+        const zaloPhone = sh.length >= 9 ? sh : ph;
+        const receipt = getDebtPeriodPayment(row);
+        const amount = getDebtPeriodAmount(row) || row.debtAmount || baseTuition;
+        const periodStatus = getDebtPeriodStatus(row);
+        return (
+          <div className="ltn-mobile-action-row" onClick={e => e.stopPropagation()} style={{ display: 'flex', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>
+            {periodStatus === 'paid' && receipt ? (
+              <Button intent="primary" variant="outline" size="sm" onClick={() => onViewInvoice(receipt)}>Biên lai</Button>
+            ) : periodStatus === 'unpaid' || periodStatus === 'overdue' ? (
+              <>
+                <Button intent="success" variant="outline" size="sm" onClick={() => onShowFAB('income')}>Thu phí</Button>
+                {zaloPhone.length >= 9 && (
+                  <a
+                    className="ltn-zalo-action"
+                    href={`https://zalo.me/${zaloPhone}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => copyMsg(s.id, makeZaloMsg(s, amount))}
+                    title="Copy tin nhắn và mở Zalo"
+                    style={{ minHeight: 34, padding: '7px 11px', borderRadius: 999, border: `1px solid ${copiedId === s.id ? '#a7f3d0' : '#bfdbfe'}`, background: copiedId === s.id ? '#ecfdf5' : '#eef6ff', color: copiedId === s.id ? '#059669' : '#0068ff', fontSize: 12, fontWeight: 900, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, textDecoration: 'none' }}
+                  >
+                    {copiedId === s.id ? <Check size={12} /> : <MessageCircle size={12} />}
+                    {copiedId === s.id ? 'Đã copy' : 'Zalo'}
+                  </a>
+                )}
+              </>
+            ) : (
+              <span style={{ color: '#cbd5e1', fontWeight: 900 }}>—</span>
+            )}
+          </div>
+        );
+      },
+    },
+  ], [baseTuition, copiedId, copyMsg, debtDueLabel, getDebtPeriodAmount, getDebtPeriodPayment, getDebtPeriodStatus, makeZaloMsg, onShowFAB, onViewInvoice]);
+
+  const ledgerColumns = useMemo(() => [
+    {
+      key: 'date',
+      label: 'Ngày',
+      width: '12%',
+      render: (_: unknown, p: Payment) => <DateText value={p.date} />,
+    },
+    {
+      key: 'student',
+      label: 'Học sinh',
+      width: '22%',
+      render: (_: unknown, p: Payment) => {
+        const st = students.find(s => s.id === p.studentId);
+        return (
+          <div style={{ minWidth: 0 }}>
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 900, color: st ? '#4f46e5' : '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {capitalizeName(p.studentName) || '—'}
+            </p>
+          </div>
+        );
+      },
+    },
+    {
+      key: 'classId',
+      label: 'Lớp',
+      align: 'center' as const,
+      width: '11%',
+      render: (_: unknown, p: Payment) => (
+        <StatusBadge domain="general" status="class" label={paymentClassId(p, students) || '—'} tone="violet" dot={false} />
+      ),
+    },
+    {
+      key: 'period',
+      label: 'Kỳ phí',
+      align: 'center' as const,
+      width: '13%',
+      render: (_: unknown, p: Payment) => {
+        const period = getPaymentTuitionPeriod(p);
+        return period ? <MonthText month={period.m} year={period.y} /> : <span style={{ color: '#94a3b8', fontWeight: 800 }}>—</span>;
+      },
+    },
+    {
+      key: 'amount',
+      label: 'Số tiền',
+      align: 'right' as const,
+      width: '14%',
+      render: (_: unknown, p: Payment) => <MoneyText value={p.amount} tone="success" />,
+    },
+    {
+      key: 'collector',
+      label: 'Người thu',
+      width: '14%',
+      render: (_: unknown, p: Payment) => {
+        const collector = paymentCollector(p, students, uClasses);
+        return (
+          <span style={{ display: 'block', fontSize: 13, fontWeight: 800, color: collector !== '—' ? '#0f172a' : '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {collector}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'actions',
+      label: 'Thao tác',
+      align: 'center' as const,
+      width: '14%',
+      render: (_: unknown, p: Payment) => (
+        <div onClick={e => e.stopPropagation()} style={{ display: 'flex', justifyContent: 'center', gap: 6, flexWrap: 'nowrap' }}>
+          <Button intent="primary" variant="outline" size="sm" onClick={() => onEditPayment(p)}>Sửa</Button>
+          <Button intent="danger" variant="outline" size="sm" onClick={() => onDeletePayment(p)}>Xóa</Button>
+        </div>
+      ),
+    },
+  ], [onDeletePayment, onEditPayment, students, uClasses]);
+
+  const expenseColumns = useMemo(() => [
+    {
+      key: 'date',
+      label: 'Ngày',
+      width: '12%',
+      render: (_: unknown, e: Expense) => <DateText value={e.date} />,
+    },
+    {
+      key: 'description',
+      label: 'Khoản chi',
+      width: '28%',
+      render: (_: unknown, e: Expense) => (
+        <span style={{ display: 'block', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13, fontWeight: 900, color: '#0f172a' }}>
+          {e.description || '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'category',
+      label: 'Hạng mục',
+      width: '16%',
+      render: (_: unknown, e: Expense) => (
+        e.category
+          ? <StatusBadge domain="general" status="category" label={e.category} tone="warning" />
+          : <span style={{ color: '#94a3b8', fontWeight: 800 }}>—</span>
+      ),
+    },
+    {
+      key: 'amount',
+      label: 'Số tiền',
+      align: 'right' as const,
+      width: '14%',
+      render: (_: unknown, e: Expense) => <MoneyText value={e.amount} tone="danger" />,
+    },
+    {
+      key: 'spender',
+      label: 'Người chi',
+      width: '16%',
+      render: (_: unknown, e: Expense) => (
+        <span style={{ display: 'block', fontSize: 13, fontWeight: 800, color: e.spender ? '#0f172a' : '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {e.spender || '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'actions',
+      label: 'Thao tác',
+      align: 'center' as const,
+      width: '14%',
+      render: (_: unknown, e: Expense) => (
+        <div onClick={event => event.stopPropagation()} style={{ display: 'flex', justifyContent: 'center', gap: 6, flexWrap: 'nowrap' }}>
+          <Button intent="primary" variant="outline" size="sm" onClick={() => onEditExpense(e)}>Sửa</Button>
+          <Button intent="danger" variant="outline" size="sm" onClick={() => onDeleteExpense(e)}>Xóa</Button>
+        </div>
+      ),
+    },
+  ], [onDeleteExpense, onEditExpense]);
+
+  const financeTabs = (
+    <ToolbarTabs
+      tabs={[
+        { id: 'debt' as FinanceSub, label: 'Công nợ' },
+        { id: 'ledger' as FinanceSub, label: 'Phiếu thu' },
+        { id: 'expense' as FinanceSub, label: 'Phiếu chi' },
+      ]}
+      active={finSub}
+      onChange={id => setFinanceSubtab?.(id)}
+    />
+  );
+
+  const financeFilterRow = (
+    <>
+      {finSub === 'debt' && (
+        <>
+          <Select value={fFC} onChange={v => { setFFC(v); setPgF(1); }} options={classOptions} size="md" style={{ width: 104, minWidth: 96 }} />
+          <MonthSelect value={debtPeriodValue} allowAll={false} onChange={v => { setFMo(v); setPgF(1); }} />
+        </>
       )}
-      <div style={{ marginLeft: 'auto' }}>
-        <Button size="sm" intent="success" variant="outline" onClick={exportExpenses}>Xuất CSV</Button>
-      </div>
-    </div>
-  ) : null;
+      {finSub === 'ledger' && (
+        <>
+          <MonthSelect value={lFilterMo} onChange={v => { setLFilterMo(v); setPgLedger(1); }} />
+          <Select value={lFilterCls} onChange={v => { setLFilterCls(v); setPgLedger(1); }} options={classOptions} size="md" style={{ width: 104, minWidth: 96 }} />
+        </>
+      )}
+      {finSub === 'expense' && (
+        <>
+          <MonthSelect value={eFilterMo} onChange={v => { setEFilterMo(v); setPgExpense(1); }} />
+          <Select value={eFilterSpender} onChange={v => { setEFilterSpender(v); setPgExpense(1); }} options={expenseSpenderOptions} size="md" style={{ width: 128, minWidth: 112 }} />
+        </>
+      )}
+    </>
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div style={FIN_HEADER}>
-        <div style={{ flexShrink: 0 }}>
-          <h2 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>
-            Tài chính
-          </h2>
-          <p style={{ fontSize: 12, color: '#64748b', margin: '2px 0 0' }}>
-            Công nợ, phiếu thu/chi
-          </p>
-        </div>
-        <span style={{ width: 1, height: 22, background: '#e2e8f0', flexShrink: 0 }} />
-        <div style={{ padding: 3, background: '#f1f5f9', borderRadius: 12, overflowX: 'auto', maxWidth: '100%' }}>
-          <FilterTabs
-            variant="segment"
-            size="sm"
-            active={finSub}
-            onChange={id => setFinSub(id as FinanceSub)}
-            tabs={[
-              { id: 'report', label: 'Tổng hợp', icon: <BarChart3 size={12} /> },
-              { id: 'debt', label: 'Công nợ', icon: <DollarSign size={12} />, count: unpaidNow },
-              { id: 'ledger', label: 'Phiếu thu', icon: <ReceiptText size={12} />, count: filteredLedger.length },
-              { id: 'expense', label: 'Phiếu chi', icon: <TrendingDown size={12} />, count: filteredExpenses.length },
-            ]}
-          />
-        </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <Button intent="success" size="sm" icon={<Plus size={13} />} onClick={onShowFAB}>
-            Thêm phiếu thu/chi
+      <style>{`
+        .finance-toolbar-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+        .finance-toolbar-filters select{min-width:96px}
+        @media(max-width:767px){
+          .finance-toolbar-filters{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+          .finance-toolbar-filters select{width:100%!important;min-width:0!important}
+        }
+      `}</style>
+      <PageToolbar
+        title="Học phí"
+        actions={(
+          <Button intent={finSub === 'expense' ? 'danger' : 'success'} size="sm" icon={<Plus size={13} />} onClick={() => onShowFAB(finSub === 'expense' ? 'expense' : 'income')}>
+            {finSub === 'expense' ? 'Thêm phiếu chi' : 'Thêm phiếu thu'}
           </Button>
+        )}
+      >
+        {financeTabs}
+        <div className="finance-toolbar-filters">
+          {financeFilterRow}
         </div>
-      </div>
+      </PageToolbar>
 
-      {financeFilterRow}
-
-
+      {finSub === 'debt' && (
+        <ActionableKpiGrid>
+          <ActionableKpi
+            icon={Wallet}
+            value={<MoneyText value={totalDueAmount} compact />}
+            label="Phải thu tháng này"
+            sub={`${financeStudents.length} học sinh tính phí`}
+            tone="primary"
+          />
+          <ActionableKpi
+            icon={TrendingUp}
+            value={<MoneyText value={collectedAmount} compact tone="success" />}
+            label="Đã thu"
+            sub={`${selectedMonthPayments.length} phiếu thu`}
+            tone="success"
+          />
+          <ActionableKpi
+            icon={AlertTriangle}
+            value={<MoneyText value={remainingAmount} compact tone={remainingAmount > 0 ? 'danger' : 'success'} />}
+            label="Còn nợ"
+            sub={`T${selectedDebtMonth.m}/${selectedDebtMonth.y}`}
+            tone={remainingAmount > 0 ? 'danger' : 'success'}
+          />
+          <ActionableKpi
+            icon={TrendingDown}
+            value={<MoneyText value={spentAmount} compact tone="danger" />}
+            label="Đã chi"
+            sub={`${selectedMonthExpenses.length} phiếu chi`}
+            tone="danger"
+          />
+        </ActionableKpiGrid>
+      )}
 
       {/* ══ CÔNG NỢ ══ */}
       {finSub === 'debt' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={TABLE_WRAP}>
-            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' as any }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  <th style={{ ...TH_SHARED, textAlign: 'left' }}>Học sinh</th>
-                  <th style={{ ...TH_SHARED, textAlign: 'center' }}>Lớp</th>
-                  <th style={{ ...TH_SHARED, textAlign: 'center', minWidth: 200 }}>Tình trạng đóng phí ({schoolYearMonths.length} tháng)</th>
-                  <th style={{ ...TH_SHARED, textAlign: 'center', background: '#fef2f2', color: '#be123c', minWidth: 52 }}>Nợ</th>
-                  <th style={{ ...TH_SHARED, textAlign: 'right', background: '#fef2f2', color: '#be123c', minWidth: 90 }}>Tổng nợ</th>
-                  <th style={{ ...TH_SHARED, textAlign: 'center' }}>Liên hệ</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagedFin.length === 0
-                  ? <tr><td colSpan={6}><EmptyState title="Không có học sinh phù hợp" subtitle="Thử đổi kỳ học phí, trạng thái đóng phí hoặc bộ lọc lớp." /></td></tr>
-                  : pagedFin.map((s, rowIdx) => {
-                    const ph = String(s.parentPhone || '').replace(/\D/g, '');
-                    const sh = String(s.studentPhone || '').replace(/\D/g, '');
-                    const isInactive = s.status === 'inactive' || (s.endDate && s.endDate !== '---' && s.endDate !== '');
-
-                    // Chỉ tính tháng mà học sinh thực sự phải đóng
-                    // FIX A: chỉ tính tháng đã qua/đang diễn ra — không tính tương lai là nợ
-                    const billableMonths = schoolYearMonths.filter(fm => {
-                      if (!isMonthBillable(s, fm)) return false;
-                      if (fm.y > curYr) return false;
-                      if (fm.y === curYr && fm.m > curMo) return false;
-                      return true;
-                    });
-                    const unpaidCount = billableMonths.filter(fm => !isPaid(s.id, fm.m, fm.y)).length;
-                    const paidCount   = billableMonths.filter(fm =>  isPaid(s.id, fm.m, fm.y)).length;
-                    const paidPct     = billableMonths.length > 0 ? Math.round(paidCount / billableMonths.length * 100) : 100;
-                    const isProblem   = !isInactive && unpaidCount > 2;
-                    const isWarning   = !isInactive && unpaidCount === 2;
-                    const rowBg = isInactive ? '#f8fafc' : isProblem ? '#fff5f5' : isWarning ? '#fefce8' : undefined;
-                    return (
-                      <tr key={s.id} style={{ ...trStyle(rowIdx), ...(rowBg ? { background: rowBg } : {}), opacity: isInactive ? 0.6 : 1 }}>
-                        <td style={{ ...TD_SHARED, whiteSpace: 'nowrap' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <div style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: isInactive ? '#cbd5e1' : isProblem ? '#ef4444' : isWarning ? '#f59e0b' : '#a7f3d0' }} />
-                            <div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                                <p style={{ fontWeight: 700, color: isInactive ? '#94a3b8' : isProblem ? '#be123c' : '#0f172a', margin: 0, fontSize: 13 }}>{capitalizeName(s.name)}</p>
-                                {isInactive && <span style={{ fontSize: 9, fontWeight: 700, background: '#e2e8f0', color: '#64748b', padding: '1px 5px', borderRadius: 4, textTransform: 'uppercase' }}>Nghỉ</span>}
-                              </div>
-                              <p style={{ fontSize: 11, color: '#94a3b8', margin: 0 }}>{s.id}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td style={{ ...TD_SHARED, textAlign: 'center' }}><Badge color="indigo">{s.classId}</Badge></td>
-                        <td style={{ ...TD_SHARED, padding: '8px 14px' }}>
-                          {/* Thanh tiến độ + dots tháng */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <div style={{ flex: 1, height: 6, background: '#e2e8f0', borderRadius: 4, overflow: 'hidden' }}>
-                              <div style={{ height: '100%', width: `${paidPct}%`, background: isInactive ? '#94a3b8' : unpaidCount === 0 ? '#10b981' : unpaidCount <= 2 ? '#f59e0b' : '#ef4444', borderRadius: 4, transition: 'width 0.3s' }} />
-                            </div>
-                            <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', whiteSpace: 'nowrap', minWidth: 32 }}>{paidCount}/{billableMonths.length}</span>
-                          </div>
-                          {/* Dots mini cho từng tháng — 3 trạng thái: đã đóng / chưa đóng / chưa học */}
-                          <div style={{ display: 'flex', gap: 3, marginTop: 5, flexWrap: 'wrap' }}>
-                            {schoolYearMonths.map(fm => {
-                              const billable = isMonthBillable(s, fm);
-                              const paid = isPaid(s.id, fm.m, fm.y);
-                              const isCurM   = fm.m === curMo && fm.y === curYr;
-                              // FIX A: tháng tương lai — xám trung tính, không tính là nợ
-                              const isFuture = fm.y > curYr || (fm.y === curYr && fm.m > curMo);
-
-                              // Màu dot theo trạng thái
-                              let dotBg = '#e2e8f0';       // mặc định: chưa học (xám nhạt)
-                              let dotColor = '#cbd5e1';
-                              let dotBorder = '1px solid transparent';
-                              let dotTitle = `T${fm.m}/${fm.y}: Chưa học`;
-
-                              if (!billable) {
-                                // Chưa bắt đầu hoặc đã nghỉ — xám sọc
-                                dotBg = '#f1f5f9';
-                                dotColor = '#e2e8f0';
-                                dotTitle = `T${fm.m}/${fm.y}: Chưa học`;
-                              } else if (paid) {
-                                dotBg = '#10b981';
-                                dotColor = 'white';
-                                dotBorder = '1px solid transparent';
-                                dotTitle = `T${fm.m}/${fm.y}: Đã đóng`;
-                              } else if (isFuture) {
-                                // Tháng tương lai — xám nhạt, không tính là nợ
-                                dotBg = '#f8fafc';
-                                dotColor = '#e2e8f0';
-                                dotBorder = '1px solid #e2e8f0';
-                                dotTitle = `T${fm.m}/${fm.y}: Chưa đến`;
-                              } else {
-                                // Đã đến hạn nhưng chưa đóng
-                                dotBg = isCurM ? '#fca5a5' : '#fde68a';
-                                dotColor = isCurM ? '#dc2626' : '#92400e';
-                                dotBorder = isCurM ? '1.5px solid #ef4444' : '1px solid #fcd34d';
-                                dotTitle = `T${fm.m}/${fm.y}: Chưa đóng`;
-                              }
-
-                              return (
-                                <div key={`${fm.m}-${fm.y}`} title={dotTitle}
-                                  style={{ width: 14, height: 14, borderRadius: 3, background: dotBg, border: dotBorder, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: billable ? 1 : 0.4 }}>
-                                  <span style={{ fontSize: 7, fontWeight: 700, color: dotColor, lineHeight: 1 }}>{fm.m}</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </td>
-                        <td style={{ ...TD_SHARED, textAlign: 'center' }}>
-                          <span style={{ fontSize: 12, fontWeight: 800, padding: '3px 8px', borderRadius: 6, background: isProblem ? '#fee2e2' : isWarning ? '#fef9c3' : '#f1f5f9', color: isProblem ? '#b91c1c' : isWarning ? '#92400e' : '#64748b' }}>
-                            {unpaidCount}T
-                          </span>
-                        </td>
-                        <td style={{ ...TD_SHARED, textAlign: 'right', fontWeight: 700, color: isProblem ? '#b91c1c' : '#64748b', whiteSpace: 'nowrap' }}>
-                          {unpaidCount > 0 ? fmtVND(unpaidCount * baseTuition) : '—'}
-                        </td>
-                        <td style={{ ...TD_SHARED, textAlign: 'center' }}>
-                          <div style={{ display: 'flex', justifyContent: 'center', gap: 5 }}>
-                            <button onClick={() => onViewFinance(s)} style={{ width: 28, height: 28, background: '#eef2ff', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6 }}><Eye size={12} color="#6366f1" /></button>
-                            {(ph.length >= 9 || sh.length >= 9) && (<>
-                              {/* FIX: Zalo không hỗ trợ pre-fill qua URL — bỏ ?text=
-                                  Thay bằng nút copy message riêng */}
-                              <button
-                                onClick={() => copyMsg(s.id, makeZaloMsg(s))}
-                                title="Copy nội dung nhắc phí"
-                                style={{ width: 28, height: 28, background: copiedId === s.id ? '#ecfdf5' : '#f0fdf4', border: `1px solid ${copiedId === s.id ? '#a7f3d0' : '#bbf7d0'}`, color: copiedId === s.id ? '#059669' : '#16a34a', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', borderRadius: 6, cursor: 'pointer' }}>
-                                {copiedId === s.id ? <Check size={11} /> : <Copy size={11} />}
-                              </button>
-                            </>)}
-                            {ph.length >= 9 && (
-                              <a href={`https://zalo.me/${ph}`} target="_blank" rel="noopener noreferrer" style={{ width: 28, height: 28, background: '#eff6ff', border: '1px solid #bfdbfe', color: '#0068FF', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', borderRadius: 6 }} title="Mở Zalo PH (copy nội dung trước)"><ZaloIcon /></a>
-                            )}
-                            {sh.length >= 9 && (
-                              <a href={`https://zalo.me/${sh}`} target="_blank" rel="noopener noreferrer" style={{ width: 28, height: 28, background: '#eef6ff', border: '1px solid #bfdbfe', color: '#0068FF', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', borderRadius: 6 }} title="Mở Zalo HS (copy nội dung trước)"><ZaloIcon /></a>
-                            )}
-                            {s.facebookUrl && (
-                              <a href={s.facebookUrl.startsWith('http') ? s.facebookUrl : `https://m.me/${s.facebookUrl}`}
-                                target="_blank" rel="noopener noreferrer"
-                                style={{ width: 28, height: 28, background: '#f0f4ff', border: '1px solid #c7d2fe', color: '#2563eb', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', borderRadius: 6 }}
-                                title="Messenger PH"><MessengerIcon /></a>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                }
-              </tbody>
-            </table>
-            </div>
-            <div style={{ borderTop: '1px solid #f1f5f9', background: '#fafafa' }}>
-              <Pager page={pgF} total={filtFin.length} perPage={IPP} setPage={setPgF} showTotal />
-            </div>
+        <div style={{ display: 'grid', gap: 14 }}>
+          <style>{`
+            .fin-debt-desktop{display:block}.fin-debt-mobile{display:none}
+            @media(max-width:767px){.fin-debt-desktop{display:none!important}.fin-debt-mobile{display:block!important}}
+            .finance-recent-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+            .finance-section-title{margin:0 0 8px;font-size:13px;font-weight:900;color:#475569;text-transform:uppercase;letter-spacing:.06em}
+            @media(max-width:900px){.finance-recent-grid{grid-template-columns:1fr}}
+          `}</style>
+          <section>
+          <div className="fin-debt-desktop">
+            <DataTable
+              columns={debtColumns}
+              data={pagedDebtRows}
+              rowKey="id"
+              emptyText="Không có học sinh phù hợp"
+              emptySub="Thử đổi lớp hoặc tháng học phí."
+              onRowClick={row => onViewFinance(row.student)}
+              scrollX={false}
+              density="compact"
+              footer={<Pager page={pgF} total={debtTableRows.length} perPage={IPP} setPage={setPgF} showTotal />}
+            />
           </div>
+
+          <div className="fin-debt-mobile" style={{ padding: 10 }}>
+            {pagedDebtRows.length === 0 ? (
+              <EmptyState text="Không có học sinh phù hợp" sub="Thử đổi bộ lọc công nợ." compact />
+            ) : pagedDebtRows.map(row => {
+              const s = row.student;
+              const ph = String(s.parentPhone || '').replace(/\D/g, '');
+              const sh = String(s.studentPhone || '').replace(/\D/g, '');
+              const periodStatus = getDebtPeriodStatus(row);
+              const meta = debtStatusMeta(periodStatus);
+              const receipt = getDebtPeriodPayment(row);
+              const amount = getDebtPeriodAmount(row);
+              const actionAmount = amount || row.debtAmount || baseTuition;
+              return (
+                <MobileCard
+                  key={`${s.id}-debt-card`}
+                  title={capitalizeName(s.name)}
+                  subtitle={`${s.id || '—'}${s.grade ? ` · Khối ${s.grade}` : ''} · ${s.classId || 'Chưa có lớp'}`}
+                  badge={<StatusBadge domain="tuition" status={periodStatus} label={meta.label} tone={meta.tone} />}
+                  tone={meta.tone}
+                  onClick={() => onViewFinance(s)}
+                  style={{ marginBottom: 8, opacity: row.isInactive ? 0.68 : 1 }}
+                  rows={[
+                    { label: 'Lớp', value: s.classId || '—' },
+                    { label: 'Số buổi', value: '—' },
+                    { label: 'Thành tiền', value: <MoneyText value={amount} compact tone={periodStatus === 'paid' ? 'success' : periodStatus === 'overdue' ? 'danger' : undefined} /> },
+                    { label: 'Hạn đóng', value: '—' },
+                  ]}
+                  actions={(
+                    <div className="ltn-mobile-action-row" onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 7, width: '100%', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                      {periodStatus === 'paid' && receipt ? (
+                        <button onClick={() => onViewInvoice(receipt)} style={{ minHeight: 40, padding: '8px 12px', borderRadius: 999, background: '#eef2ff', border: '1px solid #c7d2fe', color: '#4f46e5', fontWeight: 900, fontSize: 12, cursor: 'pointer' }}>
+                          Biên lai
+                        </button>
+                      ) : periodStatus === 'overdue' && (ph.length >= 9 || sh.length >= 9) ? (
+                        <button className="ltn-zalo-action" onClick={() => copyMsg(s.id, makeZaloMsg(s, actionAmount))} style={{ minHeight: 42, padding: '9px 13px', borderRadius: 999, background: copiedId === s.id ? '#ecfdf5' : '#f0fdf4', border: `1px solid ${copiedId === s.id ? '#a7f3d0' : '#bbf7d0'}`, color: copiedId === s.id ? '#059669' : '#16a34a', fontWeight: 900, fontSize: 12, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                          {copiedId === s.id ? <Check size={13} /> : <Copy size={13} />}
+                          {copiedId === s.id ? 'Đã copy' : 'Nhắc phí'}
+                        </button>
+                      ) : periodStatus === 'unpaid' || periodStatus === 'overdue' ? (
+                        <button onClick={() => onShowFAB('income')} style={{ minHeight: 40, padding: '8px 12px', borderRadius: 999, background: '#ecfdf5', border: '1px solid #bbf7d0', color: '#047857', fontWeight: 900, fontSize: 12, cursor: 'pointer' }}>
+                          Thu phí
+                        </button>
+                      ) : null}
+                    </div>
+                  )}
+                />
+              );
+            })}
+            <Pager page={pgF} total={debtTableRows.length} perPage={IPP} setPage={setPgF} showTotal />
+          </div>
+          </section>
+
+          <section className="finance-recent-grid">
+            <div>
+              <h3 className="finance-section-title">Phiếu thu gần đây</h3>
+              <DataTable
+                columns={[
+                  { key: 'date', label: 'Ngày', width: '16%', render: (_: unknown, p: Payment) => <DateText value={p.date} /> },
+                  { key: 'student', label: 'Học sinh', width: '28%', render: (_: unknown, p: Payment) => <span style={{ fontSize: 13, fontWeight: 900, color: '#0f172a' }}>{capitalizeName(p.studentName) || '—'}</span> },
+                  { key: 'period', label: 'Kỳ phí', align: 'center' as const, width: '18%', render: (_: unknown, p: Payment) => {
+                    const period = getPaymentTuitionPeriod(p);
+                    return period ? <MonthText month={period.m} year={period.y} /> : <span style={{ color: '#94a3b8', fontWeight: 800 }}>—</span>;
+                  } },
+                  { key: 'amount', label: 'Số tiền', align: 'right' as const, width: '18%', render: (_: unknown, p: Payment) => <MoneyText value={p.amount} compact tone="success" /> },
+                  { key: 'method', label: 'Thanh toán', width: '20%', render: (_: unknown, p: Payment) => normalizePaymentMethod(p.method) || '—' },
+                ]}
+                data={recentPayments}
+                rowKey={(p) => p.id || p.docNum || `${p.studentId}-${p.date}-${p.amount}`}
+                emptyText="Chưa có phiếu thu trong kỳ"
+                emptySub="Phiếu thu mới sẽ hiển thị tại đây."
+                onRowClick={onViewInvoice}
+                scrollX={false}
+                density="compact"
+              />
+            </div>
+            <div>
+              <h3 className="finance-section-title">Phiếu chi gần đây</h3>
+              <DataTable
+                columns={[
+                  { key: 'date', label: 'Ngày', width: '18%', render: (_: unknown, e: Expense) => <DateText value={e.date} /> },
+                  { key: 'description', label: 'Khoản chi', width: '34%', render: (_: unknown, e: Expense) => <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13, fontWeight: 900, color: '#0f172a' }}>{e.description || '—'}</span> },
+                  { key: 'category', label: 'Phân loại', width: '24%', render: (_: unknown, e: Expense) => e.category || '—' },
+                  { key: 'amount', label: 'Số tiền', align: 'right' as const, width: '24%', render: (_: unknown, e: Expense) => <MoneyText value={e.amount} compact tone="danger" /> },
+                ]}
+                data={recentExpenses}
+                rowKey={(e) => e.id || e.docNum || `${e.date}-${e.description}-${e.amount}`}
+                emptyText="Chưa có phiếu chi trong kỳ"
+                emptySub="Phiếu chi mới sẽ hiển thị tại đây."
+                onRowClick={onViewExpense}
+                scrollX={false}
+                density="compact"
+              />
+            </div>
+          </section>
         </div>
       )}
 
       {/* ══ SỔ CÁI — NO stat blocks ══ */}
       {finSub === 'ledger' && (
-        <div style={TABLE_WRAP}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '1px solid #f1f5f9', flexWrap: 'wrap' }}>
-            <DollarSign size={14} color="#10b981" />
-            <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Thu học phí ({filteredLedger.length}/{payments.length} phiếu)</p>
-            <StatusBadge domain="data" status={lFilterMo || lFilterCls ? 'local' : 'synced'} label={lFilterMo || lFilterCls ? 'Đang lọc' : 'Toàn bộ'} />
-          </div>
-          {/* Desktop */}
-          <div className="fin-desktop" style={{ overflowX: 'auto' }}>
-            <style>{`.fin-desktop{display:block}.fin-mobile{display:none}@media(max-width:767px){.fin-desktop{display:none!important}.fin-mobile{display:block!important}}`}</style>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  {['Ngày thu', 'Học sinh', 'Kỳ HP', 'Người nộp', 'Số tiền', ''].map((h, i) => (
-                    <th key={i} style={{ ...TH_SHARED, textAlign: i >= 4 ? 'right' : 'left' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredLedger.length === 0
-                  ? <tr><td colSpan={6}><EmptyState title="Chưa có phiếu thu phù hợp" subtitle="Phiếu thu mới hoặc kết quả lọc sẽ hiển thị tại đây." /></td></tr>
-                  : pagedLedger.map((p, i) => (
-                    <tr key={i} onMouseEnter={() => setHovPay(i)} onMouseLeave={() => setHovPay(null)} style={trStyle(i, hovPay === i)}>
-                      <td style={{ ...TD_SHARED, fontSize: 12, color: '#475569' }}>{formatDate(p.date)}</td>
-                      <td style={TD_SHARED}>
-                        {(() => {
-                          const st = students.find(s => s.id === p.studentId);
-                          const cls = paymentClassId(p, students);
-                          return (
-                            <div>
-                              <p style={{ fontWeight:600, margin:0, fontSize:13, color: st?'#6366f1':'#1e293b', cursor:st?'pointer':'default' }}
-                                onClick={() => st && onViewFinance(st)} title={st?'Xem hồ sơ tài chính':undefined}>
-                                {capitalizeName(p.studentName)}
-                              </p>
-                              <p style={{ fontSize: 10, color: '#94a3b8', margin: '2px 0 0' }}>{p.studentId}{cls ? ` · ${cls}` : ''}</p>
-                            </div>
-                          );
-                        })()}
-                      </td>
-                      <td style={TD_SHARED}>
-                        <Badge color="emerald">{tuitionPeriodLabel(p)}</Badge>
-                        {p.description && <p style={{ fontSize: 10, color: '#94a3b8', margin: '4px 0 0' }}>{fmtDesc(p.description)}</p>}
-                      </td>
-                      <td style={TD_SHARED}>{p.payer || '---'}</td>
-                      <td style={{ ...TD_SHARED, textAlign: 'right', fontWeight: 700, color: '#059669' }}>+{fmtVND(p.amount)}</td>
-                      <td style={{ ...TD_SHARED, textAlign: 'center' }}>
-                        <div style={{ display: 'flex', justifyContent: 'center', gap: 5 }}>
-                          <button onClick={() => onViewInvoice(p)} style={{ width: 30, height: 30, background: '#fff7ed', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Eye size={13} color="#f97316" /></button>
-                          <button onClick={() => onEditPayment(p)} style={{ width: 30, height: 30, background: '#eef2ff', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Edit3 size={13} color="#6366f1" /></button>
-                          <button onClick={() => onDeletePayment(p)} style={{ width: 30, height: 30, background: '#fff1f2', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Trash2 size={13} color="#f87171" /></button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                }
-              </tbody>
-            </table>
-          </div>
-          {/* Mobile cards */}
-          <div className="fin-mobile">
-            {filteredLedger.length === 0
-              ? <EmptyState title="Chưa có phiếu thu phù hợp" subtitle="Phiếu thu mới hoặc kết quả lọc sẽ hiển thị tại đây." />
-              : pagedLedger.map((p, i) => (
-                <div key={i} style={{ padding: '11px 14px', borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? 'white' : '#f9fafc' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontSize:13, fontWeight:700, margin:0, ...(students.find(s=>s.id===p.studentId) ? {color:'#6366f1',cursor:'pointer',textDecoration:'underline',textDecorationStyle:'dotted' as const,textUnderlineOffset:3} : {color:'#0f172a'}) }}
-                        onClick={() => { const st=students.find(s=>s.id===p.studentId); if(st) onViewFinance(st); }}>
-                        {capitalizeName(p.studentName)}
-                      </p>
-                      <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 0' }}>{p.studentId}{paymentClassId(p, students) ? ` · ${paymentClassId(p, students)}` : ''}</p>
-                      <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 0' }}>{formatDate(p.date)} · {tuitionPeriodLabel(p)} · {normalizePaymentMethod(p.method)}</p>
-                    </div>
-                    <span style={{ fontSize: 15, fontWeight: 800, color: '#059669', flexShrink: 0 }}>+{fmtVND(p.amount)}</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                    <button onClick={() => onViewInvoice(p)} style={{ flex: 1, padding: '6px 0', background: '#fff7ed', color: '#f97316', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Xem phiếu</button>
-                    <button onClick={() => onEditPayment(p)} style={{ flex: 1, padding: '6px 0', background: '#eef2ff', color: '#6366f1', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Sửa</button>
-                    <button onClick={() => onDeletePayment(p)} style={{ width: 34, padding: '6px 0', background: '#fff1f2', color: '#f87171', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>✕</button>
-                  </div>
-                </div>
-              ))
-            }
-          </div>
-          {/* Phân trang sổ cái */}
-          <div style={{ borderTop: '1px solid #f1f5f9', background: '#fafafa' }}>
-            <Pager page={pgLedger} total={filteredLedger.length} perPage={LEDGER_IPP} setPage={setPgLedger} showTotal />
-          </div>
+        <div>
+          <style>{`
+            .fin-ledger-desktop{display:block}.fin-ledger-mobile{display:none}
+            .fin-expense-desktop{display:block}.fin-expense-mobile{display:none}
+            .finance-transaction-section{display:grid;gap:0;margin-bottom:16px}
+            @media(max-width:767px){.fin-ledger-desktop,.fin-expense-desktop{display:none!important}.fin-ledger-mobile,.fin-expense-mobile{display:grid!important}}
+          `}</style>
+          <section className="finance-transaction-section">
+            <div className="fin-ledger-desktop">
+              <DataTable
+                columns={ledgerColumns}
+                data={pagedLedger}
+                rowKey={(p) => p.id || p.docNum || `${p.studentId}-${p.date}-${p.amount}`}
+                emptyText="Chưa có phiếu thu phù hợp"
+                emptySub="Thử đổi tháng hoặc lớp."
+                onRowClick={onViewInvoice}
+                scrollX={false}
+                density="compact"
+                footer={<Pager page={pgLedger} total={filteredLedger.length} perPage={LEDGER_IPP} setPage={setPgLedger} showTotal />}
+              />
+            </div>
+            <div className="fin-ledger-mobile" style={{ gap: 8, padding: 10 }}>
+            {pagedLedger.length === 0 ? (
+                <EmptyState text="Chưa có phiếu thu phù hợp" sub="Thử đổi tháng hoặc lớp." compact />
+              ) : pagedLedger.map(p => {
+                const period = getPaymentTuitionPeriod(p);
+                const cls = paymentClassId(p, students);
+                return (
+                  <MobileCard
+                    key={p.id || p.docNum || `${p.studentId}-${p.date}-${p.amount}`}
+                    title={capitalizeName(p.studentName) || p.docNum || 'Phiếu thu'}
+                    subtitle={`${p.studentId || '—'}${cls ? ` · ${cls}` : ''}`}
+                    badge={<MoneyText value={p.amount} tone="success" />}
+                    tone="success"
+                    onClick={() => onViewInvoice(p)}
+                    rows={[
+                      { label: 'Ngày thu', value: <DateText value={p.date} /> },
+                      { label: 'Lớp', value: cls || '—' },
+                      { label: 'Kỳ phí', value: period ? <MonthText month={period.m} year={period.y} /> : '—' },
+                      { label: 'Người thu', value: paymentCollector(p, students, uClasses) },
+                    ]}
+                    actions={(
+                      <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 7, width: '100%', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                        <Button intent="primary" variant="outline" size="sm" onClick={() => onEditPayment(p)}>Sửa</Button>
+                        <Button intent="danger" variant="outline" size="sm" onClick={() => onDeletePayment(p)}>Xóa</Button>
+                      </div>
+                    )}
+                  />
+                );
+              })}
+              <Pager page={pgLedger} total={filteredLedger.length} perPage={LEDGER_IPP} setPage={setPgLedger} showTotal />
+            </div>
+          </section>
         </div>
       )}
       {finSub === 'expense' && (
-        <div style={TABLE_WRAP}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '1px solid #f1f5f9' }}>
-            <TrendingDown size={14} color="#f87171" />
-            <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Chi tiêu ({filteredExpenses.length}/{expenses.length} phiếu chi)</p>
-            <StatusBadge domain="data" status={eFilterMo || eFilterCat || eFilterSpender ? 'local' : 'synced'} label={eFilterMo || eFilterCat || eFilterSpender ? 'Đang lọc' : 'Toàn bộ'} />
+        <div>
+          <style>{`
+            .fin-expense-desktop{display:block}.fin-expense-mobile{display:none}
+            @media(max-width:767px){.fin-expense-desktop{display:none!important}.fin-expense-mobile{display:grid!important}}
+          `}</style>
+          <div className="fin-expense-desktop">
+            <DataTable
+              columns={expenseColumns}
+              data={pagedExpense}
+              rowKey={(e) => e.id || e.docNum || `${e.date}-${e.description}-${e.amount}`}
+              emptyText="Chưa có phiếu chi phù hợp"
+              emptySub="Thử đổi tháng hoặc người chi."
+              onRowClick={onViewExpense}
+              scrollX={false}
+              density="compact"
+              footer={<Pager page={pgExpense} total={filteredExpenses.length} perPage={EXPENSE_IPP} setPage={setPgExpense} showTotal />}
+            />
           </div>
-          {/* Desktop */}
-          <div className="fin-exp-desktop" style={{ overflowX: 'auto' }}>
-            <style>{`.fin-exp-desktop{display:block}.fin-exp-mobile{display:none}@media(max-width:767px){.fin-exp-desktop{display:none!important}.fin-exp-mobile{display:block!important}}`}</style>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  {['Ngày', 'Nội dung', 'Hạng mục', 'Người chi', 'Số tiền', ''].map((h, i) => (
-                    <th key={i} style={{ ...TH_SHARED, textAlign: i >= 4 ? 'right' : 'left' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredExpenses.length === 0
-                  ? <tr><td colSpan={6}><EmptyState title="Chưa có phiếu chi phù hợp" subtitle="Phiếu chi mới hoặc kết quả lọc sẽ hiển thị tại đây." /></td></tr>
-                  : pagedExpense.map((e, i) => (
-                    <tr key={`${e.docNum}-${i}`} onMouseEnter={() => setHovExp(i)} onMouseLeave={() => setHovExp(null)} style={trStyle(i, hovExp === i)}>
-                      <td style={{ ...TD_SHARED, fontSize: 12, color: '#475569' }}>{formatDate(e.date)}</td>
-                      <td style={TD_SHARED}>{e.description}</td>
-                      <td style={TD_SHARED}><Badge color="amber">{e.category}</Badge></td>
-                      <td style={TD_SHARED}>{e.spender}</td>
-                      <td style={{ ...TD_SHARED, textAlign: 'right', fontWeight: 700, color: '#e11d48' }}>-{fmtVND(e.amount)}</td>
-                      <td style={{ ...TD_SHARED, textAlign: 'center' }}>
-                        <div style={{ display: 'flex', justifyContent: 'center', gap: 5 }}>
-                          <button onClick={() => onViewExpense(e)} style={{ width: 30, height: 30, background: '#fff1f2', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Eye size={13} color="#dc2626" /></button>
-                          <button onClick={() => onEditExpense(e)} style={{ width: 30, height: 30, background: '#eef2ff', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Edit3 size={13} color="#6366f1" /></button>
-                          <button onClick={() => onDeleteExpense(e)} style={{ width: 30, height: 30, background: '#fff1f2', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Trash2 size={13} color="#f87171" /></button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                }
-              </tbody>
-            </table>
-          </div>
-          {/* Mobile cards */}
-          <div className="fin-exp-mobile">
-            {filteredExpenses.length === 0
-              ? <EmptyState title="Chưa có phiếu chi phù hợp" subtitle="Phiếu chi mới hoặc kết quả lọc sẽ hiển thị tại đây." />
-              : pagedExpense.map((e, i) => (
-                <div key={`${e.docNum}-mb-${i}`} style={{ padding: '11px 14px', borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? 'white' : '#f9fafc' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', margin: 0 }}>{e.description}</p>
-                      <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 0' }}>{formatDate(e.date)} · {e.category}</p>
+          <div className="fin-expense-mobile" style={{ gap: 8, padding: 10 }}>
+            {pagedExpense.length === 0 ? (
+              <EmptyState text="Chưa có phiếu chi phù hợp" sub="Thử đổi tháng hoặc người chi." compact />
+            ) : pagedExpense.map(e => (
+                <MobileCard
+                  key={e.id || e.docNum || `${e.date}-${e.description}-${e.amount}`}
+                  title={e.description || e.docNum || 'Phiếu chi'}
+                  subtitle={e.docNum || '—'}
+                  badge={<MoneyText value={e.amount} tone="danger" />}
+                  tone="danger"
+                  onClick={() => onViewExpense(e)}
+                  rows={[
+                    { label: 'Ngày chi', value: <DateText value={e.date} /> },
+                    { label: 'Hạng mục', value: e.category || '—' },
+                    { label: 'Người chi', value: e.spender || '—' },
+                  ]}
+                  actions={(
+                    <div onClick={event => event.stopPropagation()} style={{ display: 'flex', gap: 7, width: '100%', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                      <Button intent="primary" variant="outline" size="sm" onClick={() => onEditExpense(e)}>Sửa</Button>
+                      <Button intent="danger" variant="outline" size="sm" onClick={() => onDeleteExpense(e)}>Xóa</Button>
                     </div>
-                    <span style={{ fontSize: 15, fontWeight: 800, color: '#e11d48', flexShrink: 0 }}>-{fmtVND(e.amount)}</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                    <button onClick={() => onViewExpense(e)} style={{ flex: 1, padding: '6px 0', background: '#fff1f2', color: '#dc2626', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Xem phiếu</button>
-                    <button onClick={() => onEditExpense(e)} style={{ flex: 1, padding: '6px 0', background: '#eef2ff', color: '#6366f1', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Sửa</button>
-                    <button onClick={() => onDeleteExpense(e)} style={{ flex: 1, padding: '6px 0', background: '#fff1f2', color: '#f87171', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Xóa</button>
-                  </div>
-                </div>
-              ))
-            }
-          </div>
-          {/* Phân trang chi tiêu */}
-          <div style={{ borderTop: '1px solid #f1f5f9', background: '#fafafa' }}>
+                  )}
+                />
+            ))}
             <Pager page={pgExpense} total={filteredExpenses.length} perPage={EXPENSE_IPP} setPage={setPgExpense} showTotal />
           </div>
         </div>
-      )}
-
-      {/* ══ BÁO CÁO DOANH THU ══ */}
-      {finSub === 'report' && (
-        <FinanceReportTab
-          students={students}
-          payments={payments}
-          expenses={expenses}
-          tlogs={tlogs}
-          uClasses={uClasses}
-          summary={summary}
-          curMo={curMo}
-          curYr={curYr}
-          isPaid={isPaid}
-          baseTuition={baseTuition}
-          onOpenSub={openFinanceSub}
-        />
       )}
 
     </div>

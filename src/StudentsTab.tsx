@@ -1,270 +1,449 @@
 /**
- * StudentsTab.tsx — v29.0
- *
- * FIXES:
- *  [T1] Xoá 5 dead props: curMo, curYr, isPaid, zaloTpl, baseTuition
- *  [T2] hideInactive chuyển thành prop từ useDomains — bỏ local state duplicate,
- *       filtS từ useDomains đã áp dụng hideInactive (không lọc 2 lần nữa)
- *  [T3] Xoá dead alias TH/TD ở component level
- *  [T4] Bỏ anti-pattern "gọi function trả object" — inline row trong .map() trực tiếp,
- *       key đặt đúng trên element, không cần sub-component riêng
+ * StudentsTab.tsx - man hinh quan ly du lieu hoc sinh goc.
  */
-import React, { useState } from 'react';
-import { UserPlus, Eye, Edit3, Trash2, ArrowRight, MessageCircle } from 'lucide-react';
-import { IPP, capitalizeName, isStudentActive } from './helpers';
-import { ScrollHintTable, FAB } from './AppComponents';
-import { TABLE_WRAP, TH_SHARED, TD_SHARED, trStyle } from './AppComponents';
-import { Badge, Pager, SearchBar, Button, TableActions, Select, FilterChip } from './dsComponents';
-import { EmptyState } from './UIComponents';
-import { StatusBadge } from './uiSystem';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ReceiptText, UserPlus } from 'lucide-react';
+import { IPP, capitalizeName, isStudentActive, parseDMY } from './helpers';
+import { Badge, Pager, Button, Select } from './dsComponents';
+import { DataTable, EmptyState, MobileCard, PageToolbar, StatusBadge } from './uiSystem';
 import type { Student, DeleteTarget } from './types';
 
 interface Props {
-  filtS:           Student[];
-  pgS:             number;
-  setPgS:          (p: number) => void;
-  students:        Student[];
-  qS:              string;
-  setQS:           (v: string) => void;
-  fCls:            string;
-  setFCls:         (v: string) => void;
-  /* FIX T2: hideInactive đến từ useDomains thay vì local state */
-  hideInactive:    boolean;
+  filtS: Student[];
+  pgS: number;
+  setPgS: (p: number) => void;
+  students: Student[];
+  qS: string;
+  setQS: (v: string) => void;
+  fCls: string;
+  setFCls: (v: string) => void;
+  hideInactive: boolean;
   setHideInactive: (v: boolean) => void;
-  uClasses:        any[];
-  onViewStudent:   (s: Student) => void;
-  onEditStudent:   (s: Student) => void;
+  uClasses: any[];
+  onViewStudent: (s: Student) => void;
+  onEditStudent: (s: Student) => void;
   onDeleteStudent: (t: DeleteTarget) => void;
-  onAddStudent:    () => void;
-  onBulkTransfer:  (ss: Student[]) => void;
-  embedded?:        boolean;
-  /* FIX T1: đã xoá curMo, curYr, isPaid, zaloTpl, baseTuition */
+  onAddStudent: () => void;
+  onBulkTransfer: (ss: Student[]) => void;
+  onCollectFee?: (s: Student) => void;
+  curMo?: number;
+  curYr?: number;
+  isPaid?: (sid: string, mo: number, yr: number) => boolean;
+  embedded?: boolean;
+  toolbarPrefix?: React.ReactNode;
 }
 
-const LEVEL_COLOR: Record<string, 'emerald' | 'indigo' | 'amber' | 'rose' | 'slate'> = {
-  'Xuất sắc': 'emerald', 'Giỏi': 'emerald',
-  'Khá': 'indigo', 'Trung bình': 'amber', 'Yếu': 'rose',
-};
+const getClassCode = (c: any) =>
+  String(c?.['Mã Lớp'] || c?.['Mã lớp'] || c?.['MÃ£ Lá»›p'] || c?.MaLop || c?.classId || '').trim();
+
+function isMonthBillable(s: Student, month: number, year: number): boolean {
+  const monthStart = new Date(year, month - 1, 1).getTime();
+  const startTs = parseDMY(s.startDate || '');
+  if (startTs) {
+    const d = new Date(startTs);
+    const startMonth = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+    if (monthStart < startMonth) return false;
+  }
+  const endRaw = String(s.endDate || '').trim();
+  const endTs = parseDMY(endRaw);
+  if (endTs && endRaw && endRaw !== '---') {
+    const d = new Date(endTs);
+    const leaveMonth = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+    if (monthStart >= leaveMonth) return false;
+  }
+  return true;
+}
+
+function schoolMonthsUntil(month: number, year: number) {
+  const startYear = month >= 7 ? year : year - 1;
+  const months: { m: number; y: number }[] = [];
+  for (let m = 7; m <= 12; m++) months.push({ m, y: startYear });
+  for (let m = 1; m <= 6; m++) months.push({ m, y: startYear + 1 });
+  return months.filter(fm => fm.y < year || (fm.y === year && fm.m <= month));
+}
+
+function DebtMonthsState({ months }: { months: number | null }) {
+  if (months == null) return <span style={{ color: '#94a3b8', fontWeight: 800 }}>—</span>;
+  if (months === 1) return <StatusBadge status="warning" label="Chưa thu" tone="warning" />;
+  return months > 0 ? (
+    <StatusBadge status="warning" label={`Nợ ${months} tháng`} tone="warning" />
+  ) : (
+    <StatusBadge status="success" label="Đã đủ" tone="success" />
+  );
+}
+
+function classSummary(raw: string) {
+  const classes = String(raw || '')
+    .split(/[,;|]+/)
+    .map(item => item.trim())
+    .filter(Boolean);
+  if (classes.length === 0) return null;
+  return { primary: classes[0], extra: classes.length - 1 };
+}
+
+function ZaloMark({ size = 18 }: { size?: number }) {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        width: size,
+        height: Math.round(size * 0.72),
+        borderRadius: Math.max(5, Math.round(size * 0.28)),
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#0068ff',
+        color: '#fff',
+        fontSize: Math.max(7, Math.round(size * 0.42)),
+        fontWeight: 950,
+        lineHeight: 1,
+        letterSpacing: '-0.05em',
+        fontFamily: 'Arial, sans-serif',
+        boxShadow: 'inset 0 -1px 0 rgba(0,0,0,.14)',
+      }}
+    >
+      Zalo
+    </span>
+  );
+}
 
 export default function StudentsTab({
-  filtS, pgS, setPgS, students, qS, setQS,
-  fCls, setFCls, hideInactive, setHideInactive, uClasses,
-  onViewStudent, onEditStudent, onDeleteStudent,
-  onAddStudent, onBulkTransfer, embedded = false,
+  filtS,
+  pgS,
+  setPgS,
+  students,
+  qS,
+  setQS,
+  fCls,
+  setFCls,
+  hideInactive,
+  setHideInactive,
+  uClasses,
+  onViewStudent,
+  onDeleteStudent,
+  onAddStudent,
+  onBulkTransfer,
+  onCollectFee,
+  curMo,
+  curYr,
+  isPaid,
+  embedded = false,
+  toolbarPrefix,
 }: Props) {
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [hovRow,   setHovRow]   = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<'active' | 'all' | 'inactive'>(hideInactive ? 'active' : 'all');
+  const [gradeFilter, setGradeFilter] = useState('');
 
-  /* FIX T2: filtS từ useDomains đã filter hideInactive — dùng trực tiếp, không filter thêm */
-  const paged = filtS.slice((pgS - 1) * IPP, pgS * IPP);
+  useEffect(() => {
+    if (hideInactive && statusFilter !== 'active') setStatusFilter('active');
+  }, [hideInactive, statusFilter]);
 
-  const toggle = (id: string) => setSelected(prev => {
-    const next = new Set(prev);
-    next.has(id) ? next.delete(id) : next.add(id);
-    return next;
-  });
+  const canShowDebt = !!curMo && !!curYr && !!isPaid;
 
-  const allPagedSelected  = paged.length > 0 && paged.every(s => selected.has(s.id));
-  const somePagedSelected = paged.some(s => selected.has(s.id));
-  const toggleAll = () => {
-    if (allPagedSelected) {
-      setSelected(prev => { const next = new Set(prev); paged.forEach(s => next.delete(s.id)); return next; });
-    } else {
-      setSelected(prev => { const next = new Set(prev); paged.forEach(s => next.add(s.id)); return next; });
-    }
+  const classOptions = useMemo(() => {
+    const rows = uClasses
+      .map(c => {
+        const code = getClassCode(c);
+        return { value: code, label: code || '---' };
+      })
+      .filter(o => o.value);
+    return [{ value: '', label: 'Lớp' }, ...rows];
+  }, [uClasses]);
+
+  const gradeOptions = useMemo(() => {
+    const grades = [...new Set(students.map(s => String(s.grade || '').trim()).filter(Boolean))]
+      .sort((a, b) => Number(a) - Number(b));
+    return [{ value: '', label: 'Khối' }, ...grades.map(g => ({ value: g, label: `Khối ${g}` }))];
+  }, [students]);
+
+  const debtMonthsOf = useCallback((s: Student): number | null => {
+    if (!canShowDebt || !isStudentActive(s)) return null;
+    return schoolMonthsUntil(curMo!, curYr!)
+      .filter(fm => isMonthBillable(s, fm.m, fm.y))
+      .filter(fm => !isPaid!(s.id, fm.m, fm.y))
+      .length;
+  }, [canShowDebt, curMo, curYr, isPaid]);
+
+  const displayed = useMemo(() => {
+    return filtS.filter(s => {
+      const active = isStudentActive(s);
+      if (statusFilter === 'inactive' && isStudentActive(s)) return false;
+      if (statusFilter === 'active' && !active) return false;
+      if (gradeFilter && String(s.grade || '').trim() !== gradeFilter) return false;
+      return true;
+    });
+  }, [filtS, gradeFilter, statusFilter]);
+
+  const paged = displayed.slice((pgS - 1) * IPP, pgS * IPP);
+  const hasActiveFilter = !!qS || !!fCls || !!gradeFilter;
+  const resetFilters = () => {
+    setQS('');
+    setFCls('');
+    setGradeFilter('');
+    setStatusFilter('active');
+    setHideInactive(true);
+    setPgS(1);
   };
-
-  const selectedStudents = students.filter(s => selected.has(s.id));
-
-  const classOptions = [
-    { value: '', label: 'Tất cả lớp' },
-    ...uClasses.map(c => ({ value: c['Mã Lớp'], label: c['Mã Lớp'] })),
-  ];
 
   const emptyState = (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
       <EmptyState
-        title={qS || fCls ? 'Không tìm thấy học sinh phù hợp' : 'Chưa có học sinh'}
-        subtitle={qS || fCls ? 'Thử đổi từ khóa tìm kiếm hoặc bộ lọc lớp.' : 'Thêm học sinh đầu tiên để bắt đầu quản lý lớp.'}
+        text={hasActiveFilter ? 'Không tìm thấy học sinh phù hợp' : 'Chưa có học sinh'}
+        sub={hasActiveFilter ? 'Thử đổi từ khóa tìm kiếm hoặc bộ lọc.' : 'Thêm học sinh đầu tiên để bắt đầu quản lý lớp.'}
+        compact
       />
-      {!embedded && <Button intent="primary" size="sm" icon={<UserPlus size={14} />} onClick={onAddStudent}>Thêm học sinh đầu tiên</Button>}
+      {!embedded && <Button intent="success" size="sm" icon={<UserPlus size={14} />} onClick={onAddStudent}>Thêm học sinh đầu tiên</Button>}
     </div>
   );
 
+  const studentColumns = useMemo(() => [
+    {
+      key: 'id',
+      label: 'Mã HS',
+      width: 78,
+      align: 'center' as const,
+      cellStyle: { whiteSpace: 'nowrap' },
+      render: (_: unknown, student: Student) => (
+        <span style={{ fontSize: 12, fontWeight: 900, color: '#4f46e5', fontVariantNumeric: 'tabular-nums' }}>
+          {student.id || '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'name',
+      label: 'Tên',
+      width: '25%',
+      render: (_: unknown, student: Student) => (
+        <div style={{ minWidth: 0 }}>
+          <p style={{ fontSize: 14, fontWeight: 900, color: '#0f172a', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {capitalizeName(student.name) || '—'}
+          </p>
+        </div>
+      ),
+    },
+    {
+      key: 'classId',
+      label: 'Lớp',
+      align: 'center' as const,
+      width: 68,
+      cellStyle: { whiteSpace: 'nowrap', paddingLeft: 8, paddingRight: 8 },
+      headerStyle: { paddingLeft: 8, paddingRight: 8 },
+      render: (_: unknown, student: Student) => {
+        const summary = classSummary(student.classId);
+        if (!summary) return <span style={{ color: '#94a3b8', fontWeight: 800 }}>—</span>;
+        return (
+          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4, maxWidth: '100%' }}>
+            <span className="student-class-code">{summary.primary}</span>
+            {summary.extra > 0 && <span style={{ color: '#64748b', fontSize: 11, fontWeight: 900, whiteSpace: 'nowrap' }}>+{summary.extra}</span>}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'parentName',
+      label: 'Phụ huynh',
+      width: '18%',
+      render: (_: unknown, student: Student) => (
+        <div style={{ minWidth: 0 }}>
+          <p style={{ fontSize: 13, fontWeight: 900, color: student.parentName ? '#0f172a' : '#94a3b8', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {student.parentName || '—'}
+          </p>
+        </div>
+      ),
+    },
+    {
+      key: 'parentPhone',
+      label: 'SĐT',
+      width: 112,
+      cellStyle: { whiteSpace: 'nowrap' },
+      render: (_: unknown, student: Student) => (
+        <span style={{
+          fontSize: 12,
+          fontWeight: 900,
+          color: student.parentPhone || student.studentPhone ? '#334155' : '#94a3b8',
+          fontVariantNumeric: 'tabular-nums',
+          whiteSpace: 'nowrap',
+        }}>
+          {student.parentPhone || student.studentPhone || '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'tuition',
+      label: 'Học phí',
+      align: 'center' as const,
+      width: 98,
+      render: (_: unknown, student: Student) => <DebtMonthsState months={debtMonthsOf(student)} />,
+    },
+    {
+      key: 'actions',
+      label: 'Thao tác',
+      align: 'center' as const,
+      width: 78,
+      cellStyle: { paddingLeft: 8, paddingRight: 8 },
+      headerStyle: { paddingLeft: 8, paddingRight: 8 },
+      render: (_: unknown, student: Student) => {
+        const zaloPhone = String(student.parentPhone || student.studentPhone || '').replace(/\D/g, '');
+        return (
+          <div onClick={e => e.stopPropagation()} className="student-action-strip">
+            {zaloPhone.length >= 9 ? (
+              <a
+                href={`https://zalo.me/${zaloPhone}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Zalo"
+                aria-label={`Zalo ${capitalizeName(student.name)}`}
+                className="student-action-icon student-action-icon--zalo"
+              >
+                <ZaloMark size={20} />
+              </a>
+            ) : (
+              <span className="student-action-icon student-action-icon--empty" aria-hidden="true">—</span>
+            )}
+            {onCollectFee && isStudentActive(student) && (
+              <button
+                type="button"
+                title="Phiếu"
+                aria-label={`Phiếu thu ${capitalizeName(student.name)}`}
+                className="student-action-icon student-action-icon--receipt"
+                onClick={() => onCollectFee?.(student)}
+              >
+                <ReceiptText size={14} aria-hidden="true" />
+              </button>
+            )}
+          </div>
+        );
+      },
+    },
+  ], [debtMonthsOf, onCollectFee]);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: embedded ? 10 : 20 }}>
+      <style>{`
+        .student-toolbar-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+        .student-toolbar-search{width:136px;min-width:118px;height:34px;border:1px solid #dbe3ef;border-radius:8px;background:#fff;padding:0 10px;font-size:13px;font-weight:800;color:#0f172a;outline:none}
+        .student-toolbar-search::placeholder{color:#94a3b8;font-weight:800}
+        .student-toolbar-reset{height:32px;padding:0 9px;border-radius:999px;border:1px solid #e2e8f0;background:#fff;color:#475569;font-size:12px;font-weight:900;cursor:pointer}
+        .student-toolbar-reset:hover{border-color:#cbd5e1;background:#f8fafc}
+        .student-class-code{display:inline-flex;align-items:center;justify-content:center;min-width:42px;max-width:56px;height:24px;padding:0 8px;border-radius:999px;background:#eef2ff;border:1px solid #c7d2fe;color:#4338ca;font-size:12px;font-weight:950;font-variant-numeric:tabular-nums;line-height:1;white-space:nowrap}
+        .student-action-strip{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:66px}
+        .student-action-icon{width:30px;height:30px;padding:0;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 30px;text-decoration:none;cursor:pointer;transition:background .14s ease,border-color .14s ease,box-shadow .14s ease,transform .14s ease}
+        .student-action-icon:hover{box-shadow:0 5px 14px rgba(15,23,42,.10);transform:translateY(-1px)}
+        .student-action-icon:active{transform:translateY(0)}
+        .student-action-icon--zalo{background:#eef6ff;border:1px solid #bfdbfe;color:#0068ff}
+        .student-action-icon--receipt{background:#ecfdf5;border:1px solid #bbf7d0;color:#047857}
+        .student-action-icon--empty{background:#f8fafc;border:1px solid #e2e8f0;color:#cbd5e1;cursor:default}
+        .student-action-icon--empty:hover{box-shadow:none;transform:none}
+        .student-mobile-actions .student-action-icon{width:40px;height:40px;flex-basis:40px}
+        .student-desktop-table{display:block}.student-mobile-cards{display:none}
+        @media(max-width:767px){
+          .student-toolbar-filters{width:100%;display:grid;grid-template-columns:minmax(0,1fr) 92px 92px;gap:8px}
+          .student-toolbar-search{width:100%;min-width:0}
+          .student-toolbar-filters select{width:100%!important;min-width:0!important}
+          .student-toolbar-reset{grid-column:1/-1}
+          .student-desktop-table{display:none!important}.student-mobile-cards{display:block!important}
+        }
+      `}</style>
 
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-        {!embedded && (
-          <>
-            <div style={{ flexShrink: 0 }}>
-              <h2 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>Học sinh</h2>
-              <p style={{ fontSize: 12, color: '#64748b', margin: '2px 0 0' }}>
-                {filtS.length}/{students.length} · {students.filter(isStudentActive).length} đang học · {students.filter(s => !isStudentActive(s)).length} đã nghỉ
-              </p>
-            </div>
-            <span style={{ width: 1, height: 22, background: '#e2e8f0', flexShrink: 0 }} />
-          </>
-        )}
-        {embedded && (
-          <span style={{ fontSize:12,fontWeight:700,color:'#64748b',background:'#f8fafc',border:'1px solid #e2e8f0',padding:'7px 10px',borderRadius:8 }}>
-            {filtS.length}/{students.length} HS
-          </span>
-        )}
-
-        {selected.size > 0 && (
-          <Button intent="primary" size="sm" icon={<ArrowRight size={14} />} iconPosition="left"
-            onClick={() => { onBulkTransfer(selectedStudents); setSelected(new Set()); }}>
-            Chuyển lớp ({selected.size})
+      <PageToolbar
+        title="Học sinh"
+        embedded={embedded}
+        actions={!embedded && (
+          <Button intent="success" size="sm" icon={<UserPlus size={14} />} iconPosition="left" onClick={onAddStudent}>
+            Thêm học sinh
           </Button>
         )}
+      >
+        {toolbarPrefix}
+        <div className="student-toolbar-filters">
+          <input
+            className="student-toolbar-search"
+            value={qS}
+            onChange={e => { setQS(e.target.value); setPgS(1); }}
+            placeholder="Tìm"
+            aria-label="Tìm học sinh"
+          />
+          <Select value={fCls} onChange={v => { setFCls(v); setPgS(1); }} options={classOptions} style={{ width: 92, minWidth: 88 }} />
+          <Select value={gradeFilter} onChange={v => { setGradeFilter(v); setPgS(1); }} options={gradeOptions} style={{ width: 92, minWidth: 88 }} />
+          {hasActiveFilter && (
+            <button type="button" className="student-toolbar-reset" onClick={resetFilters}>
+              Xóa lọc
+            </button>
+          )}
+        </div>
+      </PageToolbar>
 
-        {/* FIX T2: setHideInactive từ props — không còn local state */}
-        <FilterChip
-          label="Đang học"
-          count={students.filter(isStudentActive).length}
-          active={hideInactive}
-          onClick={() => { setHideInactive(true); setPgS(1); }}
-          color="indigo"
-        />
-        <FilterChip
-          label="Tất cả"
-          count={students.length}
-          active={!hideInactive}
-          onClick={() => { setHideInactive(false); setPgS(1); }}
-          color="slate"
-        />
-
-        <SearchBar value={qS} onChange={v => { setQS(v); setPgS(1); }} placeholder="Tìm tên, mã HS..." width={180} />
-        <Select value={fCls} onChange={v => { setFCls(v); setPgS(1); }} options={classOptions} />
-      </div>
-
-      {/* Table */}
-      <div style={TABLE_WRAP}>
-        {/* Desktop — FIX T4: inline row rendering, key đặt trực tiếp trên <tr> */}
+      <div>
         <div className="student-desktop-table">
-          <style>{`.student-desktop-table{display:block}.student-mobile-cards{display:none}@media(max-width:767px){.student-desktop-table{display:none!important}.student-mobile-cards{display:block!important}}`}</style>
-          <ScrollHintTable>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
-              <thead>
-                <tr>
-                  <th style={{ ...TH_SHARED, width: 40, textAlign: 'center' }}>
-                    <input type="checkbox" checked={allPagedSelected}
-                      ref={el => { if (el) el.indeterminate = somePagedSelected && !allPagedSelected; }}
-                      onChange={toggleAll}
-                      aria-label="Chọn tất cả trang này"
-                      title={allPagedSelected ? 'Bỏ chọn tất cả' : 'Chọn tất cả trang này'}
-                    />
-                  </th>
-                  {['Học sinh', 'Lớp', 'Học lực', 'SĐT phụ huynh', 'Thao tác'].map(h => (
-                    <th key={h} style={{ ...TH_SHARED, textAlign: h === 'Thao tác' ? 'center' : 'left' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {paged.length === 0 ? (
-                  <tr><td colSpan={6} style={{ padding: '56px 16px', textAlign: 'center' }}>{emptyState}</td></tr>
-                ) : paged.map((s, idx) => {
-                const inactive   = !isStudentActive(s);
-                const levelColor = LEVEL_COLOR[s.academicLevel] || 'slate';
-                const studentZalo = String(s.studentPhone || '').replace(/\D/g, '');
-                  return (
-                    <tr key={s.id}
-                      onMouseEnter={() => setHovRow(s.id)}
-                      onMouseLeave={() => setHovRow(null)}
-                      style={{ ...trStyle(idx, hovRow === s.id), opacity: inactive ? 0.5 : 1 }}
-                    >
-                      <td style={{ ...TD_SHARED, width: 40, textAlign: 'center' }}>
-                        <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggle(s.id)} aria-label={`Chọn ${s.name}`} />
-                      </td>
-                      <td style={TD_SHARED}>
-                        <p style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', margin: 0 }}>{capitalizeName(s.name)}</p>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: 12, color: '#94a3b8' }}>{s.id}</span>
-                          <StatusBadge domain="student" status={inactive ? 'inactive' : 'active'} />
-                        </div>
-                      </td>
-                      <td style={TD_SHARED}><Badge color="indigo">{s.classId || '---'}</Badge></td>
-                      <td style={TD_SHARED}><Badge color={levelColor}>{s.academicLevel || '---'}</Badge></td>
-                      <td style={TD_SHARED}><span style={{ color: '#475569', fontWeight: 500 }}>{s.parentPhone || '---'}</span></td>
-                      <td style={{ ...TD_SHARED, textAlign: 'center' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                          {s.facebookUrl && (
-                            <a href={s.facebookUrl.startsWith('http') ? s.facebookUrl : `https://m.me/${s.facebookUrl}`}
-                              target="_blank" rel="noopener noreferrer" title="Messenger PH"
-                              style={{ width: 28, height: 28, background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#2563eb', textDecoration: 'none', flexShrink: 0 }}>
-                              <MessageCircle size={13} />
-                            </a>
-                          )}
-                          {studentZalo.length >= 9 && (
-                            <a href={`https://zalo.me/${studentZalo}`}
-                              target="_blank" rel="noopener noreferrer" title="Zalo HS"
-                              style={{ width: 28, height: 28, background: '#eef6ff', border: '1px solid #bfdbfe', borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#0068FF', textDecoration: 'none', flexShrink: 0 }}>
-                              <MessageCircle size={13} />
-                            </a>
-                          )}
-                          <TableActions actions={[
-                            { icon: <Eye    size={13} />, label: `Xem ${s.name}`, intent: 'primary', onClick: () => onViewStudent(s) },
-                            { icon: <Edit3  size={13} />, label: `Sửa ${s.name}`, intent: 'warning', onClick: () => onEditStudent(s) },
-                            { icon: <Trash2 size={13} />, label: `Xóa ${s.name}`, intent: 'danger',  onClick: () => onDeleteStudent({ type: 'student', id: s.id, name: s.name }) },
-                          ]} />
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </ScrollHintTable>
+          <DataTable
+            columns={studentColumns}
+            data={paged}
+            rowKey="id"
+            emptyText={hasActiveFilter ? 'Không tìm thấy học sinh phù hợp' : 'Chưa có học sinh'}
+            emptySub={hasActiveFilter ? 'Thử đổi từ khóa tìm kiếm hoặc bộ lọc.' : 'Thêm học sinh đầu tiên để bắt đầu quản lý lớp.'}
+            emptyAction={!embedded ? { label: 'Thêm học sinh đầu tiên', onClick: onAddStudent, intent: 'success' } : undefined}
+            onRowClick={onViewStudent}
+            scrollX={false}
+            density="compact"
+            footer={<Pager page={pgS} total={displayed.length} perPage={IPP} setPage={setPgS} showTotal />}
+          />
         </div>
 
-        {/* Mobile — FIX T4: inline, key trực tiếp trên <div> */}
-        <div className="student-mobile-cards">
+        <div className="student-mobile-cards" style={{ padding: 10 }}>
           {paged.length === 0 ? (
-            <div style={{ padding: '40px 16px', textAlign: 'center' }}>
-              {emptyState}
-            </div>
-          ) : paged.map((s, idx) => {
-            const inactive   = !isStudentActive(s);
-            const levelColor = LEVEL_COLOR[s.academicLevel] || 'slate';
-            const studentZalo = String(s.studentPhone || '').replace(/\D/g, '');
+            <div style={{ padding: '36px 16px', textAlign: 'center' }}>{emptyState}</div>
+          ) : paged.map((s) => {
+            const inactive = !isStudentActive(s);
+            const zaloPhone = String(s.parentPhone || s.studentPhone || '').replace(/\D/g, '');
+            const debtMonths = debtMonthsOf(s);
             return (
-              <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderBottom: '1px solid #f1f5f9', background: idx % 2 === 0 ? 'white' : '#f9fafc', opacity: inactive ? 0.55 : 1 }}>
-                <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <span style={{ color: 'white', fontWeight: 800, fontSize: 14 }}>
-                    {(s.name || '?').trim().split(' ').pop()?.[0]?.toUpperCase()}
-                  </span>
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{capitalizeName(s.name)}</p>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, flexWrap: 'wrap' }}>
-                    <StatusBadge domain="student" status={inactive ? 'inactive' : 'active'} />
-                    <Badge color="indigo">{s.classId || '---'}</Badge>
-                    <Badge color={levelColor}>{s.academicLevel || '---'}</Badge>
-                    {s.parentPhone && <span style={{ fontSize: 11, color: '#94a3b8' }}>{s.parentPhone}</span>}
+              <MobileCard
+                key={s.id}
+                title={capitalizeName(s.name)}
+                subtitle={`${s.id || '—'}${s.classId ? ` · ${s.classId}` : ''}`}
+                badge={<StatusBadge domain="student" status={inactive ? 'inactive' : 'active'} />}
+                tone={inactive ? 'neutral' : 'primary'}
+                onClick={() => onViewStudent(s)}
+                style={{ marginBottom: 8, opacity: inactive ? 0.58 : 1 }}
+                rows={[
+                  { label: 'Lớp', value: <Badge color="indigo">{s.classId || '—'}</Badge> },
+                  { label: 'Khối / học lực', value: `${s.grade ? `Khối ${s.grade}` : '—'}${s.academicLevel ? ` · ${s.academicLevel}` : ''}` },
+                  { label: 'Phụ huynh', value: s.parentName || '—' },
+                  { label: 'Liên hệ', value: s.parentPhone || s.studentPhone || '—' },
+                  { label: 'Học phí', value: <DebtMonthsState months={debtMonths} /> },
+                ]}
+                actions={(
+                  <div onClick={e => e.stopPropagation()} className="student-mobile-actions" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', width: '100%', justifyContent: 'flex-end' }}>
+                    {zaloPhone.length >= 9 && (
+                      <a
+                        href={`https://zalo.me/${zaloPhone}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Zalo"
+                        aria-label={`Zalo ${capitalizeName(s.name)}`}
+                        className="student-action-icon student-action-icon--zalo"
+                      >
+                        <ZaloMark size={24} />
+                      </a>
+                    )}
+                    {onCollectFee && !inactive && (
+                      <button
+                        type="button"
+                        title="Phiếu"
+                        aria-label={`Phiếu thu ${capitalizeName(s.name)}`}
+                        className="student-action-icon student-action-icon--receipt"
+                        onClick={() => onCollectFee(s)}
+                      >
+                        <ReceiptText size={16} aria-hidden="true" />
+                      </button>
+                    )}
                   </div>
-                </div>
-                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                  {studentZalo.length >= 9 && (
-                    <a href={`https://zalo.me/${studentZalo}`}
-                      target="_blank" rel="noopener noreferrer" title="Zalo HS"
-                      style={{ width: 32, height: 32, borderRadius: 7, background: '#eef6ff', border: '1px solid #bfdbfe', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0068FF', textDecoration: 'none' }}>
-                      <MessageCircle size={14} />
-                    </a>
-                  )}
-                  <button onClick={() => onViewStudent(s)} style={{ width: 32, height: 32, borderRadius: 7, background: '#eef2ff', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Eye size={14} color="#4f46e5" /></button>
-                  <button onClick={() => onEditStudent(s)} style={{ width: 32, height: 32, borderRadius: 7, background: '#fffbeb', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Edit3 size={14} color="#b45309" /></button>
-                </div>
-              </div>
+                )}
+              />
             );
           })}
+          <Pager page={pgS} total={displayed.length} perPage={IPP} setPage={setPgS} showTotal />
         </div>
-
-        <Pager page={pgS} total={filtS.length} perPage={IPP} setPage={setPgS} showTotal />
       </div>
-
-      {!embedded && <FAB onClick={onAddStudent} label="Thêm học sinh mới" icon={UserPlus} />}
     </div>
   );
 }

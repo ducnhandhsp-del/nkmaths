@@ -3,11 +3,13 @@ export type Screen =
   | 'operations'
   | 'training'
   | 'finance'
+  | 'reports'
   | 'settings';
 
-export type TrainingSub = 'overview' | 'students' | 'classes' | 'teachers';
-export type FinanceSub = 'ledger' | 'debt' | 'expense' | 'report';
-export type OperationsSub = 'overview' | 'schedule' | 'lessons' | 'attendance';
+export type TrainingSub = 'students' | 'classes' | 'teachers';
+export type FinanceSub = 'ledger' | 'debt' | 'expense';
+export type OperationsSub = 'schedule' | 'lessons' | 'attendance';
+export type ReportsSub = 'training' | 'operations' | 'finance';
 
 export interface Student {
   id:            string;
@@ -109,7 +111,7 @@ export interface SummaryData {
 }
 
 export interface DeleteTarget {
-  type: 'student' | 'payment' | 'expense' | 'lead' | 'teacher' | 'material';
+  type: 'student' | 'payment' | 'expense' | 'lead' | 'teacher' | 'class' | 'material';
   id:   string;
   name: string;
 }
