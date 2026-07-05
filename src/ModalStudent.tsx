@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, UserCheck, Activity, UserX, Phone, MessageCircle } from 'lucide-react';
+import { X, Save, UserCheck, Activity, UserX, Phone, MessageCircle, Trash2, ExternalLink } from 'lucide-react';
 import { fmtVND, formatDate, capitalizeName, isValidPhone, isValidDateDMY, toInputDate } from './helpers';
 import { Button, IconButton, Input, Select } from './dsComponents';
-import type { Student, Payment } from './types';
+import { DetailMetric } from './uiSystem';
+import { calcStudentAttendance } from './measures';
+import type { Student, Payment, DeleteTarget } from './types';
 
 const MODAL_STYLE: React.CSSProperties = {
   position:'fixed', inset:0, zIndex:200,
@@ -31,14 +33,8 @@ function nextStudentId(existingIds: string[]): string {
   return nextId;
 }
 
-function normalizeAttendanceLabel(raw: string): 'Có mặt' | 'Vắng' | 'Có phép' {
-  const s = (raw || '').trim();
-  if (s === 'Vắng') return 'Vắng';
-  if (s === 'Có phép' || s === 'Nghỉ có phép') return 'Có phép';
-  const n = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  if (n === 'vang' || n === 'absent') return 'Vắng';
-  if (n === 'co phep' || n === 'nghi co phep' || n === 'excused') return 'Có phép';
-  return 'Có mặt';
+function gradeFromClassId(classId: string): string {
+  return String(classId || '').trim().match(/\d+/)?.[0] || '';
 }
 
 export function StudentModal({
@@ -48,7 +44,8 @@ export function StudentModal({
   uniqueClasses:any[]; uniqueBranches:string[]; isSaving:boolean; onSave:(f:any)=>Promise<void>;
   existingIds?: string[];
 }) {
-  const defaultBranch = uniqueBranches[0] || 'Đào Tấn';
+  const preferredBranch = 'Đào Tấn';
+  const defaultBranch = uniqueBranches.find(b => b.trim().toLowerCase() === preferredBranch.toLowerCase()) || preferredBranch;
   const generatedId = nextStudentId(existingIds);
   const [f,setF]       = useState<any>({});
   const [errors,setErrors] = useState<Record<string,string>>({});
@@ -76,7 +73,8 @@ export function StudentModal({
 
   const classOptions=[{value:'',label:'Chọn lớp'},...uniqueClasses.map(c=>({value:c['Mã Lớp'],label:c['Mã Lớp']}))];
   const academicOptions=['Xuất sắc','Giỏi','Khá','Trung bình','Yếu'].map(v=>({value:v,label:v}));
-  const branchOptions=uniqueBranches.length>0?uniqueBranches.map(b=>({value:b,label:b})):[{value:'Đào Tấn',label:'Đào Tấn'},{value:'Nguyễn Quang Bích',label:'Nguyễn Quang Bích'}];
+  const branchValues=[defaultBranch,...(uniqueBranches.length>0?uniqueBranches:['Nguyễn Quang Bích'])].filter((b,i,arr)=>b&&arr.indexOf(b)===i);
+  const branchOptions=branchValues.map(b=>({value:b,label:b}));
 
   const handleSave = async () => {
     if(validate()) {
@@ -84,6 +82,8 @@ export function StudentModal({
       await onSave({
         ...f,
         id: normalId,
+        status: f.status || 'active',
+        grade: gradeFromClassId(f.classId) || String(f.grade ?? '').trim(),
         parentPhone: String(f.parentPhone ?? '').trim(),
         studentPhone: String(f.studentPhone ?? '').trim(),
       });
@@ -117,24 +117,10 @@ export function StudentModal({
 
             <p className="ltn-section-title">Học tập</p>
             <div className="ltn-grid-12">
-              <div className="span-3"><Select label="Lớp" value={f.classId||''} onChange={v=>u('classId',v)} options={classOptions} size="lg"/></div>
-              <div className="span-2"><Input label="Khối" value={f.grade||''} onChange={v=>u('grade',v)} placeholder="9" size="lg"/></div>
+              <div className="span-2"><Select label="Lớp" value={f.classId||''} onChange={v=>u('classId',v)} options={classOptions} size="lg"/></div>
               <div className="span-4"><Input label="Trường" value={f.school||''} onChange={v=>u('school',v)} size="lg"/></div>
-              <div className="span-3"><Select label="Học lực" value={f.academicLevel||'Khá'} onChange={v=>u('academicLevel',v)} options={academicOptions} size="lg"/></div>
-              <div className="span-3">
-                <Select
-                  label="Trạng thái"
-                  value={f.status || 'active'}
-                  onChange={v=>u('status',v)}
-                  options={[
-                    { value:'active', label:'Đang học' },
-                    { value:'onleave', label:'Tạm nghỉ' },
-                    { value:'inactive', label:'Đã nghỉ' },
-                  ]}
-                  size="lg"
-                />
-              </div>
-              <div className="span-3"><Select label="Cơ sở" value={f.branch||defaultBranch} onChange={v=>u('branch',v)} options={branchOptions} size="lg"/></div>
+              <div className="span-2"><Select label="Học lực" value={f.academicLevel||'Khá'} onChange={v=>u('academicLevel',v)} options={academicOptions} size="lg"/></div>
+              <div className="span-4"><Select label="Cơ sở" value={f.branch||defaultBranch} onChange={v=>u('branch',v)} options={branchOptions} size="lg"/></div>
             </div>
 
             <p className="ltn-section-title">Liên hệ & ghi chú</p>
@@ -168,12 +154,13 @@ export function StudentModal({
   );
 }
 
-export function StudentDetailModal({ student, onClose, tlogs, payments, onToggleStatus, onSaveNote, onEdit }: {
+export function StudentDetailModal({ student, onClose, tlogs, payments, onToggleStatus, onSaveNote, onSaveFacebook, onEdit, onDelete }: {
   student:Student; onClose:()=>void; tlogs?:any[]; payments?:Payment[];
   onToggleStatus?:(student:Student,endDate?:string)=>Promise<void>;
   onSaveNote?:(student:Student,notes:string)=>Promise<void>;
   onSaveFacebook?:(student:Student,facebookUrl:string)=>Promise<void>;
   onEdit?:(student:Student)=>void;
+  onDelete?:(target:DeleteTarget)=>void;
 }) {
   const [toggling,setToggling]=useState(false);
   const [showEndPicker,setShowEndPicker]=useState(false);
@@ -186,12 +173,22 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
   const [noteSaving, setNoteSaving] = useState(false);
 
   const [noteSaved,  setNoteSaved]  = useState(false);
+  const fbKey = `ltn-facebook-${student.id}`;
+  const initialFacebook = student.facebookUrl || (() => { try { return localStorage.getItem(fbKey)||''; } catch { return ''; } })();
+  const [facebookUrl, setFacebookUrl] = useState<string>(initialFacebook);
+  const [facebookSaving, setFacebookSaving] = useState(false);
+  const [facebookSaved, setFacebookSaved] = useState(false);
 
   // Reset note khi mở modal cho HS khác
   useEffect(() => {
     const n = student.notes || (() => { try { return localStorage.getItem(`ltn-note-${student.id}`)||''; } catch { return ''; } })();
     setNote(n);
   }, [student.id, student.notes]);
+
+  useEffect(() => {
+    const url = student.facebookUrl || (() => { try { return localStorage.getItem(`ltn-facebook-${student.id}`)||''; } catch { return ''; } })();
+    setFacebookUrl(url);
+  }, [student.id, student.facebookUrl]);
 
   const saveNote = async () => {
     if (onSaveNote) {
@@ -206,19 +203,26 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
     }
   };
 
+  const saveFacebook = async () => {
+    const cleanUrl = facebookUrl.trim();
+    if (onSaveFacebook) {
+      setFacebookSaving(true);
+      try { await onSaveFacebook(student, cleanUrl); setFacebookSaved(true); setTimeout(()=>setFacebookSaved(false), 2000); }
+      catch { try { localStorage.setItem(fbKey, cleanUrl); } catch {} setFacebookSaved(true); setTimeout(()=>setFacebookSaved(false), 2000); }
+      finally { setFacebookSaving(false); }
+    } else {
+      try { localStorage.setItem(fbKey, cleanUrl); } catch {}
+      setFacebookSaved(true); setTimeout(()=>setFacebookSaved(false), 1800);
+    }
+  };
+
   const s=student, ph=String(s.parentPhone||'').replace(/\D/g,'');
   // Không hardcode tên GV — dùng giá trị thật từ student.teacher
   const resolveT=(raw:string)=>raw||'---';
   const isInactive=s.status==='inactive'||(s.endDate&&s.endDate!=='---'&&s.endDate!=='');
-  let present=0,absent=0,excused=0;
-  // Support both GAS v29 camelCase (trangThai) and legacy Vietnamese keys ('Trạng thái')
-  if(tlogs) tlogs.forEach(log=>(log.attendanceList||[]).forEach((a:any)=>{
-    const id = a.maHS || a['Mã HS'] || a.MaHS || '';
-    if(id !== s.id) return;
-    const st = normalizeAttendanceLabel(a.trangThai || a['Trạng thái'] || a.TrangThai || '');
-    if(st==='Có mặt') present++; else if(st==='Vắng') absent++; else if(st==='Có phép') excused++;
-  }));
-  const totalSessions=present+absent+excused, attendPct=totalSessions>0?Math.round(present/totalSessions*100):null;
+  const attendance = calcStudentAttendance(tlogs || [], s.id);
+  const present=attendance.present,absent=attendance.absent,excused=attendance.excused;
+  const totalSessions=attendance.total, attendPct=attendance.pct;
   // Tất cả giao dịch, sort mới nhất lên đầu
   const allPayments=(payments||[]).filter(p=>p.studentId===s.id).sort((a,b)=>{
       // B3 FIX: DD/MM/YYYY lexicographic sort is wrong; use timestamp compare
@@ -228,11 +232,12 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
   const totalPaid = allPayments.reduce((sum,p)=>sum+p.amount,0);
   const handleToggle=async(endDate?:string)=>{ if(!onToggleStatus) return; setToggling(true); try{ await onToggleStatus(s,endDate); }finally{ setToggling(false); } };
   const attendColor=(attendPct??0)>=90?'#10b981':(attendPct??0)>=70?'#f97316':'#ef4444';
+  const statusText = isInactive ? 'Đã nghỉ' : s.status === 'onleave' ? 'Tạm nghỉ' : 'Đang học';
   const profileFields=[
     {l:'Mã HS',v:s.id},{l:'Tên HS',v:capitalizeName(s.name)},{l:'Ngày sinh',v:formatDate(s.dob)},{l:'Bắt đầu học',v:formatDate(s.startDate)},
   ];
   const learningFields=[
-    {l:'Lớp',v:s.classId},{l:'Trường',v:s.school},{l:'Học lực',v:s.academicLevel},{l:'Mục tiêu',v:s.goal},
+    {l:'Trường',v:s.school},{l:'Học lực',v:s.academicLevel},{l:'Mục tiêu',v:s.goal},
   ];
   const contactFields=[
     {l:'Phụ huynh',v:s.parentName},{l:'SĐT PH',v:s.parentPhone},{l:'SĐT HS',v:s.studentPhone},
@@ -261,6 +266,7 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
             {ph.length>=9&&<a href={`tel:${ph}`} style={{ textDecoration:'none' }}><Button variant="outline" intent="success" size="sm" icon={<Phone size={14}/>}>Gọi</Button></a>}
             {ph.length>=9&&<a href={`https://zalo.me/${ph}`} target="_blank" rel="noopener noreferrer" style={{ textDecoration:'none' }}><Button variant="outline" intent="primary" size="sm" icon={<MessageCircle size={14}/>}>Zalo PH</Button></a>}
             {onEdit && <Button intent="primary" variant="outline" size="sm" onClick={() => onEdit(student)}>Sửa hồ sơ</Button>}
+            {onDelete && <Button intent="danger" variant="outline" size="sm" icon={<Trash2 size={14}/>} onClick={() => onDelete({ type:'student', id:s.id, name:capitalizeName(s.name) || s.id })}>Xóa</Button>}
             {onToggleStatus&&(isInactive
               ? <Button intent="success" variant="outline" size="sm" icon={<UserCheck size={14}/>} loading={toggling} onClick={()=>handleToggle()}>Học lại</Button>
               : showEndPicker
@@ -278,6 +284,13 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
 
         <div className="ltn-form-modal-body" style={{ flex:1,minHeight:0,overflowY:'auto',padding:'16px 24px' }}>
 
+          <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(108px,1fr))',gap:10,marginBottom:12 }}>
+            <DetailMetric label="Lớp" value={s.classId || '---'} tone="violet" valueSize={18} truncate />
+            <DetailMetric label="Trạng thái" value={statusText} tone={isInactive ? 'rose' : 'emerald'} valueSize={18} truncate />
+            <DetailMetric label="Chuyên cần" value={attendPct === null ? '—' : `${attendPct}%`} tone={attendPct === null ? 'sky' : attendPct >= 90 ? 'emerald' : attendPct >= 70 ? 'amber' : 'rose'} valueSize={18} truncate />
+            <DetailMetric label="Đã đóng" value={fmtVND(totalPaid)} tone="emerald" valueSize={18} truncate />
+          </div>
+
           <section className="ltn-detail-section">
             <p className="ltn-section-title">Hồ sơ</p>
             {renderInfo(profileFields, 'ltn-info-cell quarter')}
@@ -291,6 +304,35 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
           <section className="ltn-detail-section" style={{ marginTop: 12 }}>
             <p className="ltn-section-title">Liên hệ</p>
             {renderInfo(contactFields)}
+            <div style={{ marginTop: 10, border:'1px solid #e2e8f0', borderRadius:10, overflow:'hidden', background:'#fff' }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, padding:'9px 12px', background:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
+                <div>
+                  <p style={{ margin:0,fontSize:11,fontWeight:900,color:'#64748b',textTransform:'uppercase',letterSpacing:'.07em' }}>Facebook</p>
+                  <p style={{ margin:'2px 0 0',fontSize:11,fontWeight:700,color:'#94a3b8' }}>Link hồ sơ hoặc nguồn tuyển sinh</p>
+                </div>
+                {facebookSaved && <span style={{ fontSize:11,fontWeight:900,color:'#059669',background:'#ecfdf5',border:'1px solid #a7f3d0',borderRadius:999,padding:'3px 8px',whiteSpace:'nowrap' }}>Đã lưu</span>}
+              </div>
+              <div style={{ display:'grid',gridTemplateColumns:'minmax(0,1fr) auto auto',gap:8,padding:10,alignItems:'center' }}>
+                <input
+                  value={facebookUrl}
+                  onChange={e=>setFacebookUrl(e.target.value)}
+                  placeholder="https://facebook.com/..."
+                  style={{ minWidth:0,height:34,border:'1px solid #dbe3ef',borderRadius:8,padding:'0 10px',fontSize:13,fontWeight:700,color:'#0f172a',outline:'none' }}
+                />
+                {facebookUrl.trim() && (
+                  <a href={facebookUrl.trim()} target="_blank" rel="noopener noreferrer" title="Mở Facebook" style={{ height:34,width:34,borderRadius:8,border:'1px solid #bfdbfe',background:'#eff6ff',color:'#2563eb',display:'inline-flex',alignItems:'center',justifyContent:'center',textDecoration:'none' }}>
+                    <ExternalLink size={14}/>
+                  </a>
+                )}
+                <button
+                  onClick={saveFacebook}
+                  disabled={facebookSaving}
+                  style={{ height:34,padding:'0 12px',borderRadius:8,border:`1px solid ${facebookSaving?'#e2e8f0':'#bfdbfe'}`,background:facebookSaving?'#f8fafc':'#2563eb',color:facebookSaving?'#94a3b8':'#fff',fontSize:12,fontWeight:900,cursor:facebookSaving?'default':'pointer' }}
+                >
+                  {facebookSaving ? 'Đang lưu' : 'Lưu'}
+                </button>
+              </div>
+            </div>
           </section>
 
           <section className="ltn-detail-section soft" style={{ marginTop: 12 }}>
@@ -304,23 +346,28 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
                 <p>Cơ sở</p>
                 <p>{s.branch || '---'}</p>
               </div>
-              <div className="ltn-info-cell wide" style={{ display: 'grid', gap: 7 }}>
-                <p>Nhận xét</p>
+              <div className="ltn-info-cell wide" style={{ padding: 0, overflow: 'hidden', background: '#fff' }}>
+                <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,padding:'10px 12px',background:'#f8fafc',borderBottom:'1px solid #e2e8f0' }}>
+                  <div>
+                    <p style={{ margin:0,fontSize:11,fontWeight:900,color:'#64748b',textTransform:'uppercase',letterSpacing:'.07em' }}>Nhận xét</p>
+                    <p style={{ margin:'2px 0 0',fontSize:11,fontWeight:700,color:'#94a3b8' }}>Học lực, thái độ, nguồn tuyển sinh hoặc lưu ý phối hợp</p>
+                  </div>
+                  {noteSaved && <span style={{ fontSize:11,fontWeight:900,color:'#059669',background:'#ecfdf5',border:'1px solid #a7f3d0',borderRadius:999,padding:'3px 8px',whiteSpace:'nowrap' }}>Đã lưu</span>}
+                </div>
                 <textarea
                   value={note}
                   onChange={e=>setNote(e.target.value)}
-                  rows={2}
+                  rows={4}
                   placeholder="Nhận xét về học lực, thái độ..."
-                  style={{ width:'100%', minHeight: 64, padding:'8px 10px', borderRadius:8, border:'1px solid #dbe4f0', fontSize:12, fontFamily:'inherit', color:'#1e293b', resize:'vertical', outline:'none', boxSizing:'border-box', lineHeight:1.45 }}
+                  style={{ width:'100%', minHeight: 94, padding:'12px 14px', border:'none', borderBottom:'1px solid #e2e8f0', background:'#fff', fontSize:13, fontFamily:'inherit', color:'#0f172a', resize:'vertical', outline:'none', boxSizing:'border-box', lineHeight:1.5 }}
                 />
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap: 8 }}>
-                  {noteSaved ? <span style={{ fontSize:11,fontWeight:800,color:'#059669' }}>Đã lưu</span> : <span />}
+                <div style={{ display:'flex', justifyContent:'flex-end', alignItems:'center', gap: 8, padding:'9px 12px',background:'#fff' }}>
                   <button
                     onClick={saveNote}
                     disabled={noteSaving}
-                    style={{ padding:'5px 10px', borderRadius:7, border:'none', background:noteSaving?'#f1f5f9':'#2563eb', color:noteSaving?'#94a3b8':'white', fontSize:11, fontWeight:800, cursor:noteSaving?'default':'pointer' }}
+                    style={{ minHeight:32,padding:'6px 14px', borderRadius:9, border:`1px solid ${noteSaving?'#e2e8f0':'#bfdbfe'}`, background:noteSaving?'#f8fafc':'#2563eb', color:noteSaving?'#94a3b8':'white', fontSize:12, fontWeight:900, cursor:noteSaving?'default':'pointer', boxShadow:noteSaving?'none':'0 6px 14px rgba(37,99,235,.18)' }}
                   >
-                    {noteSaving ? 'Đang lưu...' : 'Lưu'}
+                    {noteSaving ? 'Đang lưu...' : 'Lưu nhận xét'}
                   </button>
                 </div>
               </div>
@@ -366,7 +413,7 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
                     <thead>
                       <tr style={{ background:'#f8fafc' }}>
                         {['Ngày','Nội dung','Hình thức','Số tiền'].map((h,i)=>(
-                          <th key={h} style={{ padding:'8px 12px',fontSize:10,fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.07em',textAlign:i===3?'right':'left',borderBottom:'1px solid #e2e8f0' }}>{h}</th>
+                          <th key={h} style={{ padding:'8px 12px',fontSize:10,fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.07em',textAlign:i===3?'right':i===2?'center':'left',borderBottom:'1px solid #e2e8f0' }}>{h}</th>
                         ))}
                       </tr>
                     </thead>
@@ -375,7 +422,7 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
                         <tr key={i} style={{ background:i%2===0?'white':'#fafafa',borderBottom:'1px solid #f1f5f9' }}>
                           <td style={{ padding:'9px 12px',fontSize:12,color:'#475569',whiteSpace:'nowrap' }}>{formatDate(p.date)}</td>
                           <td style={{ padding:'9px 12px',fontSize:13,fontWeight:600,color:'#1e293b' }}>{p.description||'---'}</td>
-                          <td style={{ padding:'9px 12px',fontSize:12,color:'#64748b' }}>{p.method||'---'}</td>
+                          <td style={{ padding:'9px 12px',fontSize:12,color:'#64748b',textAlign:'center' }}>{p.method||'---'}</td>
                           <td style={{ padding:'9px 12px',fontSize:13,fontWeight:800,color:'#059669',textAlign:'right',whiteSpace:'nowrap' }}>+{fmtVND(p.amount)}</td>
                         </tr>
                       ))}
@@ -387,8 +434,8 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
 
         </div>
 
-        <div className="ltn-form-modal-footer" style={{ padding:'10px 24px',borderTop:'1px solid #f1f5f9',display:'flex',gap:10,flexShrink:0 }}>
-          <Button variant="outline" intent="neutral" fullWidth size="lg" onClick={onClose}>Đóng</Button>
+        <div className="ltn-form-modal-footer" style={{ padding:'10px 24px',borderTop:'1px solid #f1f5f9',display:'flex',justifyContent:'flex-end',gap:10,flexShrink:0 }}>
+          <Button variant="outline" intent="neutral" size="sm" onClick={onClose}>Đóng</Button>
         </div>
       </div>
     </div>

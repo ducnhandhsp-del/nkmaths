@@ -15,8 +15,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import toast from 'react-hot-toast';
 
-import type { Student, Payment, Expense, Teacher, LeaveRequest, Material } from './types';
-import { fetchWithTimeout, parseDMY, formatDate, resolveTeacher, loadLocal, normalizePaymentMethod } from './helpers';
+import type { Student, Payment, Expense, Teacher, LeaveRequest, Material, CacheMeta, DataSyncState } from './types';
+import { fetchWithTimeout, parseDMY, formatDate, resolveTeacher, loadLocal, normalizePaymentMethod, fixVietnameseText } from './helpers';
 import { buildChartData } from './measures';
 import { RULES } from './rules';
 
@@ -169,20 +169,20 @@ function txLogs(raw: any[], tl: string[]): any[] {
 function txClasses(raw: any[], tl: string[]): any[] {
   const map = new Map<string, any>();
   raw.forEach((c: any) => {
-    const maLop = c.MaLop || c['Ma Lop'] || c['Mã Lớp'] || '';
+    const maLop = fixVietnameseText(c.MaLop || c['Ma Lop'] || c['Mã Lớp'] || c['MÃ£ Lá»›p'] || c['MÃƒÂ£ LÃ¡Â»â€ºp'] || '');
     if (!maLop || map.has(maLop)) return;
     map.set(maLop, {
       'Mã Lớp':    maLop,
       MaGV:        c.MaGV    || c.maGV       || c.teacherId || '',
       teacherId:    c.teacherId || c.MaGV || c.maGV || '',
-      GiaoVien:     resolveTeacher(c.GiaoVien || c['GiÃ¡o viÃªn'] || '', tl),
-      'Tên Lớp':   c.TenLop  || c['Tên Lớp']  || '',
-      'Khối':      c.Khoi    || c['Khối']      || '',
-      'Giáo viên': resolveTeacher(c.GiaoVien || c['Giáo viên'] || '', tl),
-      'Cơ sở':     c.CoSo    || c['Cơ sở']    || '',
-      'Buổi 1':    c.Buoi1   || c['Buổi 1']   || '',
-      'Buổi 2':    c.Buoi2   || c['Buổi 2']   || '',
-      'Buổi 3':    c.Buoi3   || c['Buổi 3']   || '',
+      GiaoVien:     resolveTeacher(fixVietnameseText(c.GiaoVien || c['Giáo viên'] || c['GiÃ¡o viÃªn'] || c['GiÃƒÂ¡o viÃƒÂªn'] || ''), tl),
+      'Tên Lớp':   fixVietnameseText(c.TenLop  || c['Tên Lớp'] || c['TÃªn Lá»›p'] || c['TÃƒÂªn LÃ¡Â»â€ºp'] || ''),
+      'Khối':      fixVietnameseText(c.Khoi    || c['Khối']      || ''),
+      'Giáo viên': resolveTeacher(fixVietnameseText(c.GiaoVien || c['Giáo viên'] || c['GiÃ¡o viÃªn'] || c['GiÃƒÂ¡o viÃƒÂªn'] || ''), tl),
+      'Cơ sở':     fixVietnameseText(c.CoSo    || c['Cơ sở'] || c['CÆ¡ sá»Ÿ'] || ''),
+      'Buổi 1':    fixVietnameseText(c.Buoi1   || c['Buổi 1'] || c['Buá»•i 1'] || c['BuÃ¡Â»â€¢i 1'] || ''),
+      'Buổi 2':    fixVietnameseText(c.Buoi2   || c['Buổi 2'] || c['Buá»•i 2'] || c['BuÃ¡Â»â€¢i 2'] || ''),
+      'Buổi 3':    fixVietnameseText(c.Buoi3   || c['Buổi 3'] || c['Buá»•i 3'] || c['BuÃ¡Â»â€¢i 3'] || ''),
     });
   });
   return Array.from(map.values());
@@ -230,17 +230,114 @@ function txMaterials(raw: any[]): Material[] {
    HOOK
 ═══════════════════════════════════════════════════════════════════ */
 
+const CACHE_VERSION = 2;
+
+type CachePayload = {
+  hs: Student[];
+  py: Payment[];
+  ex: Expense[];
+  uCls: any[];
+  logs: any[];
+  teachers?: Teacher[];
+  materials?: Material[];
+  leaveRequests?: LeaveRequest[];
+  meta?: CacheMeta;
+};
+
+const emptyCachePayload = (): CachePayload => ({
+  hs: [],
+  py: [],
+  ex: [],
+  uCls: [],
+  logs: [],
+});
+
+const hasCacheData = (cache: CachePayload | null): cache is CachePayload =>
+  !!cache && [cache.hs, cache.py, cache.ex, cache.uCls, cache.logs, cache.teachers, cache.materials, cache.leaveRequests]
+    .some(v => Array.isArray(v) && v.length > 0);
+
+const readCacheSnapshot = (): CachePayload | null => {
+  try {
+    const raw = localStorage.getItem('ltn-cache');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const metaRaw = parsed.meta || {};
+    return {
+      ...emptyCachePayload(),
+      ...parsed,
+      hs: Array.isArray(parsed.hs) ? parsed.hs : [],
+      py: Array.isArray(parsed.py) ? parsed.py : [],
+      ex: Array.isArray(parsed.ex) ? parsed.ex : [],
+      uCls: Array.isArray(parsed.uCls) ? parsed.uCls : [],
+      logs: Array.isArray(parsed.logs) ? parsed.logs : [],
+      teachers: Array.isArray(parsed.teachers) ? parsed.teachers : undefined,
+      materials: Array.isArray(parsed.materials) ? parsed.materials : undefined,
+      leaveRequests: Array.isArray(parsed.leaveRequests) ? parsed.leaveRequests : undefined,
+      meta: {
+        cachedAt: String(metaRaw.cachedAt || parsed.cachedAt || ''),
+        source: 'cache',
+        version: Number(metaRaw.version || parsed.version || 1),
+      },
+    };
+  } catch {
+    return null;
+  }
+};
+
+const buildCachePayload = ({
+  hs,
+  py,
+  ex,
+  cls,
+  logs,
+  teachers,
+  materials,
+  leaveRequests,
+  meta,
+}: {
+  hs: Student[];
+  py: Payment[];
+  ex: Expense[];
+  cls: any[];
+  logs: any[];
+  teachers: Teacher[];
+  materials: Material[];
+  leaveRequests: LeaveRequest[];
+  meta: CacheMeta;
+}): CachePayload => ({
+  hs,
+  py,
+  ex,
+  uCls: cls,
+  logs,
+  teachers,
+  materials,
+  leaveRequests,
+  meta,
+});
+
+type LoadDataOptions = {
+  silent?: boolean;
+  timeout?: number;
+};
+
 export function useAppData({ scriptUrl, teacherList }: { scriptUrl: string; teacherList: string[] }) {
-  const [students,      setStudents]      = useState<Student[]>([]);
-  const [uClasses,      setUClasses]      = useState<any[]>([]);
-  const [payments,      setPayments]      = useState<Payment[]>([]);
-  const [expenses,      setExpenses]      = useState<any[]>([]);
-  const [tlogs,         setTlogs]         = useState<any[]>([]);
-  const [teachers,      setTeachers]      = useState<Teacher[]>(() => loadLocal<Teacher[]>('ltn-teachers', []));
-  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(() => loadLocal<LeaveRequest[]>('ltn-leaves', []));
-  const [materials,     setMaterials]     = useState<Material[]>(() => loadLocal<Material[]>('ltn-materials', []));
+  const initialCacheRef = useRef<CachePayload | null>(readCacheSnapshot());
+  const initialCache = initialCacheRef.current;
+
+  const [students,      setStudents]      = useState<Student[]>(() => initialCache?.hs || []);
+  const [uClasses,      setUClasses]      = useState<any[]>(() => initialCache?.uCls || []);
+  const [payments,      setPayments]      = useState<Payment[]>(() => initialCache?.py || []);
+  const [expenses,      setExpenses]      = useState<any[]>(() => initialCache?.ex || []);
+  const [tlogs,         setTlogs]         = useState<any[]>(() => initialCache?.logs || []);
+  const [teachers,      setTeachers]      = useState<Teacher[]>(() => initialCache?.teachers || loadLocal<Teacher[]>('ltn-teachers', []));
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(() => initialCache?.leaveRequests || loadLocal<LeaveRequest[]>('ltn-leaves', []));
+  const [materials,     setMaterials]     = useState<Material[]>(() => initialCache?.materials || loadLocal<Material[]>('ltn-materials', []));
   const [loading,       setLoading]       = useState(true);
   const [gsOk,          setGsOk]          = useState<boolean | null>(null);
+  const [cacheMeta,     setCacheMeta]     = useState<CacheMeta | null>(() => initialCache?.meta || null);
+  const [syncState,     setSyncState]     = useState<DataSyncState>('syncing');
+  const [initialLoadError, setInitialLoadError] = useState('');
 
   /* FIX L3: summary là useMemo — tự cập nhật ngay khi payments/expenses thay đổi (kể cả optimistic) */
   const summary = useMemo(() => ({
@@ -250,6 +347,7 @@ export function useAppData({ scriptUrl, teacherList }: { scriptUrl: string; teac
   }), [payments, expenses]);
 
   const loadingRef      = useRef(false);
+  const dataReadyRef    = useRef(false);
   /* FIX S1+S3: silentRef là Ref object — return trực tiếp để useDomains set mà không cần hack */
   const silentRef       = useRef(false);
   /* FIX D4: return để useDomains reset cooldown sau manual save */
@@ -261,20 +359,38 @@ export function useAppData({ scriptUrl, teacherList }: { scriptUrl: string; teac
   const teacherListRef = useRef(teacherList);
   useEffect(() => { teacherListRef.current = teacherList; }, [teacherList]);
 
+  const applyCache = useCallback((cache: CachePayload, source: CacheMeta['source'] = 'cache') => {
+    setStudents(cache.hs || []);
+    setPayments(cache.py || []);
+    setExpenses(cache.ex || []);
+    setUClasses(cache.uCls || []);
+    setTlogs(cache.logs || []);
+    if (cache.teachers) setTeachers(cache.teachers);
+    if (cache.materials) setMaterials(cache.materials);
+    if (cache.leaveRequests) setLeaveRequests(cache.leaveRequests);
+    setCacheMeta(cache.meta ? { ...cache.meta, source } : null);
+    dataReadyRef.current = hasCacheData(cache);
+  }, []);
+
   /* ── Core fetch ── */
   /* FIX S2: dependency chỉ còn [scriptUrl] — teacherList thay đổi KHÔNG re-create loadData */
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (options: LoadDataOptions = {}) => {
     if (loadingRef.current) return;
     loadingRef.current = true;
-    if (!silentRef.current) setLoading(true);
+    const silent = options.silent ?? silentRef.current ?? dataReadyRef.current;
+    const foreground = !silent && !dataReadyRef.current;
+    if (foreground) setLoading(true);
+    setSyncState('syncing');
+    setInitialLoadError('');
 
     const tl = teacherListRef.current; // đọc teacherList hiện tại qua ref (luôn up-to-date)
+    const timeout = options.timeout ?? (foreground ? RULES.network.initialFetchTimeout : RULES.network.fetchTimeout);
 
     try {
       const res = await fetchWithTimeout(scriptUrl, {
         method:   'POST',
         redirect: 'follow',
-        timeout:  RULES.network.fetchTimeout,
+        timeout,
         headers:  { 'Content-Type': 'text/plain' },
         body:     JSON.stringify({ action: 'getData' }),
       });
@@ -319,14 +435,24 @@ export function useAppData({ scriptUrl, teacherList }: { scriptUrl: string; teac
       }
 
       setGsOk(true);
+      setSyncState('fresh');
+      dataReadyRef.current = true;
+      const meta: CacheMeta = {
+        cachedAt: new Date().toISOString(),
+        source: 'gas',
+        version: CACHE_VERSION,
+      };
+      setCacheMeta(meta);
 
       /* FIX D2: cache gộp tất cả → 1 nguồn thống nhất */
       try {
-        localStorage.setItem('ltn-cache', JSON.stringify({
-          hs, py, ex, uCls: cls, logs,
-          teachers:  newTeachers,
+        localStorage.setItem('ltn-cache', JSON.stringify(buildCachePayload({
+          hs, py, ex, cls, logs,
+          teachers: newTeachers,
           materials: newMaterials,
-        }));
+          leaveRequests: newLeaves,
+          meta,
+        })));
         /* Backward compat: vẫn giữ key riêng */
         if (newTeachers.length  > 0) localStorage.setItem('ltn-teachers',  JSON.stringify(newTeachers));
         if (newMaterials.length > 0) localStorage.setItem('ltn-materials', JSON.stringify(newMaterials));
@@ -335,37 +461,46 @@ export function useAppData({ scriptUrl, teacherList }: { scriptUrl: string; teac
 
     } catch (err: any) {
       setGsOk(false);
-      toast.error(
-        err.message?.includes('timeout')
-          ? '⏱️ Kết nối quá lâu. Đang dùng cache.'
-          : '⚠️ Lỗi tải dữ liệu. Đang dùng cache.'
-      );
-      /* FIX D2: restore cả teachers/materials từ unified cache */
-      try {
-        const c = localStorage.getItem('ltn-cache');
-        if (c) {
-          const cached = JSON.parse(c);
-          setStudents(cached.hs       || []);
-          setPayments(cached.py       || []);
-          setExpenses(cached.ex       || []);
-          setUClasses(cached.uCls     || []);
-          setTlogs(cached.logs        || []);
-          if (cached.teachers)  setTeachers(cached.teachers);
-          if (cached.materials) setMaterials(cached.materials);
-        }
-      } catch {}
+      const fallbackCache = readCacheSnapshot();
+      const canUseFallback = silent || dataReadyRef.current;
+      const hasFallback = canUseFallback && (hasCacheData(fallbackCache) || dataReadyRef.current);
+      if (hasFallback) {
+        if (fallbackCache) applyCache(fallbackCache, 'cache');
+        setSyncState('cache');
+        toast('Đang dùng dữ liệu lưu gần nhất.', { icon: 'ℹ' });
+      } else {
+        if (fallbackCache?.meta) setCacheMeta({ ...fallbackCache.meta, source: 'cache' });
+        setSyncState('error');
+        setInitialLoadError(
+          err.message?.includes('timeout')
+            ? 'Google Apps Script phản hồi chậm. Hệ thống đang tự tải lại để đảm bảo dữ liệu mới trước khi làm việc.'
+            : 'Chưa tải được dữ liệu mới từ Google Sheets. Hệ thống sẽ tự tải lại sau ít giây.'
+        );
+      }
     } finally {
-      setLoading(false);
+      if (dataReadyRef.current) setLoading(false);
       loadingRef.current = false;
       silentRef.current  = false;
     }
-  }, [scriptUrl]); // FIX S2: chỉ phụ thuộc scriptUrl
+  }, [applyCache, scriptUrl]);
 
   /* ── Initial load ── */
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => {
+    loadData({ silent: false, timeout: RULES.network.initialFetchTimeout });
+  }, [loadData]);
+
+  /* ── Initial retry: khi chua co du lieu moi, loading tu tai lai, khong can bam nut ── */
+  useEffect(() => {
+    if (!loading || syncState !== 'error' || dataReadyRef.current) return;
+    const timer = window.setTimeout(() => {
+      loadData({ silent: false, timeout: RULES.network.initialFetchTimeout });
+    }, RULES.network.initialLoadAutoRetryDelay);
+    return () => window.clearTimeout(timer);
+  }, [loading, syncState, loadData]);
 
   /* ── Auto reload: online + visibility + interval ── */
   useEffect(() => {
+    if (!RULES.network.autoReloadEnabled) return;
     const reload = () => {
       /* FIX D5: không auto-reload khi đang save để tránh state bị replace giữa chừng */
       if (isSavingRef.current) return;
@@ -399,7 +534,7 @@ export function useAppData({ scriptUrl, teacherList }: { scriptUrl: string; teac
   return {
     students, uClasses, payments, expenses, tlogs,
     teachers, leaveRequests, materials, summary,
-    loading, gsOk, loadData,
+    loading, gsOk, loadData, cacheMeta, syncState, initialLoadError,
     setStudents, setUClasses, setPayments, setExpenses, setTlogs,
     setTeachers, setMaterials, setLeaveRequests,
     /* FIX S1+S3+D4: refs return trực tiếp */

@@ -137,13 +137,13 @@ export default function LearningTab(props: Props) {
           uClasses={displayedClasses}
           students={props.students}
           payments={props.payments}
+          tlogs={props.tlogs}
           curMo={props.curMo}
           curYr={props.curYr}
           qCls={props.qCls}
           setQCls={props.setQCls}
           fClsTeacher={props.fClsTeacher}
           setFClsTeacher={props.setFClsTeacher}
-          isPaid={props.isPaid}
           onEditClass={props.onEditClass}
           onDeleteClass={props.onDeleteClass}
           onAddClass={props.onAddClass}
@@ -162,7 +162,6 @@ export default function LearningTab(props: Props) {
           tlogs={props.tlogs}
           curMo={props.curMo}
           curYr={props.curYr}
-          isPaid={props.isPaid}
           onSave={props.onSaveTeacher}
           onDeleteTeacher={props.onDeleteTeacher}
           isSaving={props.isSaving}

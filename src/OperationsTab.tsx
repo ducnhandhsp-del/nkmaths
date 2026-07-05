@@ -3,11 +3,12 @@
  * Module Van hanh: Lich day, Buoi hoc, Chuyen can.
  * Chi chuan hoa UI/render, giu nguyen handler va logic nghiep vu hien co.
  */
-import React, { useMemo, useState } from 'react';
-import { AlertTriangle, BookOpen, CheckCircle, Edit3, Eye, Phone, Plus } from 'lucide-react';
-import { parseDMY } from './helpers';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, BookOpen, CalendarX, CheckCircle, Edit3, Eye, Phone, Plus } from 'lucide-react';
+import { getLessonOffReason, isLessonOffLog, normalizeCaDayLabel, normalizeScheduleCaText, parseCaDayToHours, parseDMY } from './helpers';
+import { attendanceStudentId, calcStudentAbsenceStreak, getAttendanceRisk, normalizeAttendanceStatus as normalizeAttendanceStatusCore } from './measures';
 import { Button, Pager, Select } from './dsComponents';
-import { ActionableKpi, ActionableKpiGrid, DataTable, DateText, EmptyState, MobileCard, PageToolbar, StatusBadge, ToolbarTabs } from './uiSystem';
+import { ActionableKpi, ActionableKpiGrid, DataTable, DateText, EmptyState, MobileCompactCard, PageToolbar, StatusBadge, ToolbarTabs } from './uiSystem';
 import type { Student, TeachingLog, LeaveRequest, OperationsSub } from './types';
 
 const DAYS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
@@ -20,11 +21,10 @@ const DAY_FULL: Record<string, string> = {
   T7: 'Thứ 7',
   CN: 'Chủ nhật',
 };
-const CA_SLOTS = ['7h30', '9h', '13h30', '15h30', '17h30', '19h30'];
-const CA_MINS = [7 * 60 + 30, 9 * 60, 13 * 60 + 30, 15 * 60 + 30, 17 * 60 + 30, 19 * 60 + 30];
+const CA_SLOTS = ['7h30', '9h15', '14h', '15h30', '17h30', '19h30'];
+const CA_MINS = [7 * 60 + 30, 9 * 60 + 15, 14 * 60, 15 * 60 + 30, 17 * 60 + 30, 19 * 60 + 30];
 
 type ScheduleStatus = 'future' | 'inProgress' | 'logged' | 'pending' | 'cancelled';
-type AttendanceFocus = 'all' | 'present' | 'absent' | 'excused' | 'streak';
 
 interface ScheduledSlot {
   date: Date;
@@ -75,9 +75,15 @@ interface Props {
   onViewDiary: (log: TeachingLog) => void;
   onEditDiary: (log: TeachingLog) => void;
   onAddDiary: (classId?: string, date?: string, caDay?: string) => void;
+  onMarkLessonOff: (classId: string, date: string, caDay: string, reason: string, teacherName?: string) => Promise<void>;
   onApproveLeave: (id: string) => void;
   onRejectLeave: (id: string) => void;
 }
+
+type LessonOffDraft = {
+  row: ScheduleRow;
+  reason: string;
+};
 
 const norm = (raw: unknown) =>
   String(raw || '')
@@ -100,7 +106,7 @@ function getClassId(c: Record<string, any>) {
 }
 
 function getClassName(c: Record<string, any>) {
-  return readFirst(c, ['Tên Lớp', 'TenLop', 'Ten Lop', 'className', 'name']) || getClassId(c);
+  return getClassId(c);
 }
 
 function getTeacher(c: Record<string, any>) {
@@ -120,16 +126,22 @@ function getClassSchedules(c: Record<string, any>) {
   return raw.filter(Boolean);
 }
 
+function normalizeScheduleText(v: string) {
+  return normalizeScheduleCaText(v);
+}
+
 function parseBuoi(v: string) {
   if (!v) return null;
-  const parts = v.trim().split(/\s+/);
-  const day = parts[0];
+  const text = normalizeScheduleText(v);
+  const dayMatch = text.match(/^(T[2-7]|CN)\b/i);
+  if (!dayMatch) return null;
+  const day = dayMatch[1].toUpperCase();
   if (!DAYS.includes(day)) return null;
-  const timeText = parts.slice(1).join(' ');
-  const hourMatch = timeText.match(/(\d+)[h:]/);
+  const timeText = text.slice(dayMatch[0].length).replace(/^[:\-–—.\s]+/, '').trim();
+  const hourMatch = timeText.match(/(\d{1,2})\s*[h:]/i);
   if (!hourMatch) return null;
   const hour = parseInt(hourMatch[1], 10);
-  const minuteMatch = timeText.match(/[h:](\d{2})/);
+  const minuteMatch = timeText.match(/[h:]\s*(\d{1,2})/i);
   const minute = minuteMatch ? parseInt(minuteMatch[1], 10) : 0;
   const total = hour * 60 + minute;
   let best = 0;
@@ -210,7 +222,7 @@ function findMatchingTlog(slot: ScheduledSlot, tlogs: TeachingLog[]): TeachingLo
       if (ts) logDate = new Date(ts);
     }
     if (!logDate || !sameDay(logDate, slot.date)) return false;
-    if (log.caDay && slot.caDay && log.caDay !== slot.caDay) return false;
+    if (log.caDay && slot.caDay && normalizeCaDayLabel(log.caDay) !== normalizeCaDayLabel(slot.caDay)) return false;
     return true;
   });
 }
@@ -230,7 +242,18 @@ function scheduleStatusTone(status: ScheduleStatus): 'success' | 'warning' | 'in
   return 'neutral';
 }
 
-function ScheduleBadge({ status }: { status: ScheduleStatus }) {
+function ScheduleBadge({ status, log }: { status: ScheduleStatus; log?: TeachingLog }) {
+  if (log && isLessonOffLog(log)) {
+    return (
+      <StatusBadge
+        domain="lesson"
+        status="lesson-off"
+        label="Đã nghỉ"
+        tone="neutral"
+        dot={false}
+      />
+    );
+  }
   return (
     <StatusBadge
       domain="lesson"
@@ -247,25 +270,27 @@ function getAttendanceStatus(a: any) {
 }
 
 function normalizeAttendanceStatus(raw: string) {
-  const s = String(raw || '').trim();
-  if (s === 'Vắng') return 'absent';
-  if (s === 'Có phép' || s === 'Nghỉ có phép') return 'excused';
-  const n = norm(s);
-  if (n === 'vang' || n === 'absent') return 'absent';
-  if (n === 'co phep' || n === 'nghi co phep' || n === 'excused') return 'excused';
-  return 'present';
+  return normalizeAttendanceStatusCore(raw);
 }
 
-const attendanceIdOf = (a: any) => a.maHS || a['Mã HS'] || a.MaHS || '';
+const attendanceIdOf = (a: any) => attendanceStudentId(a);
 
 function lessonAttendanceSummary(log: TeachingLog) {
+  if (isLessonOffLog(log)) return { present: 0, absent: 0, excused: 0, total: 0 };
   const present = Number(log.present || 0);
   const absent = Number(log.absent || 0);
   const excused = Number(log.excused || 0);
   return { present, absent, excused, total: present + absent + excused };
 }
 
-function lessonStatus(log: TeachingLog): { label: string; tone: 'success' | 'warning' } {
+function lessonAttendanceLabel(log: TeachingLog) {
+  if (isLessonOffLog(log)) return 'Lớp nghỉ';
+  const a = lessonAttendanceSummary(log);
+  return a.total > 0 ? `${a.present}/${a.total}` : 'Chưa điểm danh';
+}
+
+function lessonStatus(log: TeachingLog): { label: string; tone: 'success' | 'warning' | 'neutral' } {
+  if (isLessonOffLog(log)) return { label: 'Lớp nghỉ', tone: 'neutral' };
   return lessonAttendanceSummary(log).total > 0
     ? { label: 'Đã điểm danh', tone: 'success' }
     : { label: 'Chưa điểm danh', tone: 'warning' };
@@ -275,11 +300,12 @@ function fmtWeekDate(d: Date) {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+function lessonOffReasonLabel(log: TeachingLog) {
+  return getLessonOffReason(log) || 'Chưa ghi lý do nghỉ';
+}
+
 function attendanceWarning(row: AttendanceRow): { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' } {
-  if (row.absent >= 5 || row.streak >= 3) return { label: 'Vắng nhiều', tone: 'danger' };
-  if (row.absent >= 3 || row.streak >= 2) return { label: 'Cần theo dõi', tone: 'warning' };
-  if (row.present + row.absent + row.excused > 0) return { label: 'Ổn', tone: 'success' };
-  return { label: '—', tone: 'neutral' };
+  return getAttendanceRisk({ absent: row.absent, pct: attendanceRate(row), streak: row.streak });
 }
 
 function attendanceRate(row: AttendanceRow) {
@@ -301,12 +327,25 @@ export default function OperationsTab({
   tlogs,
   onViewDiary,
   onAddDiary,
+  onMarkLessonOff,
 }: Props) {
   const [attendanceClass, setAttendanceClass] = useState('');
-  const [attendanceFocus, setAttendanceFocus] = useState<AttendanceFocus>('all');
+  const [attendanceMonth, setAttendanceMonth] = useState(() => monthKey(new Date()));
   const [scheduleMonth, setScheduleMonth] = useState(() => monthKey(new Date()));
   const [lessonMonth, setLessonMonth] = useState(() => monthKey(new Date()));
   const [scheduleClass, setScheduleClass] = useState('');
+  const [schedulePage, setSchedulePage] = useState(1);
+  const [lessonFocus, setLessonFocus] = useState<'all' | 'noAttendance'>('all');
+  const [attendanceFocus, setAttendanceFocus] = useState<'all' | 'warning'>('all');
+  const [lessonOffDraft, setLessonOffDraft] = useState<LessonOffDraft | null>(null);
+  const [lessonOffSaving, setLessonOffSaving] = useState(false);
+  const scheduleListRef = useRef<HTMLDivElement>(null);
+  const lessonListRef = useRef<HTMLDivElement>(null);
+  const attendanceListRef = useRef<HTMLDivElement>(null);
+
+  const scrollTo = (ref: React.RefObject<HTMLDivElement | null>) => {
+    window.requestAnimationFrame(() => ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
 
   const scheduleDates = useMemo(() => getMonthDates(scheduleMonth), [scheduleMonth]);
   const classOptions = useMemo(() => {
@@ -344,8 +383,15 @@ export default function OperationsTab({
   const filteredLessons = useMemo(() => [...tlogs]
     .filter(log => inMonthKey(log.rawDate || log.date || '', lessonMonth))
     .filter(log => !dCls || log.classId === dCls)
-    .sort((a, b) => parseDMY(b.rawDate || b.date) - parseDMY(a.rawDate || a.date)),
-  [dCls, lessonMonth, tlogs]);
+    .filter(log => lessonFocus !== 'noAttendance' || (!isLessonOffLog(log) && lessonAttendanceSummary(log).total === 0))
+    .sort((a, b) => {
+      const byDate = parseDMY(b.rawDate || b.date || '') - parseDMY(a.rawDate || a.date || '');
+      if (byDate !== 0) return byDate;
+      const byTime = parseCaDayToHours(b.caDay || '') - parseCaDayToHours(a.caDay || '');
+      if (byTime !== 0) return byTime;
+      return String(a.classId || '').localeCompare(String(b.classId || ''), 'vi');
+    }),
+  [dCls, lessonFocus, lessonMonth, tlogs]);
 
   const pagedLessons = useMemo(() => filteredLessons.slice((pgD - 1) * IPP, pgD * IPP), [IPP, filteredLessons, pgD]);
 
@@ -389,6 +435,49 @@ export default function OperationsTab({
       .sort((a, b) => a.slot.date.getTime() - b.slot.date.getTime() || a.slot.caIdx - b.slot.caIdx || a.slot.classId.localeCompare(b.slot.classId, 'vi'));
   }, [scheduleClass, scheduleDates, tlogs, uClasses]);
 
+  const actionableScheduleRows = useMemo(() => {
+    const nowTs = Date.now();
+    return scheduleRows
+      .filter(row => row.status === 'pending' || row.status === 'inProgress')
+      .sort((a, b) => Math.abs(getSlotStart(a.slot).getTime() - nowTs) - Math.abs(getSlotStart(b.slot).getTime() - nowTs))
+      .slice(0, 6);
+  }, [scheduleRows]);
+
+  const displayScheduleRows = useMemo(() => {
+    const nowTs = Date.now();
+    const rank = (row: ScheduleRow) => {
+      if (row.status === 'inProgress') return 0;
+      if (row.status === 'pending') return 1;
+      if (row.status === 'future') return 2;
+      if (row.status === 'logged') return 3;
+      return 4;
+    };
+    return [...scheduleRows].sort((a, b) => {
+      const ra = rank(a);
+      const rb = rank(b);
+      if (ra !== rb) return ra - rb;
+      const ta = getSlotStart(a.slot).getTime();
+      const tb = getSlotStart(b.slot).getTime();
+      if (ra <= 1) return Math.abs(ta - nowTs) - Math.abs(tb - nowTs);
+      if (ra === 3) return tb - ta;
+      return ta - tb;
+    });
+  }, [scheduleRows]);
+
+  useEffect(() => {
+    setSchedulePage(1);
+  }, [scheduleMonth, scheduleClass]);
+
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(displayScheduleRows.length / IPP));
+    if (schedulePage > maxPage) setSchedulePage(maxPage);
+  }, [IPP, displayScheduleRows.length, schedulePage]);
+
+  const pagedScheduleRows = useMemo(() => {
+    const start = (schedulePage - 1) * IPP;
+    return displayScheduleRows.slice(start, start + IPP);
+  }, [IPP, displayScheduleRows, schedulePage]);
+
   const attendanceStats = useMemo<AttendanceRow[]>(() => {
     const map = new Map<string, AttendanceRow>();
     students
@@ -405,37 +494,27 @@ export default function OperationsTab({
         streak: 0,
       }));
 
-    tlogs.forEach(log => (log.attendanceList || []).forEach((a: any) => {
+    tlogs.forEach(log => {
+      if (isLessonOffLog(log)) return;
+      if (!inMonthKey(log.rawDate || log.date || '', attendanceMonth)) return;
+      (log.attendanceList || []).forEach((a: any) => {
       const row = map.get(attendanceIdOf(a));
       if (!row) return;
       const status = normalizeAttendanceStatus(getAttendanceStatus(a));
       if (status === 'absent') row.absent++;
       else if (status === 'excused') row.excused++;
       else row.present++;
-    }));
-
-    const byClass = new Map<string, TeachingLog[]>();
-    [...tlogs]
-      .sort((a, b) => parseDMY(b.rawDate || b.date) - parseDMY(a.rawDate || a.date))
-      .forEach(log => {
-        if (!byClass.has(log.classId)) byClass.set(log.classId, []);
-        byClass.get(log.classId)!.push(log);
       });
+    });
 
+    const [m, y] = attendanceMonth.split('/').map(Number);
     students.forEach(student => {
       const row = map.get(student.id);
       if (!row) return;
-      const logs = (byClass.get(student.classId) || []).slice(0, 10);
-      let streak = 0;
-      for (const log of logs) {
-        const entry = (log.attendanceList || []).find((a: any) => attendanceIdOf(a) === student.id);
-        if (entry && normalizeAttendanceStatus(getAttendanceStatus(entry)) === 'absent') streak++;
-        else if (entry) break;
-      }
-      row.streak = streak;
+      row.streak = calcStudentAbsenceStreak(tlogs, student.id, student.classId, { m, y });
     });
     return [...map.values()];
-  }, [students, tlogs]);
+  }, [attendanceMonth, students, tlogs]);
 
   const attendanceClassOptions = useMemo(() => {
     const items = [...new Set(attendanceStats.map(r => r.classId).filter(Boolean))]
@@ -447,26 +526,11 @@ export default function OperationsTab({
   const filteredAttendance = useMemo(() => {
     return attendanceStats
       .filter(r => !attendanceClass || r.classId === attendanceClass)
-      .filter(r => {
-        if (attendanceFocus === 'present') return r.present > 0;
-        if (attendanceFocus === 'absent') return r.absent > 0;
-        if (attendanceFocus === 'excused') return r.excused > 0;
-        if (attendanceFocus === 'streak') return r.streak >= 2;
-        return true;
-      })
+      .filter(r => attendanceFocus !== 'warning' || ['warning', 'danger'].includes(attendanceWarning(r).tone))
       .sort((a, b) => {
-        if (attendanceFocus === 'present') return b.present - a.present;
-        if (attendanceFocus === 'excused') return b.excused - a.excused;
-        if (attendanceFocus === 'streak') return b.streak - a.streak;
         return b.absent - a.absent || b.streak - a.streak;
       });
   }, [attendanceClass, attendanceFocus, attendanceStats]);
-
-  const attendanceTotals = useMemo(() => ({
-    present: attendanceStats.reduce((sum, row) => sum + row.present, 0),
-    absent: attendanceStats.reduce((sum, row) => sum + row.absent, 0),
-    excused: attendanceStats.reduce((sum, row) => sum + row.excused, 0),
-  }), [attendanceStats]);
 
   const openScheduleRow = (row: ScheduleRow) => {
     if (row.status === 'future' || row.status === 'cancelled') return;
@@ -474,72 +538,115 @@ export default function OperationsTab({
     else onAddDiary(row.slot.classId, row.slot.isoDate, row.slot.caDay);
   };
 
+  const markScheduleOff = useCallback((row: ScheduleRow) => {
+    if (row.tlog || row.status === 'cancelled') return;
+    setLessonOffDraft({ row, reason: '' });
+  }, []);
+
+  const closeLessonOffModal = () => {
+    if (lessonOffSaving) return;
+    setLessonOffDraft(null);
+  };
+
+  const submitLessonOff = async () => {
+    if (!lessonOffDraft || lessonOffSaving) return;
+    const { row, reason } = lessonOffDraft;
+    setLessonOffSaving(true);
+    try {
+      await onMarkLessonOff(
+        row.slot.classId,
+        row.slot.isoDate,
+        row.slot.caDay,
+        reason,
+        row.slot.teacher && row.slot.teacher !== '—' ? row.slot.teacher : '',
+      );
+      setLessonOffDraft(null);
+    } finally {
+      setLessonOffSaving(false);
+    }
+  };
+
   const scheduleColumns = useMemo(() => [
     {
-      key: 'time',
-      label: 'Thời gian',
-      width: '18%',
+      key: 'date',
+      label: 'Ngày',
+      width: '10%',
+      render: (_: unknown, row: ScheduleRow) => {
+        return <DateText value={row.slot.isoDate} />;
+      },
+    },
+    {
+      key: 'weekday',
+      label: 'Thứ',
+      align: 'center' as const,
+      width: '8%',
       render: (_: unknown, row: ScheduleRow) => {
         const dayCode = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][row.slot.date.getDay()];
-        return (
-          <div>
-            <p style={{ margin: 0, fontSize: 13, fontWeight: 900, color: '#0f172a' }}>{DAY_FULL[dayCode]} · {row.slot.caDay}</p>
-            <p style={{ margin: '2px 0 0', fontSize: 11 }}><DateText value={row.slot.isoDate} /></p>
-          </div>
-        );
+        return <span style={{ fontSize: 13, fontWeight: 900, color: '#0f172a', whiteSpace: 'nowrap' }}>{DAY_FULL[dayCode]}</span>;
       },
+    },
+    {
+      key: 'time',
+      label: 'Giờ',
+      align: 'center' as const,
+      width: '8%',
+      render: (_: unknown, row: ScheduleRow) => (
+        <span style={{ fontSize: 13, fontWeight: 900, color: row.slot.caDay ? '#b45309' : '#94a3b8', whiteSpace: 'nowrap' }}>
+          {row.slot.caDay || '—'}
+        </span>
+      ),
     },
     {
       key: 'class',
       label: 'Lớp',
-      width: '20%',
+      align: 'center' as const,
+      width: '8%',
       render: (_: unknown, row: ScheduleRow) => (
-        <div style={{ minWidth: 0 }}>
-          <p style={{ margin: 0, fontSize: 13, fontWeight: 900, color: '#312e81', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.slot.classId}</p>
-          <p style={{ margin: '2px 0 0', fontSize: 11, color: '#94a3b8', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.slot.className}</p>
-        </div>
+        <StatusBadge domain="general" status="class" label={row.slot.classId || '—'} tone="violet" dot={false} />
       ),
     },
-    { key: 'teacher', label: 'Giáo viên', width: '17%', render: (_: unknown, row: ScheduleRow) => <span style={{ fontSize: 12, fontWeight: 800, color: '#0f172a' }}>{row.slot.teacher || '—'}</span> },
-    { key: 'facility', label: 'Cơ sở', width: '13%', render: (_: unknown, row: ScheduleRow) => <span style={{ fontSize: 12, fontWeight: 800, color: row.slot.facility === '—' ? '#94a3b8' : '#475569' }}>{row.slot.facility}</span> },
-    { key: 'status', label: 'Trạng thái', align: 'center' as const, width: '14%', render: (_: unknown, row: ScheduleRow) => <ScheduleBadge status={row.status} /> },
+    { key: 'status', label: 'Trạng thái', align: 'center' as const, width: '13%', render: (_: unknown, row: ScheduleRow) => <ScheduleBadge status={row.status} log={row.tlog} /> },
     {
       key: 'actions',
       label: 'Thao tác',
       align: 'center' as const,
-      width: '18%',
+      width: '14%',
       render: (_: unknown, row: ScheduleRow) => {
         const locked = row.status === 'future' || row.status === 'cancelled';
-        const lockedLabel = row.status === 'future' ? 'Chưa tới giờ' : 'Đã hủy';
-        const lockedTitle = row.status === 'future'
-          ? 'Chỉ ghi buổi khi đã tới hoặc qua giờ học.'
-          : 'Buổi học đã hủy nên không thể ghi buổi.';
         return (
           <div onClick={event => event.stopPropagation()} style={{ display: 'flex', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>
             {row.tlog ? (
               <Button intent="primary" variant="outline" size="sm" icon={<Eye size={13} />} onClick={() => onViewDiary(row.tlog!)}>Xem</Button>
-            ) : locked ? (
-              <span title={lockedTitle} style={{ minHeight: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '6px 10px', borderRadius: 999, background: row.status === 'future' ? '#f8fafc' : '#f1f5f9', border: '1px solid #e2e8f0', color: '#64748b', fontSize: 12, fontWeight: 900, whiteSpace: 'nowrap' }}>
-                {lockedLabel}
+            ) : row.status === 'cancelled' ? (
+              <span title="Buổi học đã hủy nên không thể ghi buổi." style={{ minHeight: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '6px 10px', borderRadius: 999, background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#64748b', fontSize: 12, fontWeight: 900, whiteSpace: 'nowrap' }}>
+                Đã hủy
               </span>
             ) : (
-              <Button intent="success" variant="outline" size="sm" icon={<Plus size={13} />} onClick={() => onAddDiary(row.slot.classId, row.slot.isoDate, row.slot.caDay)}>
-                Ghi buổi
-              </Button>
+              <>
+                {!locked && (
+                  <Button intent="success" variant="outline" size="sm" icon={<Plus size={13} />} onClick={() => onAddDiary(row.slot.classId, row.slot.isoDate, row.slot.caDay)}>
+                    Ghi buổi
+                  </Button>
+                )}
+                <Button intent="warning" variant="outline" size="sm" icon={<CalendarX size={13} />} onClick={() => markScheduleOff(row)}>
+                  Nghỉ
+                </Button>
+              </>
             )}
           </div>
         );
       },
     },
-  ], [onAddDiary, onViewDiary]);
+  ], [markScheduleOff, onAddDiary, onViewDiary]);
 
   const lessonColumns = useMemo(() => [
-    { key: 'date', label: 'Ngày học', width: '14%', render: (_: unknown, log: TeachingLog) => <DateText value={log.date} /> },
-    { key: 'classId', label: 'Lớp', width: '14%', render: (_: unknown, log: TeachingLog) => <StatusBadge domain="general" status="class" label={log.classId || '—'} tone="violet" dot={false} /> },
+    { key: 'date', label: 'Ngày học', width: '11%', render: (_: unknown, log: TeachingLog) => <DateText value={log.date} /> },
+    { key: 'classId', label: 'Lớp', align: 'center' as const, width: '7%', render: (_: unknown, log: TeachingLog) => <StatusBadge domain="general" status="class" label={log.classId || '—'} tone="violet" dot={false} /> },
     {
       key: 'caDay',
-      label: 'Giờ học',
-      width: '12%',
+      label: 'Giờ',
+      align: 'center' as const,
+      width: '7%',
       render: (_: unknown, log: TeachingLog) => (
         <span style={{ fontSize: 13, fontWeight: 900, color: log.caDay ? '#b45309' : '#94a3b8', whiteSpace: 'nowrap' }}>
           {log.caDay || '—'}
@@ -549,12 +656,22 @@ export default function OperationsTab({
     {
       key: 'content',
       label: 'Nội dung',
-      width: '26%',
-      render: (_: unknown, log: TeachingLog) => (
-        <span style={{ display: 'block', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13, fontWeight: 800, color: log.content ? '#0f172a' : '#94a3b8' }}>
-          {log.content || 'Chưa nhập nội dung'}
-        </span>
-      ),
+      width: '42%',
+      render: (_: unknown, log: TeachingLog) => {
+        const isOff = isLessonOffLog(log);
+        return (
+          <div style={{ minWidth: 0 }}>
+            <span style={{ display: 'block', maxWidth: 520, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13, fontWeight: 800, color: log.content ? '#0f172a' : '#94a3b8' }}>
+              {log.content || 'Chưa nhập nội dung'}
+            </span>
+            {isOff && (
+              <span style={{ display: 'block', maxWidth: 520, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11, fontWeight: 800, color: '#64748b' }}>
+                Lý do: {lessonOffReasonLabel(log)}
+              </span>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: 'homework',
@@ -564,7 +681,7 @@ export default function OperationsTab({
         const homework = String(log.homework || '').trim();
         const hasHomework = homework && homework !== '---';
         return (
-          <span style={{ display: 'block', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13, fontWeight: 800, color: hasHomework ? '#475569' : '#94a3b8' }}>
+          <span style={{ display: 'block', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13, fontWeight: 800, color: hasHomework ? '#475569' : '#94a3b8' }}>
             {hasHomework ? homework : '—'}
           </span>
         );
@@ -573,12 +690,12 @@ export default function OperationsTab({
     {
       key: 'attendance',
       label: 'Điểm danh',
-      width: '12%',
+      width: '11%',
       render: (_: unknown, log: TeachingLog) => {
-        const a = lessonAttendanceSummary(log);
-        return a.total > 0 ? (
-          <span style={{ fontSize: 11, color: '#475569', fontWeight: 800 }}>
-            Có mặt {a.present} · Vắng {a.absent} · Có phép {a.excused}
+        const label = lessonAttendanceLabel(log);
+        return label !== 'Chưa điểm danh' ? (
+          <span style={{ fontSize: 12, color: '#475569', fontWeight: 900 }}>
+            {label}
           </span>
         ) : <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 800 }}>Chưa điểm danh</span>;
       },
@@ -603,18 +720,18 @@ export default function OperationsTab({
       render: (_: unknown, row: AttendanceRow) => (
         <div style={{ minWidth: 0 }}>
           <p style={{ margin: 0, fontSize: 13, fontWeight: 900, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.name}</p>
-          {row.grade && <p style={{ margin: '2px 0 0', fontSize: 11, color: '#94a3b8', fontWeight: 700 }}>Khối {row.grade}</p>}
         </div>
       ),
     },
     { key: 'classId', label: 'Lớp', align: 'center' as const, width: '12%', render: (_: unknown, row: AttendanceRow) => <StatusBadge domain="general" status="class" label={row.classId || '—'} tone="violet" dot={false} /> },
     {
       key: 'stats',
-      label: 'Thống kê',
-      width: '22%',
+      label: 'Vắng',
+      align: 'center' as const,
+      width: '10%',
       render: (_: unknown, row: AttendanceRow) => (
-        <span style={{ fontSize: 12, fontWeight: 800, color: '#475569' }}>
-          Có mặt {row.present} · Vắng {row.absent} · Có phép {row.excused}
+        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 46, minHeight: 24, borderRadius: 999, background: row.absent ? '#fff1f2' : '#ecfdf5', border: `1px solid ${row.absent ? '#fecdd3' : '#bbf7d0'}`, color: row.absent ? '#e11d48' : '#059669', fontSize: 12, fontWeight: 950, whiteSpace: 'nowrap' }}>
+          {row.absent}
         </span>
       ),
     },
@@ -656,7 +773,11 @@ export default function OperationsTab({
 
   const recentLessons = useMemo(() => [...tlogs]
     .filter(log => !scheduleClass || log.classId === scheduleClass)
-    .sort((a, b) => parseDMY(b.rawDate || b.date) - parseDMY(a.rawDate || a.date))
+    .sort((a, b) => {
+      const byDate = parseDMY(b.rawDate || b.date) - parseDMY(a.rawDate || a.date);
+      if (byDate !== 0) return byDate;
+      return parseCaDayToHours(b.caDay || '') - parseCaDayToHours(a.caDay || '');
+    })
     .slice(0, 8), [scheduleClass, tlogs]);
 
   const warningAttendanceRows = useMemo(() => attendanceStats
@@ -666,8 +787,8 @@ export default function OperationsTab({
     .sort((a, b) => b.absent - a.absent || b.streak - a.streak || a.name.localeCompare(b.name, 'vi'))
     .slice(0, 10), [attendanceStats, scheduleClass]);
 
-  const weeklyLoggedCount = scheduleRows.filter(row => row.status === 'logged').length;
-  const weeklyNoAttendanceCount = scheduleRows.filter(row => row.tlog && lessonAttendanceSummary(row.tlog).total === 0).length;
+  const weeklyLoggedCount = scheduleRows.filter(row => row.status === 'logged' && !isLessonOffLog(row.tlog)).length;
+  const weeklyNoAttendanceCount = scheduleRows.filter(row => row.tlog && !isLessonOffLog(row.tlog) && lessonAttendanceSummary(row.tlog).total === 0).length;
 
   const recentLessonColumns = useMemo(() => [
     { key: 'date', label: 'Ngày học', width: '14%', render: (_: unknown, log: TeachingLog) => <DateText value={log.date} /> },
@@ -676,21 +797,26 @@ export default function OperationsTab({
       key: 'content',
       label: 'Nội dung',
       width: '28%',
-      render: (_: unknown, log: TeachingLog) => (
-        <span style={{ display: 'block', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13, fontWeight: 800, color: log.content ? '#0f172a' : '#94a3b8' }}>
-          {log.content || 'Chưa nhập nội dung'}
-        </span>
-      ),
+      render: (_: unknown, log: TeachingLog) => {
+        const label = isLessonOffLog(log)
+          ? `${log.content || 'Lớp nghỉ'} · ${lessonOffReasonLabel(log)}`
+          : (log.content || 'Chưa nhập nội dung');
+        return (
+          <span style={{ display: 'block', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13, fontWeight: 800, color: log.content ? '#0f172a' : '#94a3b8' }}>
+            {label}
+          </span>
+        );
+      },
     },
     {
       key: 'attendance',
       label: 'Điểm danh',
       width: '20%',
       render: (_: unknown, log: TeachingLog) => {
-        const a = lessonAttendanceSummary(log);
-        return a.total > 0 ? (
-          <span style={{ fontSize: 11, color: '#475569', fontWeight: 800 }}>
-            Có mặt {a.present} · Vắng {a.absent} · Phép {a.excused}
+        const label = lessonAttendanceLabel(log);
+        return label !== 'Chưa điểm danh' ? (
+          <span style={{ fontSize: 12, color: '#475569', fontWeight: 900 }}>
+            {label}
           </span>
         ) : <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 800 }}>Chưa điểm danh</span>;
       },
@@ -770,6 +896,34 @@ export default function OperationsTab({
   const [scheduleMonthNumber, scheduleYear] = scheduleMonth.split('/');
   const scheduleMonthLabel = `T${Number(scheduleMonthNumber)}/${scheduleYear}`;
 
+  const focusScheduleList = () => {
+    setSub('schedule');
+    scrollTo(scheduleListRef);
+  };
+  const focusLoggedLessons = () => {
+    setSub('lessons');
+    setLessonFocus('all');
+    setLessonMonth(scheduleMonth);
+    setDCls(scheduleClass);
+    setPgD(1);
+    scrollTo(lessonListRef);
+  };
+  const focusNoAttendanceLessons = () => {
+    setSub('lessons');
+    setLessonFocus('noAttendance');
+    setLessonMonth(scheduleMonth);
+    setDCls(scheduleClass);
+    setPgD(1);
+    scrollTo(lessonListRef);
+  };
+  const focusAttendanceWarnings = () => {
+    setSub('attendance');
+    setAttendanceFocus('warning');
+    setAttendanceMonth(scheduleMonth);
+    setAttendanceClass(scheduleClass);
+    scrollTo(attendanceListRef);
+  };
+
   const toolbarFilters = (
     <div className="ops-toolbar-filters">
       {sub === 'schedule' && (
@@ -805,20 +959,14 @@ export default function OperationsTab({
       )}
       {sub === 'attendance' && (
         <>
-          <Select value={attendanceClass} onChange={setAttendanceClass} options={attendanceClassOptions} size="md" style={{ width: 108, minWidth: 96 }} />
           <Select
-            value={attendanceFocus}
-            onChange={v => setAttendanceFocus(v as AttendanceFocus)}
-            options={[
-              { value: 'all', label: `Trạng thái (${attendanceStats.length})` },
-              { value: 'present', label: `Có mặt (${attendanceTotals.present})` },
-              { value: 'absent', label: `Vắng (${attendanceTotals.absent})` },
-              { value: 'excused', label: `Có phép (${attendanceTotals.excused})` },
-              { value: 'streak', label: `Cảnh báo (${attendanceStats.filter(r => r.streak >= 2).length})` },
-            ]}
+            value={attendanceMonth}
+            onChange={setAttendanceMonth}
+            options={lessonMonthOptions}
             size="md"
-            style={{ width: 146, minWidth: 128 }}
+            style={{ width: 108, minWidth: 96 }}
           />
+          <Select value={attendanceClass} onChange={setAttendanceClass} options={attendanceClassOptions} size="md" style={{ width: 108, minWidth: 96 }} />
         </>
       )}
     </div>
@@ -846,83 +994,132 @@ export default function OperationsTab({
           </Button>
         )}
       >
-        <ToolbarTabs tabs={opsTabs} active={sub} onChange={setSub} />
+        <ToolbarTabs
+          tabs={opsTabs}
+          active={sub}
+          onChange={next => {
+            if (next === 'lessons') setLessonFocus('all');
+            if (next === 'attendance') setAttendanceFocus('all');
+            setSub(next);
+          }}
+        />
         {toolbarFilters}
       </PageToolbar>
 
       {sub === 'schedule' && (
         <ActionableKpiGrid>
-          <ActionableKpi icon={BookOpen} value={scheduleRows.length} label="Buổi trong tháng" sub={scheduleMonthLabel} tone="primary" />
-          <ActionableKpi icon={CheckCircle} value={weeklyLoggedCount} label="Đã ghi buổi" sub={`${weeklyLoggedCount}/${scheduleRows.length || 0} buổi`} tone="success" />
-          <ActionableKpi icon={Edit3} value={weeklyNoAttendanceCount} label="Chưa điểm danh" sub="Buổi đã ghi nhưng chưa có điểm danh" tone={weeklyNoAttendanceCount ? 'warning' : 'neutral'} />
-          <ActionableKpi icon={AlertTriangle} value={warningAttendanceRows.length} label="Cảnh báo chuyên cần" sub={warningAttendanceRows.length ? 'Cần theo dõi' : 'Đang ổn'} tone={warningAttendanceRows.length ? 'danger' : 'success'} />
+          <ActionableKpi icon={BookOpen} value={scheduleRows.length} label="Buổi trong tháng" sub={scheduleMonthLabel} tone="primary" onClick={focusScheduleList} actionLabel="Xem lịch" />
+          <ActionableKpi icon={CheckCircle} value={weeklyLoggedCount} label="Đã ghi buổi" sub={`${weeklyLoggedCount}/${scheduleRows.length || 0} buổi`} tone="success" onClick={focusLoggedLessons} actionLabel="Mở buổi học" />
+          <ActionableKpi icon={Edit3} value={weeklyNoAttendanceCount} label="Chưa điểm danh" sub="Buổi đã ghi nhưng chưa có điểm danh" tone={weeklyNoAttendanceCount ? 'warning' : 'neutral'} onClick={focusNoAttendanceLessons} actionLabel="Lọc buổi" />
+          <ActionableKpi icon={AlertTriangle} value={warningAttendanceRows.length} label="Cảnh báo chuyên cần" sub={warningAttendanceRows.length ? 'Cần theo dõi' : 'Đang ổn'} tone={warningAttendanceRows.length ? 'danger' : 'success'} onClick={focusAttendanceWarnings} actionLabel="Xem cảnh báo" />
         </ActionableKpiGrid>
       )}
 
       {sub === 'schedule' && (
-        <div>
+        <div ref={scheduleListRef}>
           <style>{`
             .ops-schedule-desktop{display:block}.ops-schedule-mobile{display:none}
             @media(max-width:767px){.ops-schedule-desktop{display:none!important}.ops-schedule-mobile{display:grid!important}}
+            .ops-action-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px;margin-bottom:10px}
+            .ops-action-card{border:1px solid #e2e8f0;background:#fff;border-radius:12px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;text-align:left}
+            .ops-action-card:hover{border-color:#a7f3d0;background:#f0fdf4}
+            .ops-action-main{min-width:0}
+            .ops-action-title{margin:0;font-size:13px;font-weight:950;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+            .ops-action-sub{margin:3px 0 0;font-size:11px;font-weight:800;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
           `}</style>
+          {actionableScheduleRows.length > 0 && (
+            <div className="ops-action-strip" aria-label="Buổi chưa ghi gần nhất">
+              {actionableScheduleRows.map(row => {
+                const dayCode = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][row.slot.date.getDay()];
+                return (
+                  <div key={`action-${row.id}`} role="button" tabIndex={0} className="ops-action-card" onClick={() => openScheduleRow(row)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') openScheduleRow(row); }}>
+                    <span className="ops-action-main">
+                      <p className="ops-action-title">{row.slot.classId} · {row.slot.caDay}</p>
+                      <p className="ops-action-sub">{DAY_FULL[dayCode]} · {fmtWeekDate(row.slot.date)} · {scheduleStatusLabel(row.status)}</p>
+                    </span>
+                    <Button intent="success" variant="outline" size="sm" icon={<Plus size={13} />} onClick={event => { event.stopPropagation(); onAddDiary(row.slot.classId, row.slot.isoDate, row.slot.caDay); }}>
+                      Ghi
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <div className="ops-schedule-desktop">
             <DataTable
               columns={scheduleColumns}
-              data={scheduleRows}
+              data={pagedScheduleRows}
               rowKey="id"
               emptyText="Không có lịch dạy trong tháng này"
               emptySub="Thử đổi tháng/năm hoặc lớp."
               onRowClick={openScheduleRow}
               scrollX={false}
               density="compact"
+              footer={<Pager page={schedulePage} total={displayScheduleRows.length} perPage={IPP} setPage={setSchedulePage} showTotal />}
             />
           </div>
           <div className="ops-schedule-mobile" style={{ gap: 8, padding: 10 }}>
-            {scheduleRows.length === 0 ? (
+            {displayScheduleRows.length === 0 ? (
               <EmptyState text="Không có lịch dạy trong tháng này" sub="Thử đổi tháng/năm hoặc lớp." compact />
-            ) : scheduleRows.map(row => {
+            ) : pagedScheduleRows.map(row => {
               const dayCode = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][row.slot.date.getDay()];
               const locked = row.status === 'future' || row.status === 'cancelled';
               return (
-                <MobileCard
+                <MobileCompactCard
                   key={row.id}
                   title={`${row.slot.caDay} · ${row.slot.classId}`}
-                  subtitle={`${DAY_FULL[dayCode]} · ${fmtWeekDate(row.slot.date)} · ${row.slot.teacher || '—'}`}
-                  badge={<ScheduleBadge status={row.status} />}
+                  subtitle={`${DAY_FULL[dayCode]} · ${fmtWeekDate(row.slot.date)}`}
+                  badge={<ScheduleBadge status={row.status} log={row.tlog} />}
                   tone={scheduleStatusTone(row.status)}
                   onClick={() => openScheduleRow(row)}
-                  rows={[
-                    { label: 'Cơ sở', value: row.slot.facility },
-                    { label: 'Trạng thái', value: scheduleStatusLabel(row.status) },
+                  meta={[
+                    { key: 'teacher', label: row.slot.teacher || 'Chưa rõ GV', tone: row.slot.teacher && row.slot.teacher !== '—' ? 'neutral' as const : 'warning' as const },
+                    { key: 'facility', label: row.slot.facility || 'Chưa rõ cơ sở', tone: row.slot.facility && row.slot.facility !== '—' ? 'info' as const : 'warning' as const },
                   ]}
                   actions={(
-                    <div onClick={event => event.stopPropagation()} style={{ display: 'flex', width: '100%', justifyContent: 'flex-end', gap: 7, flexWrap: 'wrap' }}>
-                    {row.tlog ? (
-                      <Button intent="primary" variant="outline" size="sm" onClick={() => onViewDiary(row.tlog!)}>Xem</Button>
-                    ) : locked ? (
-                      <span title={row.status === 'future' ? 'Chỉ ghi buổi khi đã tới hoặc qua giờ học.' : 'Buổi học đã hủy nên không thể ghi buổi.'} style={{ minHeight: 40, display: 'inline-flex', alignItems: 'center', padding: '8px 12px', borderRadius: 999, background: '#f8fafc', border: '1px solid #e2e8f0', color: '#64748b', fontWeight: 900, fontSize: 12 }}>
-                        {row.status === 'future' ? 'Chưa tới giờ' : 'Đã hủy'}
-                      </span>
-                    ) : (
-                      <Button intent="success" variant="outline" size="sm" onClick={() => onAddDiary(row.slot.classId, row.slot.isoDate, row.slot.caDay)}>
-                        Ghi buổi
-                      </Button>
-                    )}
+                    <div onClick={event => event.stopPropagation()} style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, flexWrap: 'wrap' }}>
+                      {row.tlog ? (
+                        <Button intent="primary" variant="outline" size="sm" onClick={() => onViewDiary(row.tlog!)}>Xem</Button>
+                      ) : row.status === 'cancelled' ? (
+                        <span title="Buổi học đã hủy nên không thể ghi buổi." style={{ minHeight: 34, display: 'inline-flex', alignItems: 'center', padding: '7px 10px', borderRadius: 999, background: '#f8fafc', border: '1px solid #e2e8f0', color: '#64748b', fontWeight: 900, fontSize: 12 }}>
+                          Không ghi
+                        </span>
+                      ) : (
+                        <>
+                          {!locked && (
+                            <Button intent="success" variant="outline" size="sm" onClick={() => onAddDiary(row.slot.classId, row.slot.isoDate, row.slot.caDay)}>
+                              Ghi buổi
+                            </Button>
+                          )}
+                          <Button intent="warning" variant="outline" size="sm" onClick={() => markScheduleOff(row)}>
+                            Nghỉ
+                          </Button>
+                        </>
+                      )}
                     </div>
                   )}
                 />
               );
             })}
+            {displayScheduleRows.length > IPP && (
+              <Pager page={schedulePage} total={displayScheduleRows.length} perPage={IPP} setPage={setSchedulePage} showTotal />
+            )}
           </div>
         </div>
       )}
 
       {sub === 'lessons' && (
-        <div>
+        <div ref={lessonListRef}>
           <style>{`
             .ops-lessons-desktop{display:block}.ops-lessons-mobile{display:none}
             @media(max-width:767px){.ops-lessons-desktop{display:none!important}.ops-lessons-mobile{display:grid!important}}
           `}</style>
+          {lessonFocus === 'noAttendance' && (
+            <div style={{ marginBottom: 10, padding: '8px 10px', borderRadius: 10, border: '1px solid #fde68a', background: '#fffbeb', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+              <span style={{ fontSize: 12, fontWeight: 900, color: '#92400e' }}>Đang lọc buổi đã ghi nhưng chưa điểm danh</span>
+              <Button intent="warning" variant="outline" size="sm" onClick={() => setLessonFocus('all')}>Bỏ lọc</Button>
+            </div>
+          )}
           <div className="ops-lessons-desktop">
             <DataTable
               columns={lessonColumns}
@@ -941,21 +1138,22 @@ export default function OperationsTab({
               <EmptyState text="Chưa có buổi học phù hợp" sub="Thử đổi tháng hoặc lớp." compact />
             ) : pagedLessons.map(log => {
               const st = lessonStatus(log);
-              const a = lessonAttendanceSummary(log);
               const homework = String(log.homework || '').trim();
+              const isOff = isLessonOffLog(log);
               return (
-                <MobileCard
+                <MobileCompactCard
                   key={`${log.classId}-${log.rawDate || log.date}-${log.caDay}`}
                   title={`${log.classId || '—'} · ${log.caDay || '—'}`}
                   subtitle={<DateText value={log.date} />}
+                  value={lessonAttendanceLabel(log)}
                   badge={<StatusBadge domain="lesson" status={st.label} label={st.label} tone={st.tone} />}
                   tone={st.tone}
                   onClick={() => onViewDiary(log)}
-                  rows={[
-                    { label: 'Giờ học', value: log.caDay || '—' },
-                    { label: 'Nội dung', value: log.content || 'Chưa nhập' },
-                    { label: 'Bài tập', value: homework && homework !== '---' ? homework : '—' },
-                    { label: 'Điểm danh', value: a.total > 0 ? `Có mặt ${a.present} · Vắng ${a.absent} · Có phép ${a.excused}` : 'Chưa điểm danh' },
+                  meta={[
+                    { key: 'content', label: log.content || 'Chưa nhập nội dung', tone: log.content ? 'neutral' as const : 'warning' as const },
+                    isOff
+                      ? { key: 'reason', label: `Lý do: ${lessonOffReasonLabel(log)}`, tone: 'neutral' as const }
+                      : { key: 'homework', label: homework && homework !== '---' ? homework : 'Chưa có BTVN', tone: homework && homework !== '---' ? 'info' as const : 'neutral' as const },
                   ]}
                 />
               );
@@ -966,18 +1164,24 @@ export default function OperationsTab({
       )}
 
       {sub === 'attendance' && (
-        <div>
+        <div ref={attendanceListRef}>
           <style>{`
             .ops-attendance-desktop{display:block}.ops-attendance-mobile{display:none}
             @media(max-width:767px){.ops-attendance-desktop{display:none!important}.ops-attendance-mobile{display:grid!important}}
           `}</style>
+          {attendanceFocus === 'warning' && (
+            <div style={{ marginBottom: 10, padding: '8px 10px', borderRadius: 10, border: '1px solid #fecaca', background: '#fff1f2', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+              <span style={{ fontSize: 12, fontWeight: 900, color: '#be123c' }}>Đang lọc học sinh có cảnh báo chuyên cần</span>
+              <Button intent="danger" variant="outline" size="sm" onClick={() => setAttendanceFocus('all')}>Bỏ lọc</Button>
+            </div>
+          )}
           <div className="ops-attendance-desktop">
             <DataTable
               columns={attendanceColumns}
               data={filteredAttendance}
               rowKey="id"
               emptyText="Chưa có dữ liệu chuyên cần phù hợp"
-              emptySub="Thử đổi lớp hoặc trạng thái."
+              emptySub="Thử đổi tháng hoặc lớp."
               scrollX={false}
               density="compact"
             />
@@ -990,27 +1194,76 @@ export default function OperationsTab({
               const rate = attendanceRate(row);
               const phone = String(row.parentPhone || '').replace(/\D/g, '');
               return (
-                <MobileCard
+                <MobileCompactCard
                   key={`${row.id}-attendance-mobile`}
                   title={row.name}
                   subtitle={`${row.id || '—'} · ${row.classId || 'Chưa có lớp'}`}
+                  value={rate === null ? '—' : `${rate}%`}
                   badge={<StatusBadge domain="attendance" status={warning.label} label={warning.label} tone={warning.tone} />}
                   tone={warning.tone}
-                  rows={[
-                    { label: 'Có mặt', value: row.present || '—' },
-                    { label: 'Vắng', value: row.absent || '—' },
-                    { label: 'Có phép', value: row.excused || '—' },
-                    { label: 'Liên tiếp', value: row.streak || '—' },
-                    { label: 'Tỷ lệ', value: rate === null ? '—' : `${rate}%` },
+                  meta={[
+                    { key: 'absent', label: `Vắng ${row.absent}`, tone: row.absent ? 'warning' as const : 'success' as const },
+                    { key: 'streak', label: row.streak ? `Liên tiếp ${row.streak}` : 'Không liên tiếp', tone: row.streak ? 'danger' as const : 'neutral' as const },
+                    { key: 'excused', label: `Có phép ${row.excused}`, tone: row.excused ? 'info' as const : 'neutral' as const },
                   ]}
                   actions={phone.length >= 9 ? (
-                    <a href={`https://zalo.me/${phone}`} target="_blank" rel="noopener noreferrer" style={{ minHeight: 40, borderRadius: 999, border: '1px solid #bfdbfe', background: '#eef6ff', color: '#0068FF', padding: '8px 12px', fontSize: 12, fontWeight: 900, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, marginLeft: 'auto' }}>
+                    <a href={`https://zalo.me/${phone}`} target="_blank" rel="noopener noreferrer" style={{ minHeight: 34, borderRadius: 999, border: '1px solid #bfdbfe', background: '#eef6ff', color: '#0068FF', padding: '7px 10px', fontSize: 12, fontWeight: 900, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, marginLeft: 'auto' }}>
                       <Phone size={13} /> Zalo PH
                     </a>
                   ) : undefined}
                 />
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {lessonOffDraft && (
+        <div
+          className="ltn-form-modal-overlay"
+          style={{ position: 'fixed', inset: 0, zIndex: 210, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(15,23,42,0.52)', backdropFilter: 'blur(3px)' }}
+          onClick={closeLessonOffModal}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Xác nhận nghỉ buổi"
+            onClick={event => event.stopPropagation()}
+            style={{ width: 'min(420px, 100%)', borderRadius: 18, background: 'white', boxShadow: '0 24px 70px rgba(15,23,42,.26)', border: '1px solid #e2e8f0', overflow: 'hidden' }}
+          >
+            <div style={{ padding: '16px 18px 12px', borderBottom: '1px solid #eef2f7', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+              <span style={{ width: 38, height: 38, borderRadius: 13, background: '#fffbeb', color: '#b45309', border: '1px solid #fde68a', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <CalendarX size={18} />
+              </span>
+              <div style={{ minWidth: 0 }}>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 900, color: '#0f172a' }}>Xác nhận nghỉ buổi</h3>
+                <p style={{ margin: '4px 0 0', fontSize: 12, fontWeight: 750, color: '#64748b', lineHeight: 1.45 }}>
+                  {lessonOffDraft.row.slot.classId} · {lessonOffDraft.row.slot.caDay} · <DateText value={lessonOffDraft.row.slot.isoDate} />
+                </p>
+              </div>
+            </div>
+            <div style={{ padding: 18, display: 'grid', gap: 10 }}>
+              <label style={{ display: 'grid', gap: 7 }}>
+                <span style={{ fontSize: 11, fontWeight: 900, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.05em' }}>Lý do nghỉ</span>
+                <textarea
+                  autoFocus
+                  value={lessonOffDraft.reason}
+                  onChange={event => setLessonOffDraft(prev => prev ? { ...prev, reason: event.target.value } : prev)}
+                  placeholder="VD: GV bận, lớp nghỉ theo lịch trường, mưa lớn..."
+                  rows={3}
+                  style={{ width: '100%', minHeight: 86, resize: 'vertical', border: '1px solid #dbe4f0', borderRadius: 12, padding: '10px 12px', outline: 'none', color: '#0f172a', fontSize: 14, fontWeight: 650, lineHeight: 1.5 }}
+                />
+              </label>
+              <p style={{ margin: 0, fontSize: 12, color: '#94a3b8', fontWeight: 700, lineHeight: 1.45 }}>
+                Buổi nghỉ sẽ được lưu như một nhật ký đặc biệt, không có danh sách điểm danh và không tính học sinh là vắng/có phép.
+              </p>
+            </div>
+            <div style={{ padding: '12px 18px 16px', borderTop: '1px solid #eef2f7', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <Button intent="neutral" variant="outline" size="sm" onClick={closeLessonOffModal} disabled={lessonOffSaving}>Hủy</Button>
+              <Button intent="warning" size="sm" icon={<CalendarX size={13} />} loading={lessonOffSaving} onClick={submitLessonOff}>
+                Xác nhận nghỉ
+              </Button>
+            </div>
           </div>
         </div>
       )}

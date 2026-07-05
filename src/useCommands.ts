@@ -97,12 +97,11 @@ export function useCommands({
     /* ── Điểm danh theo lớp ── */
     uClasses.forEach(c => {
       const id   = c['Mã Lớp'] || '';
-      const name = c['Tên Lớp'] || id;
       cmds.push({
         id:       `diary-${id}`,
         group:    'Điểm danh',
         label:    `Điểm danh lớp ${id}`,
-        keywords: ['diem danh', 'dd', 'diary', id.toLowerCase(), name.toLowerCase()],
+        keywords: ['diem danh', 'dd', 'diary', id.toLowerCase()],
         icon:     '✅',
         handler:  () => { goScreen('operations'); onAddDiary(id); },
       });

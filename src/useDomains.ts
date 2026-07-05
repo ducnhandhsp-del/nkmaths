@@ -17,9 +17,9 @@ import toast from 'react-hot-toast';
 import type { Student, Payment, Expense, Teacher, LeaveRequest, Material, DeleteTarget } from './types';
 import {
   fetchWithTimeout, formatDate, sanitizeObject, sanitizeAttendance,
-  parseCaDayToHours, parseDMY, isStudentActive, buildSchoolYearMonths,
+  parseCaDayToHours, parseDMY, isStudentActive, buildSchoolYearMonths, isLessonOffLog,
 } from './helpers';
-import { buildPaidMap, isPaidFn, getActiveStudents, calcPaidPct, countPaidStudents } from './measures';
+import { buildPaidMap, isPaidFn, getActiveStudents, calcPaidPct, countPaidStudents, isStudentBillableInMonth } from './measures';
 import { RULES } from './rules';
 
 interface DomainConfig {
@@ -112,6 +112,9 @@ export function useDomains(cfg: DomainConfig) {
     lastLoadTimeRef.current = 0;
   }, [silentRef, lastLoadTimeRef]);
 
+  const classCodeOf = (c: any): string =>
+    String(c?.['Mã Lớp'] || c?.['Mã lớp'] || c?.MaLop || c?.['Ma Lop'] || c?.classId || c?.id || '').trim().toUpperCase();
+
   const mkTs = (d: string) => {
     const n = new Date();
     return `${n.getHours().toString().padStart(2,'0')}:${n.getMinutes().toString().padStart(2,'0')} - ${formatDate(d)}`;
@@ -145,7 +148,7 @@ export function useDomains(cfg: DomainConfig) {
         goal: form.goal || '', supportNeeded: form.supportNeeded || '',
         classId: form.classId || '',
         // BUG4 FIX: formatDate để startDate nhất quán với dữ liệu từ GAS (DD/MM/YYYY)
-        // tránh parseDMY / isMonthBillable tính sai tháng bắt đầu
+        // tránh parseDMY / billable tự viết tính sai tháng bắt đầu
         startDate: form.startDate ? formatDate(form.startDate) : '',
         endDate: form.endDate ? formatDate(form.endDate) : '',
         status: form.status || 'active',
@@ -232,30 +235,62 @@ export function useDomains(cfg: DomainConfig) {
   ════════════════════════════════════════════ */
   const handleSaveClass = useCallback(async (form: any) =>
     withSave(async () => {
-      if (!form['Mã Lớp']?.trim()) throw new Error('⚠️ Mã lớp là bắt buộc!');
+      const classCode = classCodeOf(form);
+      const originalCode = classCodeOf({ ...editClass, ...(form.__editingId ? { MaLop: form.__editingId } : {}) }) || classCode;
+      if (!classCode) throw new Error('⚠️ Lớp là bắt buộc!');
+
+      const normalizedForm = {
+        ...form,
+        'Mã Lớp': classCode,
+        'Tên Lớp': String(form['Tên Lớp'] || form.TenLop || classCode).trim() || classCode,
+        'Khối': String(form['Khối'] || form.Khoi || '').trim(),
+        'Giáo viên': String(form['Giáo viên'] || form.GiaoVien || '').trim(),
+        'Cơ sở': String(form['Cơ sở'] || form.CoSo || '').trim(),
+        'Buổi 1': String(form['Buổi 1'] || form.Buoi1 || '').trim(),
+        'Buổi 2': String(form['Buổi 2'] || form.Buoi2 || '').trim(),
+        'Buổi 3': String(form['Buổi 3'] || form.Buoi3 || '').trim(),
+        MaLop: classCode,
+        TenLop: String(form['Tên Lớp'] || form.TenLop || classCode).trim() || classCode,
+        Khoi: String(form['Khối'] || form.Khoi || '').trim(),
+        GiaoVien: String(form['Giáo viên'] || form.GiaoVien || '').trim(),
+        CoSo: String(form['Cơ sở'] || form.CoSo || '').trim(),
+        Buoi1: String(form['Buổi 1'] || form.Buoi1 || '').trim(),
+        Buoi2: String(form['Buổi 2'] || form.Buoi2 || '').trim(),
+        Buoi3: String(form['Buổi 3'] || form.Buoi3 || '').trim(),
+      };
+
       // Optimistic update
       if (editClass) {
-        setUClasses(prev => prev.map(c => c['Mã Lớp'] === form['Mã Lớp'] ? { ...c, ...form } : c));
+        setUClasses(prev => {
+          let found = false;
+          const next = prev.map(c => {
+            const sameClass = classCodeOf(c) === originalCode || classCodeOf(c) === classCode;
+            if (!sameClass) return c;
+            found = true;
+            return { ...c, ...normalizedForm };
+          });
+          return found ? next : [...next, normalizedForm];
+        });
       } else {
-        setUClasses(prev => [...prev, form]);
+        setUClasses(prev => [...prev, normalizedForm]);
       }
-      setEditClass(null);
       // FIX CRITICAL: GAS lopVals reads camelCase (MaLop, TenLop...) NOT Vietnamese keys ('Mã Lớp'...)
       // Phải map sang đúng field name mà GAS expect
       await api({
         action: editClass ? 'updateClass' : 'saveClass',
-        MaLop:    form['Mã Lớp']    || '',
-        'Ma Lop': form['Mã Lớp']    || '',  // backup key GAS cũng check
-        TenLop:   form['Tên Lớp']   || '',
-        Khoi:     form['Khối']      || '',
-        MaGV:     form.MaGV || form.teacherId || '',
-        GiaoVien: form['Giáo viên'] || '',
-        CoSo:     form['Cơ sở']     || '',
-        Buoi1:    form['Buổi 1']    || '',
-        Buoi2:    form['Buổi 2']    || '',
-        Buoi3:    form['Buổi 3']    || '',
+        MaLop:    normalizedForm.MaLop,
+        'Ma Lop': normalizedForm.MaLop,  // backup key GAS cũng check
+        TenLop:   normalizedForm.TenLop,
+        Khoi:     normalizedForm.Khoi,
+        MaGV:     form.MaGV || form.teacherId || editClass?.MaGV || editClass?.teacherId || '',
+        GiaoVien: normalizedForm.GiaoVien,
+        CoSo:     normalizedForm.CoSo,
+        Buoi1:    normalizedForm.Buoi1,
+        Buoi2:    normalizedForm.Buoi2,
+        Buoi3:    normalizedForm.Buoi3,
       });
-      setSilent(); loadData();
+      setSilent();
+      void loadData();
     }, editClass ? '✅ Đã cập nhật lớp!' : '✅ Đã thêm lớp mới!')
   , [withSave, editClass, api, setUClasses, setSilent, loadData]);
 
@@ -382,42 +417,42 @@ export function useDomains(cfg: DomainConfig) {
       return;
     }
 
-    /* ── Optimistic update: hiện entry ngay lập tức, không chờ GAS ── */
-    const attList = sanitizeAttendance(form.attendance || []);
-    const present = attList.filter((a: any) => (a.trangThai || a['Trạng thái']) === 'Có mặt').length;
-    const absent  = attList.filter((a: any) => {
-      const st = a.trangThai || a['Trạng thái'];
-      return st === 'Vắng';
-    }).length;
-    const late    = 0;
-    const excused = attList.filter((a: any) => {
-      const st = a.trangThai || a['Trạng thái'];
-      return st === 'Có phép' || st === 'Nghỉ có phép';
-    }).length;
-    const dateFormatted = formatDate(form.date);
-    const optimisticLog = {
-      rawDate: form.date, date: dateFormatted,
-      originalDate: form.originalDate || form.date,
-      originalClassId: form.originalClassId || form.classId,
-      originalCaDay: form.originalCaDay || form.caDay || '',
-      classId: form.classId, content: form.content || '',
-      homework: form.homework || '---', teacherNote: form.teacherNote || '',
-      teacherName: form.teacherName || '', caDay: form.caDay || '',
-      present, absent, late, excused, attendanceList: attList,
-    };
-    if (isEdit) {
-      setTlogs(prev => prev.map(l =>
-        l.classId === form.originalClassId &&
-        formatDate(l.date) === formatDate(form.originalDate) &&
-        l.caDay === (form.originalCaDay || form.caDay)
-          ? optimisticLog : l
-      ));
-    } else {
-      setTlogs(prev => [optimisticLog, ...prev]);
-    }
-    setEditDiary(null);
-
     return withSave(async () => {
+      /* ── Optimistic update: chỉ chạy sau khi withSave đã lấy khóa lưu ── */
+      const attList = sanitizeAttendance(form.attendance || []);
+      const present = attList.filter((a: any) => (a.trangThai || a['Trạng thái']) === 'Có mặt').length;
+      const absent  = attList.filter((a: any) => {
+        const st = a.trangThai || a['Trạng thái'];
+        return st === 'Vắng';
+      }).length;
+      const late    = 0;
+      const excused = attList.filter((a: any) => {
+        const st = a.trangThai || a['Trạng thái'];
+        return st === 'Có phép' || st === 'Nghỉ có phép';
+      }).length;
+      const dateFormatted = formatDate(form.date);
+      const optimisticLog = {
+        rawDate: form.date, date: dateFormatted,
+        originalDate: form.originalDate || form.date,
+        originalClassId: form.originalClassId || form.classId,
+        originalCaDay: form.originalCaDay || form.caDay || '',
+        classId: form.classId, content: form.content || '',
+        homework: form.homework || '---', teacherNote: form.teacherNote || '',
+        teacherName: form.teacherName || '', caDay: form.caDay || '',
+        present, absent, late, excused, attendanceList: attList,
+      };
+      if (isEdit) {
+        setTlogs(prev => prev.map(l =>
+          l.classId === form.originalClassId &&
+          formatDate(l.date) === formatDate(form.originalDate) &&
+          l.caDay === (form.originalCaDay || form.caDay)
+            ? optimisticLog : l
+        ));
+      } else {
+        setTlogs(prev => [optimisticLog, ...prev]);
+      }
+      setEditDiary(null);
+
       await api({
         action:         isEdit ? 'updateDiary' : 'saveDiary',
         date:           dateFormatted,
@@ -435,7 +470,7 @@ export function useDomains(cfg: DomainConfig) {
         }),
       });
       setSilent(); loadData();
-    }, isEdit ? '✅ Đã cập nhật buổi dạy!' : '✅ Đã ghi buổi dạy!');
+    }, isEdit ? '✅ Đã cập nhật buổi dạy!' : isLessonOffLog(form) ? '✅ Đã lưu nghỉ buổi!' : '✅ Đã ghi buổi dạy!');
   }, [withSave, api, setTlogs, setSilent, loadData]);
 
   /* ════════════════════════════════════════════
@@ -693,20 +728,9 @@ export function useDomains(cfg: DomainConfig) {
 
   const [fM, fY] = (fMo || '01/2026').split('/').map(Number);
 
-  const isMonthBillableForStudent = useCallback((s: Student, fm: { m: number; y: number }): boolean => {
-    const monthStart = new Date(fm.y, fm.m - 1, 1).getTime();
-    const startTs = parseDMY(s.startDate || '');
-    if (startTs) {
-      const enrollStart = new Date(new Date(startTs).getFullYear(), new Date(startTs).getMonth(), 1).getTime();
-      if (monthStart < enrollStart) return false;
-    }
-    const endTs = parseDMY(s.endDate || '');
-    if (endTs && s.endDate !== '---' && s.endDate !== '') {
-      const leaveMonth = new Date(new Date(endTs).getFullYear(), new Date(endTs).getMonth(), 1).getTime();
-      if (monthStart >= leaveMonth) return false;
-    }
-    return true;
-  }, []);
+  const isStudentBillableForPeriod = useCallback((s: Student, fm: { m: number; y: number }): boolean => (
+    isStudentBillableInMonth(s, fm)
+  ), []);
 
   const filtFin = useMemo(() => {
     const q = qF.toLowerCase().trim();
@@ -717,7 +741,7 @@ export function useDomains(cfg: DomainConfig) {
       if (fFC  && s.classId !== fFC) return false;
       if (fSt === 'paid') return isPaid(s.id, fM, fY);
       if (fSt === 'unpaid') {
-        if (!isMonthBillableForStudent(s, { m: fM, y: fY })) return false;
+        if (!isStudentBillableForPeriod(s, { m: fM, y: fY })) return false;
         return !isPaid(s.id, fM, fY);
       }
       return true;
@@ -729,13 +753,13 @@ export function useDomains(cfg: DomainConfig) {
         return true;
       });
       return [...filtered].sort((a, b) => {
-        const aDebt = debtMonths.filter(fm => isMonthBillableForStudent(a, fm) && !isPaid(a.id, fm.m, fm.y)).length;
-        const bDebt = debtMonths.filter(fm => isMonthBillableForStudent(b, fm) && !isPaid(b.id, fm.m, fm.y)).length;
+        const aDebt = debtMonths.filter(fm => isStudentBillableForPeriod(a, fm) && !isPaid(a.id, fm.m, fm.y)).length;
+        const bDebt = debtMonths.filter(fm => isStudentBillableForPeriod(b, fm) && !isPaid(b.id, fm.m, fm.y)).length;
         return bDebt - aDebt;
       });
     }
     return filtered;
-  }, [students, qF, fTch, fFC, fSt, fM, fY, isPaid, hideInactive, isMonthBillableForStudent, curMo, curYr, schoolYear]);
+  }, [students, qF, fTch, fFC, fSt, fM, fY, isPaid, hideInactive, isStudentBillableForPeriod, curMo, curYr, schoolYear]);
 
   const prevFiltFinLen = useRef(filtFin.length);
   useEffect(() => {
@@ -766,6 +790,6 @@ export function useDomains(cfg: DomainConfig) {
     qD, setQD, dCls, setDCls, pgD, setPgD, filtD,
     qF, setQF, fMo, setFMo, fTch, setFTch, fFC, setFFC, fSt, setFSt, pgF, setPgF, filtFin,
     qCls, setQCls, fClsTeacher, setFClsTeacher,
-    isMonthBillableForStudent,
+    isStudentBillableForPeriod,
   };
 }

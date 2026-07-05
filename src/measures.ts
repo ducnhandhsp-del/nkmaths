@@ -12,9 +12,9 @@
  *   - debtStatus tính inline trong FinanceTab
  */
 
-import type { Student, Payment, Expense, TeachingLog } from './types';
+import type { Student, Payment, Expense, TeachingLog, ClassRecord } from './types';
 import { RULES } from './rules';
-import { parseDMY } from './helpers';
+import { isLessonOffLog, parseDMY } from './helpers';
 
 /* ─────────────────────────────────────────────
    FORMATTERS — một nơi duy nhất
@@ -51,6 +51,60 @@ export const isStudentActive = (s: Pick<Student, 'status' | 'endDate'>): boolean
 export const getActiveStudents = (students: Student[]): Student[] =>
   students.filter(isStudentActive);
 
+export interface Period {
+  m: number;
+  y: number;
+}
+
+export const periodKey = (period: Period): string => `${period.m}/${period.y}`;
+
+export const parsePeriod = (raw: string): Period | null => {
+  const s = String(raw || '').includes(' - ') ? String(raw || '').split(' - ')[1] : String(raw || '');
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return { m: parseInt(s.split('/')[1], 10), y: parseInt(s.split('/')[2], 10) };
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return { m: parseInt(s.slice(5, 7), 10), y: parseInt(s.slice(0, 4), 10) };
+  const ts = parseDMY(s);
+  if (!ts) return null;
+  const d = new Date(ts);
+  return { m: d.getMonth() + 1, y: d.getFullYear() };
+};
+
+export const isSamePeriod = (raw: string, period: Period): boolean => {
+  const parsed = parsePeriod(raw);
+  return parsed?.m === period.m && parsed?.y === period.y;
+};
+
+export const isStudentActiveInMonth = (student: Pick<Student, 'status' | 'startDate' | 'endDate'>, period: Period): boolean => {
+  const monthStart = new Date(period.y, period.m - 1, 1).getTime();
+  const nextMonthStart = new Date(period.y, period.m, 1).getTime();
+  const startTs = parseDMY(student.startDate || '');
+  const endTs = parseDMY(student.endDate || '');
+  const endRaw = String(student.endDate || '').trim();
+
+  if (startTs && startTs >= nextMonthStart) return false;
+  if (endTs && endRaw && endRaw !== '---' && endTs < monthStart) return false;
+  return isStudentActive(student as Pick<Student, 'status' | 'endDate'>) || (!!startTs && (!endTs || endTs >= monthStart));
+};
+
+export const isStudentBillableInMonth = (student: Pick<Student, 'startDate' | 'endDate'>, period: Period): boolean => {
+  const monthStart = new Date(period.y, period.m - 1, 1).getTime();
+  const startTs = parseDMY(student.startDate || '');
+  if (startTs) {
+    const d = new Date(startTs);
+    const startMonth = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+    if (monthStart < startMonth) return false;
+  }
+
+  const endRaw = String(student.endDate || '').trim();
+  const endTs = parseDMY(endRaw);
+  if (endTs && endRaw && endRaw !== '---') {
+    const d = new Date(endTs);
+    const leaveMonth = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+    if (monthStart >= leaveMonth) return false;
+  }
+
+  return true;
+};
+
 /** Màu badge học lực */
 export const getLevelColor = (level: string) =>
   RULES.academic.levelColor[level] ?? RULES.academic.levelColorDefault;
@@ -70,30 +124,23 @@ export const buildPaidMap = (
   const m = new Map<string, Set<string>>();
   payments.forEach(p => {
     if (!m.has(p.studentId)) m.set(p.studentId, new Set());
-    let mo: number | null = (p as any).thangHP ? Number((p as any).thangHP) : null;
-    if (!mo) {
-      const raw = p.date || '';
-      const s   = raw.includes(' - ') ? raw.split(' - ')[1] : raw;
-      if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
-        mo = parseInt(s.split('/')[1]);
-      } else if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
-        // B1 FIX: parse component trực tiếp — new Date('YYYY-MM-DD') UTC shift
-        // khiến ngày 1 tháng bị lùi về tháng trước ở UTC+7.
-        mo = parseInt(s.slice(5, 7));
-      }
-    }
-    if (!mo || mo < 1 || mo > 12) return;
-    let yr: number = (p as any).namHP ? Number((p as any).namHP) : curYr;
-    if (!(p as any).namHP) {
-      const raw = p.date || '';
-      const s   = raw.includes(' - ') ? raw.split(' - ')[1] : raw;
-      if (/^\d{2}\/\d{2}\/\d{4}$/.test(s))  yr = parseInt(s.split('/')[2]);
-      else if (/^\d{4}-\d{2}-\d{2}/.test(s)) yr = parseInt(s.slice(0, 4));
-    }
-    m.get(p.studentId)!.add(`${mo}/${yr}`);
+    const period = getPaymentTuitionPeriod(p, curYr);
+    if (!period) return;
+    m.get(p.studentId)!.add(periodKey(period));
   });
   return m;
 };
+
+export const getPaymentTuitionPeriod = (payment: Payment, fallbackYear?: number): Period | null => {
+  const m = Number((payment as any).thangHP);
+  const y = Number((payment as any).namHP);
+  if (m >= 1 && m <= 12 && y >= 2000) return { m, y };
+  const period = parsePeriod(payment.date || '');
+  if (period) return period;
+  return m >= 1 && m <= 12 && fallbackYear ? { m, y: fallbackYear } : null;
+};
+
+export const getPaymentReceiptPeriod = (payment: Payment): Period | null => parsePeriod(payment.date || '');
 
 /** Kiểm tra học sinh đã đóng học phí tháng/năm chưa */
 export const isPaidFn = (
@@ -116,25 +163,15 @@ export const calcPaidPct = (paidCount: number, totalActive: number): number =>
 /** Tổng thu trong tháng/năm */
 export const calcMonthlyRevenue = (payments: Payment[], mo: number, yr: number): number =>
   payments.filter(p => {
-    const raw = p.date || '';
-    const s   = raw.includes(' - ') ? raw.split(' - ')[1] : raw;
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
-      const parts = s.split('/');
-      return parseInt(parts[1]) === mo && parseInt(parts[2]) === yr;
-    }
-    return false;
+    const period = getPaymentReceiptPeriod(p);
+    return period?.m === mo && period?.y === yr;
   }).reduce((sum, p) => sum + p.amount, 0);
 
 /** Tổng chi trong tháng/năm */
 export const calcMonthlyExpense = (expenses: Expense[], mo: number, yr: number): number =>
   expenses.filter(e => {
-    const raw = e.date || '';
-    const s   = raw.includes(' - ') ? raw.split(' - ')[1] : raw;
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
-      const parts = s.split('/');
-      return parseInt(parts[1]) === mo && parseInt(parts[2]) === yr;
-    }
-    return false;
+    const period = parsePeriod(e.date || '');
+    return period?.m === mo && period?.y === yr;
   }).reduce((sum, e) => sum + e.amount, 0);
 
 /* ─────────────────────────────────────────────
@@ -150,27 +187,75 @@ export interface AttendanceSummary {
   pct:     number | null;
 }
 
+export type AttendanceStatus = 'present' | 'absent' | 'excused';
+
+export const attendanceStudentId = (entry: any): string =>
+  String(entry?.maHS || entry?.['Mã HS'] || entry?.['MÃ£ HS'] || entry?.MaHS || '').trim();
+
+export const normalizeAttendanceStatus = (raw: unknown): AttendanceStatus => {
+  const s = String(raw || '').trim();
+  if (s === 'Vắng' || s === 'Váº¯ng') return 'absent';
+  if (s === 'Có phép' || s === 'CÃ³ phÃ©p' || s === 'Nghỉ có phép' || s === 'Nghá»‰ cÃ³ phÃ©p') return 'excused';
+  const n = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (n === 'vang' || n === 'absent') return 'absent';
+  if (n === 'co phep' || n === 'nghi co phep' || n === 'excused') return 'excused';
+  return 'present';
+};
+
 /** Tính chuyên cần của một học sinh từ tất cả teaching logs */
 export const calcStudentAttendance = (
   tlogs: TeachingLog[],
   studentId: string,
+  period?: Period,
 ): AttendanceSummary => {
   let present = 0, absent = 0, late = 0, excused = 0;
-  tlogs.forEach(log =>
+  tlogs.forEach(log => {
+    if (isLessonOffLog(log)) return;
+    if (period && !isSamePeriod(log.rawDate || log.date || '', period)) return;
     (log.attendanceList || []).forEach((a: any) => {
-      // Support both GAS v29 camelCase and legacy Vietnamese keys
-      const id = a.maHS || a['Mã HS'] || a.MaHS || '';
+      const id = attendanceStudentId(a);
       if (id !== studentId) return;
-      const st = a.trangThai || a['Trạng thái'] || a.TrangThai || '';
-      if (st === 'Có mặt') present++;
-      else if (st === 'Vắng') absent++;
-      else if (st === 'Có phép' || st === 'Nghỉ có phép') excused++;
-      else if (st === 'Muộn') present++;
-    })
-  );
+      const status = normalizeAttendanceStatus(a.trangThai || a['Trạng thái'] || a['Tráº¡ng thÃ¡i'] || a.TrangThai || '');
+      if (status === 'absent') absent++;
+      else if (status === 'excused') excused++;
+      else present++;
+    });
+  });
   const total = present + absent + late + excused;
   const pct   = total > 0 ? Math.round((present / total) * 100) : null;
   return { present, absent, late, excused, total, pct };
+};
+
+export const calcStudentAbsenceStreak = (
+  tlogs: TeachingLog[],
+  studentId: string,
+  classId?: string,
+  period?: Period,
+): number => {
+  const logs = [...tlogs]
+    .filter(log => !isLessonOffLog(log))
+    .filter(log => !classId || log.classId === classId)
+    .filter(log => !period || isSamePeriod(log.rawDate || log.date || '', period))
+    .sort((a, b) => parseDMY(b.rawDate || b.date || '') - parseDMY(a.rawDate || a.date || ''));
+
+  let streak = 0;
+  for (const log of logs) {
+    const entry = (log.attendanceList || []).find((a: any) => attendanceStudentId(a) === studentId);
+    if (!entry) continue;
+    const rawStatus = (entry as any).trangThai || (entry as any)['Trạng thái'] || (entry as any)['TrÃ¡ÂºÂ¡ng thÃƒÂ¡i'] || (entry as any).TrangThai || '';
+    const status = normalizeAttendanceStatus(rawStatus);
+    if (status === 'absent') streak++;
+    else break;
+  }
+  return streak;
+};
+
+export const getAttendanceRisk = (summary: Pick<AttendanceSummary, 'absent' | 'pct'> & { streak?: number }): { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' } => {
+  const streak = summary.streak || 0;
+  if (summary.absent >= RULES.attendance.absentAlertThreshold + 2 || streak >= 3) return { label: 'Vắng nhiều', tone: 'danger' };
+  if (summary.absent >= RULES.attendance.absentAlertThreshold || streak >= 2) return { label: 'Cần theo dõi', tone: 'warning' };
+  if (summary.pct === null) return { label: 'Chưa có dữ liệu', tone: 'neutral' };
+  return { label: 'Ổn định', tone: 'success' };
 };
 
 /** Màu chuyên cần dựa trên % */
@@ -179,6 +264,358 @@ export const attendanceColor = (pct: number | null): string => {
   if (pct >= RULES.attendance.goodAttendancePct) return '#10b981';
   if (pct >= RULES.attendance.avgAttendancePct)  return '#f97316';
   return '#ef4444';
+};
+
+export const classIdOf = (classRecord: Partial<ClassRecord> | Record<string, any> | null | undefined): string =>
+  String(classRecord?.['Mã Lớp'] || classRecord?.['MÃ£ Lá»›p'] || classRecord?.['Mã lớp'] || classRecord?.MaLop || classRecord?.classId || '').trim();
+
+export const classScheduleSlots = (classRecord: Partial<ClassRecord> | Record<string, any> | null | undefined): string[] =>
+  [classRecord?.['Buổi 1'], classRecord?.['Buá»•i 1'], classRecord?.Buoi1, classRecord?.['Buổi 2'], classRecord?.['Buá»•i 2'], classRecord?.Buoi2, classRecord?.['Buổi 3'], classRecord?.['Buá»•i 3'], classRecord?.Buoi3]
+    .map(v => String(v || '').trim())
+    .filter(Boolean);
+
+export const getClassSessionTarget = (classRecord: Partial<ClassRecord> | Record<string, any> | null | undefined): number => {
+  const slots = classScheduleSlots(classRecord).length;
+  if (slots >= 3) return RULES.finance.threeSessionsPerWeekDueAt;
+  if (slots >= 2) return RULES.finance.twoSessionsPerWeekDueAt;
+  if (slots === 1) return RULES.finance.oneSessionPerWeekDueAt;
+  return 0;
+};
+
+export const lessonCountByClassPeriod = (tlogs: TeachingLog[], period: Period): Map<string, number> => {
+  const sets = new Map<string, Set<string>>();
+  tlogs.forEach(log => {
+    if (isLessonOffLog(log)) return;
+    const classId = String(log.classId || '').trim();
+    if (!classId || !isSamePeriod(log.rawDate || log.date || '', period)) return;
+    if (!sets.has(classId)) sets.set(classId, new Set());
+    sets.get(classId)!.add(`${log.rawDate || log.date || ''}|${log.caDay || ''}`);
+  });
+  const counts = new Map<string, number>();
+  sets.forEach((set, key) => counts.set(key, set.size));
+  return counts;
+};
+
+const lessonDateTs = (log: Pick<TeachingLog, 'rawDate' | 'date'>): number =>
+  parseDMY(log.rawDate || log.date || '') || 0;
+
+const paymentDateTs = (payment: Pick<Payment, 'date'>): number =>
+  parseDMY(payment.date || '') || 0;
+
+export const countUniqueClassLessons = (
+  tlogs: TeachingLog[],
+  classId: string,
+  opts: { fromTs?: number; fromExclusive?: boolean; toTs?: number } = {},
+): number => {
+  const fromTs = opts.fromTs || 0;
+  const toTs = opts.toTs || Number.POSITIVE_INFINITY;
+  const lessons = new Set<string>();
+  tlogs.forEach(log => {
+    if (isLessonOffLog(log)) return;
+    if (String(log.classId || '').trim() !== classId) return;
+    const ts = lessonDateTs(log);
+    if (!ts) return;
+    if (opts.fromExclusive ? ts <= fromTs : ts < fromTs) return;
+    if (ts > toTs) return;
+    lessons.add(`${log.rawDate || log.date || ''}|${log.caDay || ''}`);
+  });
+  return lessons.size;
+};
+
+export interface SessionProgress {
+  done: number;
+  target: number;
+  due: boolean;
+  overdue: boolean;
+}
+
+export const getTuitionSessionProgress = (
+  student: Pick<Student, 'classId'>,
+  classes: Array<Partial<ClassRecord> | Record<string, any>>,
+  lessonCounts: Map<string, number>,
+): SessionProgress => {
+  const classId = String(student.classId || '').trim();
+  const classRecord = classes.find(c => classIdOf(c) === classId);
+  const target = getClassSessionTarget(classRecord);
+  const done = lessonCounts.get(classId) || 0;
+  return {
+    done,
+    target,
+    due: target > 0 && done === target,
+    overdue: target > 0 && done > target,
+  };
+};
+
+export type TuitionStatus = 'inactive' | 'paid' | 'not_due' | 'due' | 'overdue' | 'no_schedule';
+
+export const getTuitionStatus = ({
+  inactive,
+  paid,
+  pastDue,
+  sessionDue,
+  sessionOverdue,
+}: {
+  inactive: boolean;
+  paid: boolean;
+  pastDue: boolean;
+  sessionDue?: boolean;
+  sessionOverdue?: boolean;
+}): TuitionStatus => {
+  if (inactive) return 'inactive';
+  if (paid) return 'paid';
+  if (sessionOverdue) return 'overdue';
+  if (sessionDue) return 'due';
+  if (pastDue) return 'due';
+  return 'not_due';
+};
+
+export interface TuitionPeriodState {
+  student: Student;
+  period: Period;
+  billable: boolean;
+  inactive: boolean;
+  paid: boolean;
+  payment?: Payment;
+  status: TuitionStatus;
+  sessionProgress: SessionProgress;
+  amount: number;
+  outstandingAmount: number;
+}
+
+export interface TuitionCycleState {
+  student: Student;
+  classRecord?: Partial<ClassRecord> | Record<string, any>;
+  target: number;
+  done: number;
+  status: TuitionStatus;
+  lastPayment?: Payment;
+  cycleStartDate: string;
+  cycleStartTs: number;
+  amount: number;
+  outstandingAmount: number;
+  sessionProgress: SessionProgress;
+  billable: boolean;
+  inactive: boolean;
+}
+
+export const getTuitionCycleState = ({
+  student,
+  classes,
+  payments = [],
+  tlogs = [],
+  baseTuition = 0,
+}: {
+  student: Student;
+  classes: Array<Partial<ClassRecord> | Record<string, any>>;
+  payments?: Payment[];
+  tlogs?: TeachingLog[];
+  baseTuition?: number;
+}): TuitionCycleState => {
+  const inactive = !isStudentActive(student);
+  const classId = String(student.classId || '').trim();
+  const classRecord = classes.find(c => classIdOf(c) === classId);
+  const target = getClassSessionTarget(classRecord);
+  const studentPayments = payments
+    .filter(payment => {
+      if (payment.studentId !== student.id) return false;
+      const paymentClassId = String((payment as any).maLop || (payment as any).MaLop || (payment as any).classId || (payment as any)['Mã Lớp'] || '').trim();
+      return !paymentClassId || !classId || paymentClassId === classId;
+    })
+    .map(payment => ({ payment, ts: paymentDateTs(payment) }))
+    .filter(row => row.ts > 0)
+    .sort((a, b) => b.ts - a.ts);
+  const lastPayment = studentPayments[0]?.payment;
+  const lastPaymentTs = studentPayments[0]?.ts || 0;
+  const startTs = parseDMY(student.startDate || '') || 0;
+  const cycleStartTs = lastPaymentTs || startTs;
+  const done = target > 0 && classId
+    ? countUniqueClassLessons(tlogs, classId, { fromTs: cycleStartTs, fromExclusive: !!lastPaymentTs })
+    : 0;
+  const sessionProgress = {
+    done,
+    target,
+    due: target > 0 && done === target,
+    overdue: target > 0 && done > target,
+  };
+  const billable = !inactive && target > 0;
+  const status: TuitionStatus = inactive
+    ? 'inactive'
+    : target <= 0
+      ? 'no_schedule'
+      : lastPayment && done === 0
+        ? 'paid'
+        : sessionProgress.overdue
+          ? 'overdue'
+          : sessionProgress.due
+            ? 'due'
+            : 'not_due';
+  const amount = status === 'paid' || status === 'due' || status === 'overdue' ? baseTuition : 0;
+  return {
+    student,
+    classRecord,
+    target,
+    done,
+    status,
+    lastPayment,
+    cycleStartDate: lastPayment?.date || student.startDate || '',
+    cycleStartTs,
+    amount,
+    outstandingAmount: status === 'due' || status === 'overdue' ? baseTuition : 0,
+    sessionProgress,
+    billable,
+    inactive,
+  };
+};
+
+export const getTuitionPeriodState = ({
+  student,
+  period,
+  classes,
+  payments = [],
+  isPaid,
+  lessonCounts = new Map<string, number>(),
+  baseTuition = 0,
+  pastDue = false,
+}: {
+  student: Student;
+  period: Period;
+  classes: Array<Partial<ClassRecord> | Record<string, any>>;
+  payments?: Payment[];
+  isPaid?: (sid: string, mo: number, yr: number) => boolean;
+  lessonCounts?: Map<string, number>;
+  baseTuition?: number;
+  pastDue?: boolean;
+}): TuitionPeriodState => {
+  const inactive = !isStudentActive(student);
+  const billable = isStudentBillableInMonth(student, period);
+  const payment = payments.find(p => {
+    if (p.studentId !== student.id) return false;
+    const paymentPeriod = getPaymentTuitionPeriod(p);
+    return paymentPeriod?.m === period.m && paymentPeriod?.y === period.y;
+  });
+  const paid = !!payment || !!isPaid?.(student.id, period.m, period.y);
+  const sessionProgress = getTuitionSessionProgress(student, classes, lessonCounts);
+  const status = !billable
+    ? (inactive ? 'inactive' : 'not_due')
+    : getTuitionStatus({
+      inactive,
+      paid,
+      pastDue,
+      sessionDue: sessionProgress.due,
+      sessionOverdue: sessionProgress.overdue,
+    });
+  const amount = billable ? baseTuition : 0;
+  return {
+    student,
+    period,
+    billable,
+    inactive,
+    paid,
+    payment,
+    status,
+    sessionProgress,
+    amount,
+    outstandingAmount: billable && !paid && !inactive ? amount : 0,
+  };
+};
+
+/* ─────────────────────────────────────────────
+   DATA HEALTH — đọc nhanh các lệch dữ liệu nguồn
+───────────────────────────────────────────── */
+
+export type DataHealthTone = 'success' | 'warning' | 'danger' | 'neutral';
+
+export interface DataHealthIssue {
+  key: string;
+  label: string;
+  count: number;
+  tone: DataHealthTone;
+  detail: string;
+}
+
+export interface DataHealthReport {
+  issues: DataHealthIssue[];
+  totalIssues: number;
+  tone: DataHealthTone;
+}
+
+export const buildDataHealthReport = ({
+  students,
+  classes,
+  payments,
+  tlogs,
+}: {
+  students: Student[];
+  classes: Array<Partial<ClassRecord> | Record<string, any>>;
+  payments: Payment[];
+  tlogs: TeachingLog[];
+}): DataHealthReport => {
+  const classIds = new Set(classes.map(classIdOf).filter(Boolean));
+  const studentIds = new Set(students.map(s => String(s.id || '').trim()).filter(Boolean));
+  const activeStudents = students.filter(isStudentActive);
+
+  const missingClass = activeStudents.filter(s => !String(s.classId || '').trim()).length;
+  const unknownClass = activeStudents.filter(s => {
+    const classId = String(s.classId || '').trim();
+    return !!classId && !classIds.has(classId);
+  }).length;
+  const classWithoutSchedule = classes.filter(c => classIdOf(c) && classScheduleSlots(c).length === 0).length;
+  const paymentWithoutStudent = payments.filter(p => !studentIds.has(String(p.studentId || '').trim())).length;
+  const paymentWithoutPeriod = payments.filter(p => !getPaymentTuitionPeriod(p)).length;
+  const lessonWithoutAttendance = tlogs.filter(log => !isLessonOffLog(log) && (!Array.isArray(log.attendanceList) || log.attendanceList.length === 0)).length;
+
+  const issues: DataHealthIssue[] = [
+    {
+      key: 'missing-class',
+      label: 'HS chưa có lớp',
+      count: missingClass,
+      tone: missingClass > 0 ? 'warning' : 'success',
+      detail: 'Học sinh đang học nhưng classId trống.',
+    },
+    {
+      key: 'unknown-class',
+      label: 'HS sai lớp',
+      count: unknownClass,
+      tone: unknownClass > 0 ? 'danger' : 'success',
+      detail: 'classId của học sinh không tồn tại trong danh sách lớp.',
+    },
+    {
+      key: 'class-no-schedule',
+      label: 'Lớp thiếu lịch',
+      count: classWithoutSchedule,
+      tone: classWithoutSchedule > 0 ? 'warning' : 'success',
+      detail: 'Lớp chưa có Buổi 1/Buổi 2/Buổi 3.',
+    },
+    {
+      key: 'payment-no-student',
+      label: 'Phiếu thu lệch HS',
+      count: paymentWithoutStudent,
+      tone: paymentWithoutStudent > 0 ? 'danger' : 'success',
+      detail: 'Phiếu thu có mã học sinh không tồn tại.',
+    },
+    {
+      key: 'payment-no-period',
+      label: 'Phiếu thu thiếu kỳ',
+      count: paymentWithoutPeriod,
+      tone: paymentWithoutPeriod > 0 ? 'warning' : 'success',
+      detail: 'Không đọc được tháng/năm học phí từ phiếu thu.',
+    },
+    {
+      key: 'lesson-no-attendance',
+      label: 'Buổi thiếu điểm danh',
+      count: lessonWithoutAttendance,
+      tone: lessonWithoutAttendance > 0 ? 'warning' : 'success',
+      detail: 'Nhật ký buổi học chưa có attendanceList.',
+    },
+  ];
+  const totalIssues = issues.reduce((sum, issue) => sum + issue.count, 0);
+  const tone: DataHealthTone = issues.some(issue => issue.tone === 'danger')
+    ? 'danger'
+    : totalIssues > 0
+      ? 'warning'
+      : 'success';
+
+  return { issues, totalIssues, tone };
 };
 
 /* ─────────────────────────────────────────────

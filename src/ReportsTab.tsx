@@ -7,18 +7,26 @@ import {
   BarChart3,
   ChevronLeft,
   ChevronRight,
+  DatabaseZap,
+  Download,
   Printer,
   TrendingUp,
   UserPlus,
   Users,
 } from 'lucide-react';
-import { exportCSV, isStudentActive, parseDMY } from './helpers';
+import { exportCSV, fixVietnameseText, fmtVND, isLessonOffLog, parseDMY } from './helpers';
+import {
+  buildDataHealthReport,
+  getPaymentReceiptPeriod,
+  isStudentActive,
+  isStudentActiveInMonth,
+  parsePeriod,
+} from './measures';
 import { Button } from './dsComponents';
 import {
   ActionableKpi,
   ActionableKpiGrid,
   EmptyState,
-  MobileCard,
   MoneyText,
   PageToolbar,
 } from './uiSystem';
@@ -49,22 +57,13 @@ interface ClassStudentRow {
   className: string;
   teacher: string;
   students: number;
-}
-
-function parseMoYr(raw: string): { m: number; y: number } | null {
-  const s = raw.includes(' - ') ? raw.split(' - ')[1] : raw;
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return { m: parseInt(s.split('/')[1], 10), y: parseInt(s.split('/')[2], 10) };
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return { m: parseInt(s.slice(5, 7), 10), y: parseInt(s.slice(0, 4), 10) };
-  const ts = parseDMY(raw);
-  if (!ts) return null;
-  const d = new Date(ts);
-  return { m: d.getMonth() + 1, y: d.getFullYear() };
+  paidThisMonth: number;
 }
 
 function readFirst(row: Record<string, any>, keys: string[]) {
   for (const key of keys) {
     const value = row[key];
-    if (value !== undefined && value !== null && String(value).trim() !== '') return String(value);
+    if (value !== undefined && value !== null && String(value).trim() !== '') return fixVietnameseText(value);
   }
   return '';
 }
@@ -74,22 +73,21 @@ function classIdOf(c: Record<string, any>) {
 }
 
 function classNameOf(c: Record<string, any>) {
-  return readFirst(c, ['Tên Lớp', 'TenLop', 'Ten Lop', 'TÃªn Lá»›p', 'name']) || classIdOf(c) || 'Lớp học';
+  return classIdOf(c) || 'Lớp học';
 }
 
 function teacherOf(c: Record<string, any>) {
   return readFirst(c, ['Giáo viên', 'GiaoVien', 'Giao Vien', 'GiÃ¡o viÃªn', 'teacherName', 'teacher']) || '—';
 }
 
-function isStudentActiveInMonth(student: Student, month: number, year: number) {
-  const monthStart = new Date(year, month - 1, 1).getTime();
-  const nextMonthStart = new Date(year, month, 1).getTime();
-  const startTs = parseDMY(student.startDate || '');
-  const endTs = parseDMY(student.endDate || '');
-
-  if (startTs && startTs >= nextMonthStart) return false;
-  if (endTs && student.endDate !== '---' && endTs < monthStart) return false;
-  return isStudentActive(student) || (!!startTs && (!endTs || endTs >= monthStart));
+function formatReportMoney(value: number) {
+  const safe = Number.isFinite(value) ? value : 0;
+  const abs = Math.abs(safe);
+  const sign = safe < 0 ? '-' : '';
+  if (abs >= 1_000_000_000) return `${sign}${parseFloat((abs / 1_000_000_000).toFixed(1))} tỷ`;
+  if (abs >= 1_000_000) return `${sign}${parseFloat((abs / 1_000_000).toFixed(1))}tr`;
+  if (abs >= 1_000) return `${sign}${Math.round(abs / 1_000)}k`;
+  return `${sign}${abs}đ`;
 }
 
 export default function ReportsTab({
@@ -101,6 +99,7 @@ export default function ReportsTab({
   summary,
   curMo,
   curYr,
+  isPaid,
 }: Props) {
   const [filterMo, setFilterMo] = useState(curMo);
   const [filterYr, setFilterYr] = useState(curYr);
@@ -147,7 +146,7 @@ export default function ReportsTab({
 
   const paymentsWithPeriod = useMemo(() => payments.map(payment => ({
     payment,
-    period: parseMoYr(payment.date || ''),
+    period: getPaymentReceiptPeriod(payment),
   })), [payments]);
 
   const monthlyRevenue = useMemo<MonthlyRevenue[]>(() => {
@@ -171,21 +170,25 @@ export default function ReportsTab({
     () => paymentsWithPeriod.filter(({ period }) => period?.m === filterMo && period?.y === filterYr),
     [paymentsWithPeriod, filterMo, filterYr],
   );
+  const monthRevenue = monthPayments.reduce((sum, row) => sum + (row.payment.amount || 0), 0);
+  const monthExpenseCount = expenses.filter(expense => {
+    const period = parsePeriod(expense.date || '');
+    return period?.m === filterMo && period?.y === filterYr;
+  }).length;
 
   const monthTlogs = useMemo(
     () => tlogs.filter(log => {
-      const ts = parseDMY(log.date || '');
-      if (!ts) return false;
-      const d = new Date(ts);
-      return d.getMonth() + 1 === filterMo && d.getFullYear() === filterYr;
+      const period = parsePeriod(log.rawDate || log.date || '');
+      return period?.m === filterMo && period?.y === filterYr;
     }),
     [tlogs, filterMo, filterYr],
   );
 
   const attendanceTotals = useMemo(() => {
-    const present = monthTlogs.reduce((sum, log) => sum + (log.present || 0), 0);
-    const absent = monthTlogs.reduce((sum, log) => sum + (log.absent || 0), 0);
-    const excused = monthTlogs.reduce((sum, log) => sum + (log.excused || 0), 0);
+    const countedLogs = monthTlogs.filter(log => !isLessonOffLog(log));
+    const present = countedLogs.reduce((sum, log) => sum + (log.present || 0), 0);
+    const absent = countedLogs.reduce((sum, log) => sum + (log.absent || 0), 0);
+    const excused = countedLogs.reduce((sum, log) => sum + (log.excused || 0), 0);
     const total = present + absent + excused;
     return {
       present,
@@ -198,7 +201,7 @@ export default function ReportsTab({
 
   const avgStudentsPerMonth = useMemo(() => {
     const total = Array.from({ length: 12 }, (_, index) => index + 1)
-      .reduce((sum, month) => sum + students.filter(s => isStudentActiveInMonth(s, month, filterYr)).length, 0);
+      .reduce((sum, month) => sum + students.filter(s => isStudentActiveInMonth(s, { m: month, y: filterYr })).length, 0);
     return Math.round(total / 12);
   }, [students, filterYr]);
 
@@ -211,18 +214,26 @@ export default function ReportsTab({
 
   const classStudentRows = useMemo<ClassStudentRow[]>(() => uClasses.map(cls => {
     const classId = classIdOf(cls);
+    const classStudents = activeStudents.filter(student => student.classId === classId);
     return {
       classId,
       className: classNameOf(cls),
       teacher: teacherOf(cls),
-      students: activeStudents.filter(student => student.classId === classId).length,
+      students: classStudents.length,
+      paidThisMonth: classStudents.filter(student => isPaid(student.id, filterMo, filterYr)).length,
     };
   }).filter(row => row.classId || row.students > 0)
     .sort((a, b) => b.students - a.students || a.className.localeCompare(b.className, 'vi')),
-  [activeStudents, uClasses]);
+  [activeStudents, filterMo, filterYr, isPaid, uClasses]);
 
   const maxRevenue = Math.max(...monthlyRevenue.map(row => row.revenue), 0);
+  const yearlyReceiptCount = monthlyRevenue.reduce((sum, row) => sum + row.count, 0);
   const totalClassStudents = classStudentRows.reduce((sum, row) => sum + row.students, 0);
+  const dataHealth = useMemo(
+    () => buildDataHealthReport({ students, classes: uClasses, payments, tlogs }),
+    [students, uClasses, payments, tlogs],
+  );
+  const visibleHealthIssues = dataHealth.issues.filter(issue => issue.count > 0);
 
   const handleExport = () => {
     exportCSV(
@@ -242,21 +253,49 @@ export default function ReportsTab({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <style>{`
-        .report-dashboard-grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(280px,0.75fr);gap:14px}
+        .report-dashboard-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
         .report-section{background:white;border:1px solid #e2e8f0;border-radius:16px;box-shadow:0 1px 3px rgba(15,23,42,0.05);overflow:hidden}
         .report-section-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;border-bottom:1px solid #eef2f7}
         .report-section-title{margin:0;font-size:14px;font-weight:900;color:#334155;text-transform:uppercase;letter-spacing:.05em}
-        .report-chart{display:grid;gap:8px;padding:14px 16px}
-        .report-bar-row{display:grid;grid-template-columns:42px minmax(0,1fr) 92px;align-items:center;gap:10px}
-        .report-bar-track{height:20px;background:#f1f5f9;border-radius:999px;overflow:hidden}
-        .report-bar-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#4f46e5,#06b6d4)}
+        .report-revenue-list{display:grid;gap:8px;padding:14px 16px}
+        .report-revenue-row{display:grid;grid-template-columns:minmax(58px,.38fr) minmax(0,1fr) minmax(82px,.55fr);gap:10px;align-items:center;padding:10px 12px;border:1px solid #eef2f7;border-radius:12px;background:#fbfdff;min-width:0}
+        .report-revenue-row.active{background:#ecfeff;border-color:#67e8f9}
+        .report-revenue-row.best:not(.active){background:#f0fdf4;border-color:#86efac}
+        .report-month-badge{height:30px;border-radius:9px;background:#eef2ff;color:#4f46e5;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:950;white-space:nowrap;font-variant-numeric:tabular-nums}
+        .report-revenue-main{display:grid;gap:2px;min-width:0}
+        .report-revenue-amount{font-size:16px;font-weight:950;color:#047857;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+        .report-revenue-sub{font-size:11px;font-weight:850;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .report-revenue-delta{justify-self:end;text-align:right;min-width:0;font-size:12px;font-weight:950;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+        .report-revenue-delta.up{color:#047857}
+        .report-revenue-delta.down{color:#dc2626}
+        .report-revenue-delta.flat{color:#64748b}
         .report-class-list{display:grid;gap:8px;padding:14px 16px}
-        .report-class-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 12px;border:1px solid #eef2f7;border-radius:12px;background:#fbfdff}
+        .report-class-row{display:grid;grid-template-columns:minmax(48px,64px) minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 12px;border:1px solid #eef2f7;border-radius:12px;background:#fbfdff}
+        .report-class-code{font-size:15px;font-weight:950;color:#0f172a;white-space:nowrap}
+        .report-class-teacher{font-size:12px;font-weight:850;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .report-class-metrics{display:flex;align-items:center;gap:6px;margin-top:4px;min-width:0;overflow:hidden}
+        .report-class-metric{min-width:0;max-width:100%;font-size:10.5px;font-weight:850;color:#64748b;background:#f1f5f9;border-radius:999px;padding:3px 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .report-class-count{font-size:13px;font-weight:950;color:#4f46e5;background:#eef2ff;border:1px solid #c7d2fe;border-radius:999px;padding:5px 10px;white-space:nowrap}
+        .report-health-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;padding:14px}
+        .report-health-card{border:1px solid #eef2f7;border-radius:12px;background:#fbfdff;padding:11px 12px;display:grid;gap:5px}
+        .report-health-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+        .report-health-label{margin:0;font-size:11px;font-weight:900;color:#64748b;text-transform:uppercase;letter-spacing:.05em}
+        .report-health-count{font-size:18px;font-weight:950;color:#0f172a}
+        .report-health-detail{margin:0;font-size:11px;line-height:1.35;color:#94a3b8;font-weight:750}
+        .report-health-ok{margin:14px;padding:14px 16px;border:1px solid #bbf7d0;border-radius:12px;background:#ecfdf5;display:flex;align-items:center;justify-content:space-between;gap:12px}
+        .report-summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;padding:14px}
+        .report-mobile-actions{display:none}
         @media(max-width:767px){
+          .report-mobile-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:-6px}
+          .report-mobile-actions button{width:100%;justify-content:center}
           .report-dashboard-grid{grid-template-columns:1fr}
-          .report-bar-row{grid-template-columns:38px minmax(0,1fr);gap:8px}
-          .report-bar-row .report-bar-value{grid-column:2;text-align:left}
+          .report-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:10px}
+          .report-revenue-list{padding:10px}
           .report-section-head{padding:12px 14px}
+          .report-revenue-row{grid-template-columns:minmax(58px,.36fr) minmax(0,1fr);gap:8px}
+          .report-revenue-delta{grid-column:2;justify-self:start;text-align:left}
+          .report-class-row{grid-template-columns:minmax(52px,72px) minmax(0,1fr) auto}
+          .report-class-metrics{flex-wrap:wrap}
         }
       `}</style>
 
@@ -264,7 +303,7 @@ export default function ReportsTab({
         title="Báo cáo"
         actions={(
           <>
-            <Button intent="success" size="sm" onClick={handleExport}>Xuất CSV</Button>
+            <Button intent="success" size="sm" icon={<Download size={13} />} onClick={handleExport}>Xuất CSV</Button>
             <Button intent="danger" size="sm" icon={<Printer size={13} />} onClick={() => window.print()}>
               In T{filterMo}
             </Button>
@@ -286,6 +325,12 @@ export default function ReportsTab({
           )}
         </div>
       </PageToolbar>
+      <div className="report-mobile-actions" aria-label="Thao tác báo cáo">
+        <Button intent="success" size="sm" icon={<Download size={13} />} onClick={handleExport}>Xuất CSV</Button>
+        <Button intent="danger" size="sm" icon={<Printer size={13} />} onClick={() => window.print()}>
+          In T{filterMo}
+        </Button>
+      </div>
 
       <ActionableKpiGrid>
         <ActionableKpi
@@ -326,28 +371,54 @@ export default function ReportsTab({
         />
       </ActionableKpiGrid>
 
+      <section className="report-section" ref={summarySectionRef}>
+        <div className="report-section-head">
+          <h3 className="report-section-title">Tóm tắt kỳ T{filterMo}/{filterYr}</h3>
+          <span style={{ fontSize: 12, fontWeight: 800, color: '#64748b' }}>{monthPayments.length} phiếu thu · {monthTlogs.length} buổi học</span>
+        </div>
+        <div className="report-summary-grid">
+          {[
+            { label: 'Thu tháng này', value: <MoneyText value={monthRevenue} compact tone="success" /> },
+            { label: 'Phiếu chi trong tháng', value: monthExpenseCount },
+            { label: 'Có mặt', value: attendanceTotals.present },
+            { label: 'Vắng/Có phép', value: `${attendanceTotals.absent}/${attendanceTotals.excused}` },
+          ].map(item => (
+            <div key={item.label} style={{ border: '1px solid #eef2f7', borderRadius: 12, padding: '11px 12px', background: '#fbfdff', minWidth: 0 }}>
+              <p style={{ margin: 0, fontSize: 11, fontWeight: 900, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.06em' }}>{item.label}</p>
+              <div style={{ marginTop: 4, fontSize: 18, fontWeight: 900, color: '#0f172a', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.value}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <div className="report-dashboard-grid">
         <section className="report-section" ref={revenueSectionRef}>
           <div className="report-section-head">
-            <h3 className="report-section-title">📊 Doanh thu theo tháng ({filterYr})</h3>
+            <h3 className="report-section-title">Thống kê doanh thu tháng ({filterYr})</h3>
             <span style={{ fontSize: 12, fontWeight: 800, color: '#64748b' }}>
-              <MoneyText value={yearRevenue} compact tone="success" />
+              {formatReportMoney(yearRevenue)} · {yearlyReceiptCount} phiếu
             </span>
           </div>
           {yearRevenue <= 0 ? (
             <EmptyState text="Chưa có doanh thu trong năm này" sub="Phiếu thu sẽ được tổng hợp theo tháng tại đây." compact />
           ) : (
-            <div className="report-chart">
+            <div className="report-revenue-list">
               {monthlyRevenue.map(row => {
-                const width = maxRevenue > 0 ? Math.max(4, Math.round((row.revenue / maxRevenue) * 100)) : 0;
+                const isActive = row.month === filterMo;
+                const isBest = row.revenue > 0 && row.revenue === maxRevenue;
+                const avgReceipt = row.count > 0 ? Math.round(row.revenue / row.count) : 0;
+                const yearShare = yearRevenue > 0 ? Math.round((row.revenue / yearRevenue) * 100) : 0;
                 return (
-                  <div key={row.month} className="report-bar-row">
-                    <span style={{ fontSize: 12, fontWeight: 900, color: row.month === filterMo ? '#4f46e5' : '#64748b' }}>T{row.month}</span>
-                    <div className="report-bar-track">
-                      <div className="report-bar-fill" style={{ width: `${width}%`, opacity: row.revenue > 0 ? 1 : 0.15 }} />
+                  <div key={row.month} className={`report-revenue-row ${isActive ? 'active' : ''} ${isBest ? 'best' : ''}`}>
+                    <span className="report-month-badge">T{row.month}/{String(filterYr).slice(2)}</span>
+                    <div className="report-revenue-main">
+                      <span className="report-revenue-amount" title={fmtVND(row.revenue)}>{formatReportMoney(row.revenue)}</span>
+                      <span className="report-revenue-sub" title={`Trung bình ${fmtVND(avgReceipt)} / phiếu`}>
+                        {row.count} phiếu · TB {formatReportMoney(avgReceipt)}
+                      </span>
                     </div>
-                    <span className="report-bar-value" style={{ fontSize: 12, fontWeight: 900, color: row.revenue > 0 ? '#059669' : '#94a3b8', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      <MoneyText value={row.revenue} compact tone={row.revenue > 0 ? 'success' : 'neutral'} />
+                    <span className="report-revenue-delta flat" title={`${yearShare}% doanh thu năm ${filterYr}`}>
+                      {yearShare}% năm
                     </span>
                   </div>
                 );
@@ -358,52 +429,69 @@ export default function ReportsTab({
 
         <section className="report-section" ref={classSectionRef}>
           <div className="report-section-head">
-            <h3 className="report-section-title">👥 Học sinh theo lớp</h3>
+            <h3 className="report-section-title">Học sinh theo lớp</h3>
             <span style={{ fontSize: 12, fontWeight: 800, color: '#64748b' }}>{totalClassStudents} HS</span>
           </div>
           {classStudentRows.length === 0 ? (
             <EmptyState text="Chưa có dữ liệu lớp" sub="Danh sách lớp và sĩ số sẽ hiển thị tại đây." compact />
           ) : (
             <div className="report-class-list">
-              {classStudentRows.map(row => (
-                <MobileCard
-                  key={row.classId || row.className}
-                  title={row.className}
-                  subtitle={`${row.classId || '—'} · ${row.teacher}`}
-                  badge={<span style={{ fontSize: 13, fontWeight: 900, color: '#4f46e5' }}>{row.students} HS</span>}
-                  tone="primary"
-                  rows={[
-                    { label: 'Mã lớp', value: row.classId || '—' },
-                    { label: 'Giáo viên', value: row.teacher },
-                  ]}
-                />
-              ))}
+              {classStudentRows.map(row => {
+                const sharePct = totalClassStudents > 0 ? Math.round((row.students / totalClassStudents) * 100) : 0;
+                return (
+                  <div key={row.classId || row.className} className="report-class-row">
+                    <div className="report-class-code">{row.classId || '—'}</div>
+                    <div style={{ minWidth: 0 }}>
+                      <div className="report-class-teacher">{row.teacher || 'Chưa phân công'}</div>
+                      <div className="report-class-metrics">
+                        <span className="report-class-metric">Đã thu {row.paidThisMonth}/{row.students}</span>
+                        <span className="report-class-metric">{sharePct}% tổng HS</span>
+                      </div>
+                    </div>
+                    <div className="report-class-count">{row.students} HS</div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </section>
       </div>
 
-      <section className="report-section" ref={summarySectionRef}>
+      <section className="report-section">
         <div className="report-section-head">
-          <h3 className="report-section-title">Tóm tắt kỳ T{filterMo}/{filterYr}</h3>
-          <span style={{ fontSize: 12, fontWeight: 800, color: '#64748b' }}>{monthPayments.length} phiếu thu · {monthTlogs.length} buổi học</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            <DatabaseZap size={15} color={dataHealth.tone === 'success' ? '#059669' : dataHealth.tone === 'danger' ? '#dc2626' : '#d97706'} />
+            <h3 className="report-section-title">Sức khỏe dữ liệu</h3>
+          </div>
+          <span style={{ fontSize: 12, fontWeight: 900, color: dataHealth.totalIssues > 0 ? '#d97706' : '#059669' }}>
+            {dataHealth.totalIssues > 0 ? `${dataHealth.totalIssues} cần rà` : 'Ổn'}
+          </span>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 10, padding: 14 }}>
-          {[
-            { label: 'Thu tháng này', value: <MoneyText value={monthPayments.reduce((sum, row) => sum + (row.payment.amount || 0), 0)} compact tone="success" /> },
-            { label: 'Phiếu chi trong tháng', value: expenses.filter(expense => {
-              const period = parseMoYr(expense.date || '');
-              return period?.m === filterMo && period?.y === filterYr;
-            }).length },
-            { label: 'Có mặt', value: attendanceTotals.present },
-            { label: 'Vắng/Có phép', value: `${attendanceTotals.absent}/${attendanceTotals.excused}` },
-          ].map(item => (
-            <div key={item.label} style={{ border: '1px solid #eef2f7', borderRadius: 12, padding: '11px 12px', background: '#fbfdff' }}>
-              <p style={{ margin: 0, fontSize: 11, fontWeight: 900, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.06em' }}>{item.label}</p>
-              <div style={{ marginTop: 4, fontSize: 18, fontWeight: 900, color: '#0f172a' }}>{item.value}</div>
+        {visibleHealthIssues.length === 0 ? (
+          <div className="report-health-ok">
+            <div>
+              <p style={{ margin: 0, fontSize: 14, fontWeight: 950, color: '#047857' }}>Dữ liệu chính đang ổn</p>
+              <p style={{ margin: '3px 0 0', fontSize: 12, fontWeight: 750, color: '#059669' }}>Không phát hiện học sinh sai lớp, lịch thiếu, phiếu thu lệch hoặc buổi học thiếu điểm danh.</p>
             </div>
-          ))}
-        </div>
+            <span style={{ fontSize: 13, fontWeight: 950, color: '#047857', whiteSpace: 'nowrap' }}>0 lỗi</span>
+          </div>
+        ) : (
+          <div className="report-health-grid">
+            {visibleHealthIssues.map(issue => {
+              const color = issue.tone === 'danger' ? '#dc2626' : '#d97706';
+              const bg = issue.tone === 'danger' ? '#fff1f2' : '#fffbeb';
+              return (
+                <div key={issue.key} className="report-health-card" style={{ background: bg }}>
+                  <div className="report-health-top">
+                    <p className="report-health-label">{issue.label}</p>
+                    <span className="report-health-count" style={{ color }}>{issue.count}</span>
+                  </div>
+                  <p className="report-health-detail">{issue.detail}</p>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </section>
     </div>
   );

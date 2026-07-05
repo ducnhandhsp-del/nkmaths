@@ -19,9 +19,10 @@ import {
 } from 'lucide-react';
 
 import { parseDMY } from './helpers';
-import { isStudentActive } from './measures';
+import { getPaymentTuitionPeriod, getTuitionCycleState, isStudentActive } from './measures';
+import { MobileActionFab } from './AppComponents';
 import { Button, IconButton } from './dsComponents';
-import { DataTable, EmptyState, MobileCard, MoneyText, PageToolbar, StatusBadge } from './uiSystem';
+import { DataTable, DetailMetric, EmptyState, MobileCompactCard, MoneyText, PageToolbar, StatusBadge } from './uiSystem';
 import type { ClassRecord, DeleteTarget, Payment, Student, Teacher, TeachingLog } from './types';
 
 type TeacherStatus = 'active' | 'inactive' | 'onleave' | string;
@@ -53,7 +54,6 @@ interface Props {
   tlogs: TeachingLog[];
   curMo: number;
   curYr: number;
-  isPaid: (sid: string, mo: number, yr: number) => boolean;
   onSave: (f: any) => void | Promise<void>;
   onDeleteTeacher?: (t: DeleteTarget) => void;
   isSaving: boolean;
@@ -84,6 +84,9 @@ const norm = (raw: any) =>
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/đ/g, 'd');
+
+const teacherNameKey = (raw: any) =>
+  norm(raw).replace(/^(thay|co|gv|giao vien)\s+/, '').trim();
 
 const isNamedTeacher = (raw: any) => {
   const s = String(raw || '').trim();
@@ -116,7 +119,7 @@ const teacherStatusLabel = (status: 'active' | 'onleave' | 'inactive') =>
   status === 'onleave' ? 'Tạm nghỉ' : status === 'inactive' ? 'Đã nghỉ' : 'Đang dạy';
 
 const getClassSlotCount = (c: ClassRecord) =>
-  [c['Buá»•i 1'], c['Buá»•i 2'], c['Buá»•i 3']]
+  [c['Buổi 1'], c['Buổi 2'], c['Buổi 3']]
     .filter(v => String(v || '').trim())
     .length;
 const weeksInMonth = (mo: number, yr: number) => {
@@ -132,32 +135,9 @@ const sameMonth = (raw: any, mo: number, yr: number) => {
 };
 
 const paymentInTuitionMonth = (p: Payment, mo: number, yr: number) => {
-  const hpMo = Number((p as any).thangHP || 0);
-  const hpYr = Number((p as any).namHP || 0);
-  if (hpMo) return hpMo === mo && (hpYr || yr) === yr;
-  return sameMonth(p.date, mo, yr);
+  const period = getPaymentTuitionPeriod(p, yr);
+  return period?.m === mo && period?.y === yr;
 };
-
-function isMonthBillable(s: Student, mo: number, yr: number): boolean {
-  const monthStart = new Date(yr, mo - 1, 1).getTime();
-
-  const startTs = parseDMY(s.startDate || '');
-  if (startTs) {
-    const d = new Date(startTs);
-    const startMonth = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
-    if (monthStart < startMonth) return false;
-  }
-
-  const endRaw = String(s.endDate || '').trim();
-  const endTs = parseDMY(endRaw);
-  if (endTs && endRaw && endRaw !== '---') {
-    const d = new Date(endTs);
-    const leaveMonth = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
-    if (monthStart >= leaveMonth) return false;
-  }
-
-  return true;
-}
 
 function teacherMatchesRecord(rawName: any, rawId: any, teacher: Teacher) {
   const id = String(rawId || '').trim();
@@ -315,22 +295,6 @@ function TeacherModal({
   );
 }
 
-function MiniMetric({ label, value, tone }: { label: string; value: React.ReactNode; tone: 'violet' | 'amber' | 'emerald' | 'sky' | 'rose' }) {
-  const cfg = {
-    violet: { bg: '#f5f3ff', color: '#7c3aed' },
-    amber: { bg: '#fffbeb', color: '#d97706' },
-    emerald: { bg: '#ecfdf5', color: '#059669' },
-    sky: { bg: '#f0f9ff', color: '#0284c7' },
-    rose: { bg: '#fff1f2', color: '#e11d48' },
-  }[tone];
-  return (
-    <div style={{ background: cfg.bg, borderRadius: 8, padding: '10px 8px', minWidth: 0, textAlign: 'center' }}>
-      <p style={{ fontSize: 20, fontWeight: 800, color: cfg.color, margin: 0, lineHeight: 1.1 }}>{value}</p>
-      <p style={{ fontSize: 10, color: '#64748b', margin: '3px 0 0', fontWeight: 700 }}>{label}</p>
-    </div>
-  );
-}
-
 export default function TeachersTab({
   teachers,
   students,
@@ -339,7 +303,6 @@ export default function TeachersTab({
   tlogs,
   curMo,
   curYr,
-  isPaid,
   onSave,
   onDeleteTeacher,
   isSaving,
@@ -357,7 +320,8 @@ export default function TeachersTab({
     const addName = (name: any) => {
       if (!isNamedTeacher(name)) return;
       const label = String(name).trim();
-      names.set(norm(label), label);
+      const key = teacherNameKey(label);
+      if (!names.has(key)) names.set(key, label);
     };
 
     teachers.forEach(t => addName(t.name));
@@ -365,11 +329,11 @@ export default function TeachersTab({
     students.forEach(s => addName(s.teacher));
     tlogs.forEach(l => addName(l.teacherName));
 
-    const officialByName = new Map(teachers.filter(t => isNamedTeacher(t.name)).map(t => [norm(t.name), t]));
+    const officialByName = new Map(teachers.filter(t => isNamedTeacher(t.name)).map(t => [teacherNameKey(t.name), t]));
     const studentById = new Map(students.map(s => [s.id, s]));
 
     return Array.from(names.values()).map(name => {
-      const official = officialByName.get(norm(name));
+      const official = officialByName.get(teacherNameKey(name));
       const teacher: Teacher = official ?? {
         id: stableSyntheticId(name),
         name,
@@ -388,15 +352,26 @@ export default function TeachersTab({
         createdAt: '',
       };
 
-      const classes = uClasses.filter(c => {
+      const classMap = new Map<string, ClassRecord>();
+      uClasses.forEach(c => {
         const classId = getClassId(c);
-        return teacherMatchesRecord(getClassTeacherName(c), getClassTeacherId(c), teacher) || (teacher.classes || []).includes(classId);
+        if (!classId) return;
+        if (teacherMatchesRecord(getClassTeacherName(c), getClassTeacherId(c), teacher) || (teacher.classes || []).includes(classId)) {
+          classMap.set(classId, c);
+        }
       });
+      const classes = [...classMap.values()];
       const classIds = new Set(classes.map(getClassId).filter(Boolean));
       const activeStudents = students.filter(s =>
         isStudentActive(s) && (teacherMatches(s.teacher, name) || classIds.has(s.classId))
       );
-      const billableStudents = activeStudents.filter(s => isMonthBillable(s, curMo, curYr));
+      const tuitionStates = activeStudents.map(student => getTuitionCycleState({
+        student,
+        classes,
+        payments,
+        tlogs,
+      }));
+      const billableStudents = tuitionStates.filter(state => state.billable).map(state => state.student);
       const teacherPayments = payments.filter(p => {
         const st = studentById.get(p.studentId);
         return !!st && (teacherMatches(st.teacher, name) || classIds.has(st.classId));
@@ -408,7 +383,7 @@ export default function TeachersTab({
         .filter(p => paymentInTuitionMonth(p, curMo, curYr))
         .reduce((s, p) => s + p.amount, 0);
       const totalRevenue = teacherPayments.reduce((s, p) => s + p.amount, 0);
-      const paidCount = billableStudents.filter(s => isPaid(s.id, curMo, curYr)).length;
+      const paidCount = tuitionStates.filter(state => state.status === 'paid').length;
       const attendanceTotal = monthLogs.reduce((s, l) => s + (l.present || 0) + (l.absent || 0) + (l.late || 0) + (l.excused || 0), 0);
       const attendancePresent = monthLogs.reduce((s, l) => s + (l.present || 0) + (l.late || 0), 0);
       const attendancePct = attendanceTotal > 0 ? Math.round((attendancePresent / attendanceTotal) * 100) : null;
@@ -444,7 +419,7 @@ export default function TeachersTab({
       if (b.monthLogs.length !== a.monthLogs.length) return b.monthLogs.length - a.monthLogs.length;
       return a.teacher.name.localeCompare(b.teacher.name, 'vi');
     });
-  }, [teachers, uClasses, students, tlogs, payments, curMo, curYr, isPaid]);
+  }, [teachers, uClasses, students, tlogs, payments, curMo, curYr]);
 
   const visibleRows = rows;
 
@@ -560,11 +535,11 @@ export default function TeachersTab({
         return (
           <div onClick={e => e.stopPropagation()} style={{ display: 'flex', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>
             {phone.length >= 9 && (
-              <a href={`tel:${phone}`} title="Gọi giáo viên" style={{ width: 32, height: 32, borderRadius: 999, border: '1px solid #bfdbfe', color: '#2563eb', background: '#eff6ff', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+              <a href={`tel:${phone}`} title={`Gọi ${r.teacher.name}`} aria-label={`Gọi ${r.teacher.name}`} style={{ width: 32, height: 32, borderRadius: 999, border: '1px solid #bfdbfe', color: '#2563eb', background: '#eff6ff', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Phone size={14} />
               </a>
             )}
-            {phone.length < 9 && <span style={{ color: '#cbd5e1', fontWeight: 900 }}>—</span>}
+            {phone.length < 9 && <span title="Chưa có số điện thoại" aria-label={`Chưa có số điện thoại ${r.teacher.name}`} style={{ color: '#cbd5e1', fontWeight: 900 }}>—</span>}
           </div>
         );
       },
@@ -587,6 +562,12 @@ export default function TeachersTab({
       >
         {toolbarPrefix}
       </PageToolbar>
+      {!embedded && (
+        <MobileActionFab
+          actions={[{ key: 'teacher', label: 'Thêm giáo viên', icon: <Plus size={15} />, tone: 'success', onClick: openAdd }]}
+          variant="inline"
+        />
+      )}
 
       <div>
         <div className="teacher-desktop-table">
@@ -614,25 +595,26 @@ export default function TeachersTab({
             const phone = String(t.phone || '').replace(/\D/g, '');
             const classIds = r.classes.map(getClassId).filter(Boolean);
             return (
-              <MobileCard
+              <MobileCompactCard
                 key={r.id}
                 title={t.name}
                 subtitle={`${t.id || '—'}${t.specialization ? ` · ${t.specialization}` : ''}`}
+                value={<MoneyText value={r.monthRevenue} compact tone={r.monthRevenue > 0 ? 'success' : 'neutral'} />}
                 badge={<StatusBadge domain="teacher" status={status} label={teacherStatusLabel(status)} />}
                 tone={status === 'active' ? 'warning' : 'neutral'}
+                muted={status !== 'active'}
                 onClick={() => setDetailId(r.id)}
                 style={{ marginBottom: 8 }}
-                rows={[
-                  { label: 'Số lớp', value: `${classIds.length} lớp` },
-                  { label: 'Sĩ số', value: `${r.activeStudents.length} HS` },
-                  { label: `HP T${curMo}`, value: `${r.paidCount}/${r.billableStudents.length} HS` },
-                  { label: 'Chuyên cần', value: r.attendancePct == null ? '—' : `${r.attendancePct}%` },
-                  { label: 'Thu HP lớp', value: <MoneyText value={r.monthRevenue} compact tone={r.monthRevenue > 0 ? 'success' : 'neutral'} /> },
+                meta={[
+                  { key: 'classes', label: `${classIds.length} lớp`, tone: classIds.length ? 'primary' as const : 'neutral' as const },
+                  { key: 'students', label: `${r.activeStudents.length} HS`, tone: r.activeStudents.length ? 'success' as const : 'neutral' as const },
+                  { key: 'tuition', label: `HP T${curMo}: ${r.paidCount}/${r.billableStudents.length}`, tone: r.billableStudents.length && r.paidCount >= r.billableStudents.length ? 'success' as const : 'warning' as const },
+                  { key: 'attendance', label: r.attendancePct == null ? 'Chưa có CC' : `CC ${r.attendancePct}%`, tone: r.attendancePct == null ? 'neutral' as const : r.attendancePct >= 80 ? 'success' as const : r.attendancePct >= 60 ? 'warning' as const : 'danger' as const },
                 ]}
                 actions={(
-                  <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 7, width: '100%', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                  <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                     {phone.length >= 9 && (
-                      <a href={`tel:${phone}`} style={{ minHeight: 40, padding: '8px 12px', borderRadius: 999, background: '#eff6ff', border: '1px solid #bfdbfe', color: '#2563eb', fontWeight: 900, fontSize: 12, cursor: 'pointer', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                      <a href={`tel:${phone}`} style={{ minHeight: 34, padding: '7px 10px', borderRadius: 999, background: '#eff6ff', border: '1px solid #bfdbfe', color: '#2563eb', fontWeight: 900, fontSize: 12, cursor: 'pointer', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
                         <Phone size={13} /> Gọi
                       </a>
                     )}
@@ -652,17 +634,11 @@ export default function TeachersTab({
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 18 }}>
                 <div style={{ minWidth: 0 }}>
                   <h3 style={{ fontSize: 20, fontWeight: 900, color: '#0f172a', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{detailRow.teacher.name}</h3>
-                  <p style={{ fontSize: 13, color: '#4f46e5', fontWeight: 800, margin: '4px 0 0' }}>
-                    {detailRow.teacher.specialization || 'Toán'} {detailRow.teacher.qualification ? `· ${detailRow.teacher.qualification}` : ''}
-                  </p>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                    <StatusBadge domain="teacher" status={teacherStatus(detailRow.teacher.status)} label={teacherStatusLabel(teacherStatus(detailRow.teacher.status))} />
-                    {!detailRow.official && (
-                      <span style={{ display: 'inline-flex', padding: '5px 9px', borderRadius: 999, background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e', fontSize: 11, fontWeight: 800 }}>
-                        Chưa có hồ sơ GiaoVien
-                      </span>
-                    )}
-                  </div>
+                  {detailRow.teacher.qualification && (
+                    <p style={{ fontSize: 13, color: '#64748b', fontWeight: 800, margin: '4px 0 0' }}>
+                      {detailRow.teacher.qualification}
+                    </p>
+                  )}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                   <Button intent="primary" variant="outline" size="sm" icon={<Edit3 size={14} />} onClick={() => { openEdit(detailRow.teacher); setDetailId(null); }}>
@@ -687,56 +663,71 @@ export default function TeachersTab({
               </div>
 
               <section className="ltn-detail-section" style={{ marginBottom: 14 }}>
-                <p className="ltn-section-title">Tổng quan</p>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
-                  <MiniMetric label="Lớp" value={detailRow.classes.length} tone="sky" />
-                  <MiniMetric label="HS" value={detailRow.activeStudents.length} tone="emerald" />
-                  <MiniMetric label="Buổi" value={detailRow.monthLogs.length} tone="violet" />
-                  <MiniMetric label="Đã đóng" value={`${detailRow.paidCount}/${detailRow.billableStudents.length}`} tone="amber" />
-                  <MiniMetric label="Thu HP" value={<MoneyText value={detailRow.monthRevenue} compact tone="success" />} tone="emerald" />
-                  <MiniMetric label="Chi phí GV dự kiến" value={detailRow.hasCostData ? <MoneyText value={detailRow.projectedCost} compact tone="primary" /> : '---'} tone="violet" />
-                  <MiniMetric label="Hiện diện" value={detailRow.attendancePct == null ? '---' : `${detailRow.attendancePct}%`} tone={detailRow.attendancePct != null && detailRow.attendancePct < 70 ? 'rose' : 'sky'} />
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                  <p className="ltn-section-title" style={{ textAlign: 'left' }}>Tổng quan tháng {curMo}/{curYr}</p>
+                  <span style={{ color: '#64748b', fontSize: 12, fontWeight: 800 }}>
+                    {detailRow.classes.length} lớp · {detailRow.activeStudents.length} học sinh
+                  </span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(112px,1fr))', gap: 8 }}>
+                  <DetailMetric label="Lớp" value={detailRow.classes.length} tone="sky" />
+                  <DetailMetric label="Học sinh" value={detailRow.activeStudents.length} tone="emerald" />
+                  <DetailMetric label="Buổi dạy" value={detailRow.monthLogs.length} tone="violet" />
+                  <DetailMetric label="Đã đóng" value={`${detailRow.paidCount}/${detailRow.billableStudents.length}`} tone="amber" />
+                  <DetailMetric label="Thu học phí" value={<MoneyText value={detailRow.monthRevenue} compact tone="success" />} tone="emerald" />
                 </div>
               </section>
 
               <section className="ltn-detail-section soft" style={{ marginBottom: 14 }}>
-                <p className="ltn-section-title">Hồ sơ</p>
-                <div className="ltn-info-grid">
-                {[
-                  { label: 'SĐT', val: detailRow.teacher.phone },
-                  { label: 'Email', val: detailRow.teacher.email },
-                  { label: 'Kinh nghiệm', val: `${detailRow.teacher.experience || 0} năm` },
-                  { label: 'Lương cơ bản', val: <MoneyText value={detailRow.teacher.baseSalary ?? 0} tone="neutral" /> },
-                ].map(row => (
-                  <div key={row.label} className="ltn-info-cell quarter">
-                    <div>
-                      <p>{row.label}</p>
-                      <p>{row.val || '---'}</p>
+                <p className="ltn-section-title" style={{ textAlign: 'left' }}>Thông tin liên hệ</p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 8 }}>
+                  {[
+                    { label: 'SĐT', val: detailRow.teacher.phone },
+                    { label: 'Email', val: detailRow.teacher.email },
+                    { label: 'Kinh nghiệm', val: `${detailRow.teacher.experience || 0} năm` },
+                    { label: 'Lương cơ bản', val: <MoneyText value={detailRow.teacher.baseSalary ?? 0} tone="neutral" /> },
+                  ].map(row => (
+                    <div key={row.label} className="ltn-info-cell" style={{ gridColumn: 'auto' }}>
+                      <div>
+                        <p>{row.label}</p>
+                        <p>{row.val || '---'}</p>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
                 </div>
               </section>
 
               <section style={{ ...PANEL, padding: 14, marginBottom: 14 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <School size={16} color="#4f46e5" />
                   <h4 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#0f172a' }}>Lớp đang phụ trách</h4>
+                  </div>
+                  <span style={{ color: '#64748b', fontSize: 12, fontWeight: 800 }}>{detailRow.classes.length} lớp</span>
                 </div>
                 {detailRow.classes.length === 0 ? (
                   <p style={{ margin: 0, color: '#94a3b8', fontSize: 13, fontStyle: 'italic' }}>Chưa gán lớp cho giáo viên này.</p>
                 ) : (
-                  <div style={{ display: 'grid', gap: 8 }}>
+                  <div style={{ display: 'grid', gap: 6 }}>
                     {detailRow.classes.map(c => {
                       const classId = getClassId(c);
                       const slots = [c['Buổi 1'], c['Buổi 2'], c['Buổi 3']].filter(Boolean);
                       return (
-                        <div key={classId} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                        <div key={classId} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '9px 10px', display: 'grid', gridTemplateColumns: 'minmax(86px,120px) minmax(0,1fr) auto', alignItems: 'center', gap: 10, background: '#fff' }}>
                           <div style={{ minWidth: 0 }}>
-                            <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: '#0f172a' }}>{classId} · {c['Tên Lớp'] || c['Khối'] || 'Lớp học'}</p>
-                            <p style={{ margin: '2px 0 0', fontSize: 11, color: '#64748b' }}>
-                              {c['Cơ sở'] || 'Chưa rõ cơ sở'} · {slots.join(' · ') || 'Chưa có lịch'}
+                            <p style={{ margin: 0, fontSize: 13, fontWeight: 900, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{classId}</p>
+                            <p style={{ margin: '2px 0 0', fontSize: 11, color: '#64748b', fontWeight: 750, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {c['Cơ sở'] || 'Chưa rõ cơ sở'}
                             </p>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', minWidth: 0 }}>
+                            {slots.length > 0 ? slots.map(slot => (
+                              <span key={`${classId}-${slot}`} style={{ minHeight: 26, display: 'inline-flex', alignItems: 'center', padding: '4px 8px', borderRadius: 999, background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569', fontSize: 11, fontWeight: 850, whiteSpace: 'nowrap' }}>
+                                {String(slot)}
+                              </span>
+                            )) : (
+                              <span style={{ color: '#94a3b8', fontSize: 12, fontWeight: 800 }}>Chưa có lịch</span>
+                            )}
                           </div>
                           {onAddDiary && <Button size="xs" intent="success" variant="outline" icon={<BookOpen size={12} />} onClick={() => onAddDiary(classId)}>Ghi buổi</Button>}
                         </div>
@@ -747,18 +738,29 @@ export default function TeachersTab({
               </section>
 
               <section style={{ ...PANEL, padding: 14, marginBottom: 14 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Clock3 size={16} color="#7c3aed" />
                   <h4 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#0f172a' }}>Buổi học gần nhất</h4>
+                  </div>
+                  <span style={{ color: '#64748b', fontSize: 12, fontWeight: 800 }}>{detailRow.recentLogs.length} buổi</span>
                 </div>
                 {detailRow.recentLogs.length === 0 ? (
                   <p style={{ margin: 0, color: '#94a3b8', fontSize: 13, fontStyle: 'italic' }}>Chưa có nhật ký buổi học.</p>
                 ) : (
-                  <div style={{ display: 'grid', gap: 8 }}>
+                  <div style={{ display: 'grid', gap: 6 }}>
                     {detailRow.recentLogs.map(log => (
-                      <div key={`${log.date}-${log.classId}-${log.caDay}`} style={{ borderLeft: '3px solid #8b5cf6', padding: '8px 10px', background: '#faf5ff', borderRadius: 8 }}>
-                        <p style={{ margin: 0, fontSize: 12, fontWeight: 800, color: '#0f172a' }}>{log.date} · {log.classId} {log.caDay ? `· ${log.caDay}` : ''}</p>
-                        <p style={{ margin: '2px 0 0', fontSize: 12, color: '#64748b', lineHeight: 1.45 }}>{log.content || '---'}</p>
+                      <div key={`${log.date}-${log.classId}-${log.caDay}`} style={{ border: '1px solid #e9d5ff', borderLeft: '3px solid #8b5cf6', padding: '9px 10px', background: '#fbf8ff', borderRadius: 8, display: 'grid', gridTemplateColumns: 'minmax(118px,150px) minmax(0,1fr)', alignItems: 'center', gap: 10 }}>
+                        <div>
+                          <p style={{ margin: 0, fontSize: 12, fontWeight: 900, color: '#0f172a', whiteSpace: 'nowrap' }}>{log.date}</p>
+                          <p style={{ margin: '3px 0 0', display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                            <span style={{ color: '#5b21b6', background: '#f3e8ff', border: '1px solid #e9d5ff', borderRadius: 999, padding: '2px 7px', fontSize: 11, fontWeight: 900 }}>{log.classId || '—'}</span>
+                            {log.caDay && <span style={{ color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 999, padding: '2px 7px', fontSize: 11, fontWeight: 900 }}>{log.caDay}</span>}
+                          </p>
+                        </div>
+                        <p style={{ margin: 0, fontSize: 12, color: '#475569', lineHeight: 1.45, fontWeight: 750, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {log.content || '---'}
+                        </p>
                       </div>
                     ))}
                   </div>

@@ -14,15 +14,22 @@ import {
   TrendingUp,
   Users,
 } from 'lucide-react';
-import { parseDMY, isStudentActive } from './helpers';
+import { fixVietnameseText, normalizeCaDayLabel, parseDMY, isStudentActive } from './helpers';
+import {
+  calcStudentAbsenceStreak,
+  calcStudentAttendance,
+  getAttendanceRisk,
+  getPaymentReceiptPeriod,
+  getTuitionCycleState,
+} from './measures';
 import { ActionableKpi, ActionableKpiGrid, EmptyState, MoneyText, PageToolbar } from './uiSystem';
 import type { Student, Payment, TeachingLog, TrainingSub, OperationsSub, FinanceSub } from './types';
 
 const DAYS_VN = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
 const CA_MINS: Record<string, number> = {
   '7h30': 7 * 60 + 30,
-  '9h': 9 * 60,
-  '13h30': 13 * 60 + 30,
+  '9h15': 9 * 60 + 15,
+  '14h': 14 * 60,
   '15h30': 15 * 60 + 30,
   '17h30': 17 * 60 + 30,
   '19h30': 19 * 60 + 30,
@@ -37,33 +44,12 @@ function norm(raw: unknown) {
     .replace(/đ/g, 'd');
 }
 
-function isMonthBillable(student: Student, curMo: number, curYr: number): boolean {
-  const monthStart = new Date(curYr, curMo - 1, 1).getTime();
-
-  const startTs = parseDMY(student.startDate || '');
-  if (startTs) {
-    const startDate = new Date(startTs);
-    const enrollMonth = new Date(startDate.getFullYear(), startDate.getMonth(), 1).getTime();
-    if (monthStart < enrollMonth) return false;
-  }
-
-  const endRaw = String(student.endDate || '').trim();
-  const endTs = parseDMY(endRaw);
-  if (endTs && endRaw && endRaw !== '---') {
-    const endDate = new Date(endTs);
-    const leaveMonth = new Date(endDate.getFullYear(), endDate.getMonth(), 1).getTime();
-    if (monthStart >= leaveMonth) return false;
-  }
-
-  return true;
-}
-
 function parseTimeLabel(raw: string) {
   const match = raw.match(/(\d{1,2})[h:](\d{0,2})/);
   if (!match) return '';
   const hour = Number(match[1]);
   const minute = match[2] ? Number(match[2]) : 0;
-  return `${hour}h${minute ? String(minute).padStart(2, '0') : ''}`;
+  return normalizeCaDayLabel(`${hour}h${minute ? String(minute).padStart(2, '0') : ''}`);
 }
 
 function parseSlot(raw: unknown) {
@@ -102,15 +88,15 @@ function parseDateValue(raw: unknown) {
 }
 
 function getClassId(c: Record<string, any>) {
-  return String(c['Mã Lớp'] || c['Mã lớp'] || c['MÃ£ Lá»›p'] || c['MÃƒÂ£ LÃ¡Â»â€ºp'] || c.MaLop || c['Ma Lop'] || c.classId || '').trim();
+  return fixVietnameseText(c['Mã Lớp'] || c['Mã lớp'] || c['MÃ£ Lá»›p'] || c['MÃƒÂ£ LÃ¡Â»â€ºp'] || c.MaLop || c['Ma Lop'] || c.classId || '');
 }
 
 function getClassName(c: Record<string, any>) {
-  return String(c['Tên Lớp'] || c['Tên lớp'] || c['TÃªn Lá»›p'] || c['TÃƒÂªn LÃ¡Â»â€ºp'] || c.TenLop || c.name || getClassId(c)).trim();
+  return getClassId(c);
 }
 
 function getClassTeacher(c: Record<string, any>) {
-  return String(c.GiaoVien || c['Giáo viên'] || c['GiÃ¡o viÃªn'] || c['GiÃƒÂ¡o viÃƒÂªn'] || c.MaGV || c.teacherName || c.teacherId || '').trim();
+  return fixVietnameseText(c.GiaoVien || c['Giáo viên'] || c['GiÃ¡o viÃªn'] || c['GiÃƒÂ¡o viÃƒÂªn'] || c.MaGV || c.teacherName || c.teacherId || '');
 }
 
 function getClassSlots(c: Record<string, any>) {
@@ -118,17 +104,12 @@ function getClassSlots(c: Record<string, any>) {
     c['Buổi 1'] || c['Buá»•i 1'] || c['BuÃ¡Â»â€¢i 1'] || c.Buoi1,
     c['Buổi 2'] || c['Buá»•i 2'] || c['BuÃ¡Â»â€¢i 2'] || c.Buoi2,
     c['Buổi 3'] || c['Buá»•i 3'] || c['BuÃ¡Â»â€¢i 3'] || c.Buoi3,
-  ].filter(Boolean);
-}
-
-function logInMonth(log: TeachingLog, mo: number, yr: number) {
-  const d = parseDateValue(log.rawDate || log.date);
-  return !!d && d.getMonth() + 1 === mo && d.getFullYear() === yr;
+  ].filter(Boolean).map(fixVietnameseText);
 }
 
 function paymentInReceiptMonth(p: Payment, mo: number, yr: number) {
-  const d = parseDateValue(p.date);
-  return !!d && d.getMonth() + 1 === mo && d.getFullYear() === yr;
+  const period = getPaymentReceiptPeriod(p);
+  return period?.m === mo && period?.y === yr;
 }
 
 function studentStartedInMonth(s: Student, mo: number, yr: number) {
@@ -136,20 +117,6 @@ function studentStartedInMonth(s: Student, mo: number, yr: number) {
   if (!ts) return false;
   const d = new Date(ts);
   return d.getMonth() + 1 === mo && d.getFullYear() === yr;
-}
-
-function attendanceStatusOf(a: any) {
-  return a.trangThai || a['Trạng thái'] || a['Tráº¡ng thÃ¡i'] || a.TrangThai || '';
-}
-
-function normalizeAttendanceStatus(raw: unknown): 'present' | 'absent' | 'excused' {
-  const s = String(raw || '').trim();
-  if (s === 'Vắng') return 'absent';
-  if (s === 'Có phép' || s === 'Nghỉ có phép') return 'excused';
-  const n = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  if (n === 'vang' || n === 'absent') return 'absent';
-  if (n === 'co phep' || n === 'nghi co phep' || n === 'excused') return 'excused';
-  return 'present';
 }
 
 interface TodaySlot {
@@ -167,7 +134,7 @@ function findMatchingLog(slot: TodaySlot, logs: TeachingLog[]) {
     if (String(log.classId || '') !== slot.classId) return false;
     const d = parseDateValue(log.rawDate || log.date);
     if (!d || !sameDay(d, slot.date)) return false;
-    if (log.caDay && slot.caDay && log.caDay !== slot.caDay) return false;
+    if (log.caDay && slot.caDay && normalizeCaDayLabel(log.caDay) !== normalizeCaDayLabel(slot.caDay)) return false;
     return true;
   });
 }
@@ -285,25 +252,34 @@ export default function OverviewTab({
   goTraining,
   goOperations,
   goFinance,
-  isPaid,
   onAddStudent,
   onAddDiary,
   onAddIncome,
 }: Props) {
   const activeStudents = useMemo(() => students.filter(isStudentActive), [students]);
+  const tuitionStates = useMemo(() => activeStudents.map(student => getTuitionCycleState({
+    student,
+    classes: uClasses,
+    payments,
+    tlogs,
+    baseTuition,
+  })), [activeStudents, baseTuition, payments, tlogs, uClasses]);
   const billableStudents = useMemo(
-    () => activeStudents.filter(s => isMonthBillable(s, curMo, curYr)),
-    [activeStudents, curMo, curYr],
+    () => tuitionStates.filter(state => state.billable).map(state => state.student),
+    [tuitionStates],
   );
   const billablePaid = useMemo(
-    () => billableStudents.filter(s => isPaid(s.id, curMo, curYr)).length,
-    [billableStudents, curMo, curYr, isPaid],
+    () => tuitionStates.filter(state => state.status === 'paid').length,
+    [tuitionStates],
   );
   const unpaidStudents = useMemo(
-    () => billableStudents.filter(s => !isPaid(s.id, curMo, curYr)),
-    [billableStudents, curMo, curYr, isPaid],
+    () => tuitionStates.filter(state => state.outstandingAmount > 0).map(state => state.student),
+    [tuitionStates],
   );
-  const debtAmount = unpaidStudents.length * baseTuition;
+  const debtAmount = useMemo(
+    () => tuitionStates.reduce((sum, state) => sum + state.outstandingAmount, 0),
+    [tuitionStates],
+  );
 
   const activeClasses = useMemo(
     () => uClasses.filter(c => !['inactive', 'nghi', 'da nghi', 'dong'].includes(norm(c.status || c.TrangThai))),
@@ -374,17 +350,15 @@ export default function OverviewTab({
   );
 
   const frequentAbsentees = useMemo(() => {
-    const map = new Map<string, { student: Student; absent: number }>();
-    activeStudents.forEach(s => map.set(s.id, { student: s, absent: 0 }));
-    tlogs.filter(log => logInMonth(log, curMo, curYr)).forEach(log => {
-      (log.attendanceList || []).forEach((a: any) => {
-        const id = String(a.maHS || a['Mã HS'] || a['MÃ£ HS'] || a.MaHS || '').trim();
-        const row = map.get(id);
-        if (!row) return;
-        if (normalizeAttendanceStatus(attendanceStatusOf(a)) === 'absent') row.absent++;
-      });
-    });
-    return [...map.values()].filter(row => row.absent >= 3).sort((a, b) => b.absent - a.absent);
+    const period = { m: curMo, y: curYr };
+    return activeStudents
+      .map(student => {
+        const attendance = calcStudentAttendance(tlogs, student.id, period);
+        const streak = calcStudentAbsenceStreak(tlogs, student.id, student.classId, period);
+        return { student, absent: attendance.absent, streak, risk: getAttendanceRisk({ ...attendance, streak }) };
+      })
+      .filter(row => row.risk.tone === 'danger' || row.risk.tone === 'warning')
+      .sort((a, b) => b.absent - a.absent || b.streak - a.streak);
   }, [activeStudents, tlogs, curMo, curYr]);
 
   const workItems = useMemo(() => {
@@ -398,7 +372,7 @@ export default function OverviewTab({
       unpaidStudents.length > 0 && { id: 'debt', tone: '#e11d48', title: `${unpaidStudents.length} học sinh nợ phí T${curMo}`, sub: <><MoneyText value={debtAmount} tone="danger" /> cần thu</>, onClick: () => goFinance('debt') },
       unassigned > 0 && { id: 'unassigned', tone: '#f59e0b', title: `${unassigned} học sinh chờ xếp lớp`, sub: 'Cần gán lớp học', onClick: () => goTraining('students') },
       newStudentsThisMonth.length > 0 && { id: 'new-students', tone: '#10b981', title: `${newStudentsThisMonth.length} học sinh mới đăng ký`, sub: `Trong T${curMo}/${curYr}`, onClick: () => goTraining('students') },
-      frequentAbsentees.length > 0 && { id: 'absence', tone: '#f97316', title: `${frequentAbsentees.length} học sinh nghỉ nhiều`, sub: 'Từ 3 lượt vắng trong tháng', onClick: () => goOperations('attendance') },
+      frequentAbsentees.length > 0 && { id: 'absence', tone: '#f97316', title: `${frequentAbsentees.length} học sinh nghỉ nhiều`, sub: 'Vắng nhiều hoặc vắng liên tiếp trong tháng', onClick: () => goOperations('attendance') },
       soonSlots.length > 0 && { id: 'soon', tone: '#0ea5e9', title: `${soonSlots.length} lớp sắp bắt đầu`, sub: 'Trong 90 phút tới', onClick: () => goOperations('schedule') },
       missingTeacher > 0 && { id: 'teacher', tone: '#ef4444', title: `${missingTeacher} lớp thiếu giáo viên`, sub: 'Cần phân công giáo viên', onClick: () => goTraining('classes') },
       missingSchedule > 0 && { id: 'schedule', tone: '#f97316', title: `${missingSchedule} lớp thiếu lịch học`, sub: 'Cần bổ sung Buổi 1/2/3', onClick: () => goTraining('classes') },
@@ -421,7 +395,7 @@ export default function OverviewTab({
         title={(
           <div>
             <h2 style={{ fontSize: 24, fontWeight: 900, color: '#1a1d2e', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>Tổng quan</h2>
-            <p style={{ fontSize: 13, color: '#6b7280', margin: '3px 0 0' }}>Điều hành hôm nay · {todayLabel} · Tháng {curMo}/{curYr}</p>
+            <p style={{ fontSize: 13, color: '#6b7280', margin: '3px 0 0' }}>{todayLabel}</p>
           </div>
         )}
         actions={(
@@ -542,7 +516,7 @@ export default function OverviewTab({
         </Panel>
       </div>
 
-      <Panel className="overview-panel">
+      <Panel className="overview-panel overview-quick-panel">
         <SectionTitle title="Thao tác nhanh" />
         <div className="overview-quick-actions" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <QuickAction label="Điểm danh" primary tone="primary" icon={<CalendarCheck size={15} />} onClick={() => onAddDiary()} />

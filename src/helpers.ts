@@ -16,9 +16,25 @@ export const FEE_DEFAULT    = 600_000;
 export const IPP            = 25;
 export const FETCH_TIMEOUT  = 30000;
 
-export const CA_DAY_OPTIONS  = ['7h30', '9h', '13h30', '15h30', '17h30', '19h30'] as const;
-export const CA_DAY_DEFAULT: string[]    = ['7h30', '9h', '13h30', '15h30', '17h30', '19h30'];
+export const CA_DAY_OPTIONS  = ['7h30', '9h15', '14h', '15h30', '17h30', '19h30'] as const;
+export const CA_DAY_DEFAULT: string[]    = ['7h30', '9h15', '14h', '15h30', '17h30', '19h30'];
 export const TEACHER_LIST_DEFAULT: string[] = ['Lê Đức Nhân', 'Nguyễn Thị Kiên'];
+export const LESSON_OFF_NOTE_TAG = '[NGHI_BUOI]';
+
+export const isLessonOffLog = (log: { content?: unknown; teacherNote?: unknown; homework?: unknown } | null | undefined): boolean => {
+  if (!log) return false;
+  const teacherNote = String(log.teacherNote || '');
+  const content = String(log.content || '');
+  const normalizedContent = content
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+  return teacherNote.includes(LESSON_OFF_NOTE_TAG) || normalizedContent === 'lop nghi' || normalizedContent === 'nghi buoi';
+};
+
+export const getLessonOffReason = (log: { teacherNote?: unknown } | null | undefined): string =>
+  String(log?.teacherNote || '').replace(LESSON_OFF_NOTE_TAG, '').trim();
 
 /* ── Sanitization ────────────────────────────────────────────────────────────
    BUG FIX v23.0: Xóa HTML-escaping. React đã tự escape khi render.
@@ -122,6 +138,48 @@ export function normalizePaymentMethod(raw: any): string {
   return value;
 }
 
+const CP1252_BYTE: Record<number, number> = {
+  0x20AC: 0x80, 0x201A: 0x82, 0x0192: 0x83, 0x201E: 0x84,
+  0x2026: 0x85, 0x2020: 0x86, 0x2021: 0x87, 0x02C6: 0x88,
+  0x2030: 0x89, 0x0160: 0x8A, 0x2039: 0x8B, 0x0152: 0x8C,
+  0x017D: 0x8E, 0x2018: 0x91, 0x2019: 0x92, 0x201C: 0x93,
+  0x201D: 0x94, 0x2022: 0x95, 0x2013: 0x96, 0x2014: 0x97,
+  0x02DC: 0x98, 0x2122: 0x99, 0x0161: 0x9A, 0x203A: 0x9B,
+  0x0153: 0x9C, 0x017E: 0x9E, 0x0178: 0x9F,
+};
+
+const mojibakeScore = (value: string) => (value.match(/[ÃÂÆÄ]|áº|á»|â€|â€¦|â€“|â€”/g) || []).length;
+
+function decodeUtf8MojibakeOnce(value: string): string {
+  if (!mojibakeScore(value)) return value;
+  const bytes: number[] = [];
+  for (const ch of value) {
+    const code = ch.charCodeAt(0);
+    const byte = code <= 0xff ? code : CP1252_BYTE[code];
+    if (byte == null) return value;
+    bytes.push(byte);
+  }
+  try {
+    const decoded = new TextDecoder('utf-8').decode(new Uint8Array(bytes));
+    return mojibakeScore(decoded) < mojibakeScore(value) ? decoded : value;
+  } catch {
+    return value;
+  }
+}
+
+export function fixVietnameseText(raw: any): string {
+  let value = String(raw || '').trim();
+  if (!value || value === '---') return value;
+  for (let i = 0; i < 3; i += 1) {
+    const next = decodeUtf8MojibakeOnce(value);
+    if (next === value) break;
+    value = next;
+  }
+  return value
+    .replace(/\?{1,2}o T\?n/gi, 'Đào Tấn')
+    .replace(/Nguy\?n Quang B[ií]ch/gi, 'Nguyễn Quang Bích');
+}
+
 /**
  * formatDate — BUG FIX v23.0: xử lý ISO UTC string từ GAS đúng timezone.
  *
@@ -198,7 +256,7 @@ export const parseDMY = (raw: any): number => {
 
 /**
  * parseCaDayToHours — Parse ca dạy → giờ (số thực) để sort tăng dần.
- * "7h30" → 7.5,  "9h" → 9,  "13h30" → 13.5,  "19h30" → 19.5
+ * "7h30" → 7.5,  "9h15" → 9.25,  "14h" → 14,  "19h30" → 19.5
  */
 export const parseCaDayToHours = (ca: string): number => {
   if (!ca) return 99;
@@ -297,7 +355,17 @@ export const makeVietQR = (bankId: string, accountNo: string, amount: number, ad
   `https://img.vietqr.io/image/${bankId}-${accountNo}-compact2.png?amount=${amount}&addInfo=${encodeURIComponent(addInfo)}&accountName=${encodeURIComponent(accountName)}`;
 
 export const loadSettings = () => {
-  try { const s = localStorage.getItem('ltn-settings'); return s ? JSON.parse(s) : null; } catch { return null; }
+  try {
+    const s = localStorage.getItem('ltn-settings');
+    if (!s) return null;
+    const parsed = JSON.parse(s);
+    ['centerName', 'teacher', 'addr1', 'addr2', 'accountName', 'zaloTpl'].forEach(key => {
+      if (typeof parsed?.[key] === 'string') parsed[key] = fixVietnameseText(parsed[key]);
+    });
+    return parsed;
+  } catch {
+    return null;
+  }
 };
 export const saveSettings = (obj: object) => {
   try { localStorage.setItem('ltn-settings', JSON.stringify(obj)); } catch {}
@@ -311,14 +379,15 @@ export const parseSchoolYear = (schoolYear?: string): { start: number; end: numb
     if (end === start + 1) return { start, end };
   }
   const now = new Date();
-  const start = now.getMonth() + 1 >= 7 ? now.getFullYear() : now.getFullYear() - 1;
+  const start = now.getMonth() + 1 >= 6 ? now.getFullYear() : now.getFullYear() - 1;
   return { start, end: start + 1 };
 };
 
 export const buildSchoolYearMonths = (schoolYear?: string) => {
   const { start, end } = parseSchoolYear(schoolYear);
   const months: { m: number; y: number; label: string }[] = [];
-  for (let mo = 7; mo <= 12; mo++) months.push({ m: mo, y: start, label: `T${mo}` });
+  // Lớp Toán NK tính niên khóa từ tháng 6 năm đầu đến hết tháng 6 năm sau.
+  for (let mo = 6; mo <= 12; mo++) months.push({ m: mo, y: start, label: `T${mo}` });
   for (let mo = 1; mo <= 6; mo++) months.push({ m: mo, y: end, label: `T${mo}` });
   return months;
 };
@@ -474,3 +543,27 @@ export const exportCSV = (filename: string, headers: string[], rows: (string | n
   a.click();
   URL.revokeObjectURL(url);
 };
+
+export const normalizeCaDayLabel = (raw: any): string => {
+  const value = String(raw || '').trim();
+  if (!value) return '';
+  const match = value.match(/(\d{1,2})\s*(?:h|:)\s*(\d{0,2})/i);
+  if (!match) return value;
+  const hour = Number(match[1]);
+  const minute = match[2] ? Number(match[2]) : 0;
+  const total = hour * 60 + minute;
+  if (total === 9 * 60) return '9h15';
+  if (total === 13 * 60 + 30) return '14h';
+  return `${hour}h${minute ? String(minute).padStart(2, '0') : ''}`;
+};
+
+export const normalizeCaDayOptions = (items?: any[]): string[] => {
+  const source = items && items.length > 0 ? items : CA_DAY_DEFAULT;
+  return [...new Set(source.map(normalizeCaDayLabel).filter(Boolean))];
+};
+
+export const normalizeScheduleCaText = (raw: any): string => String(raw || '')
+  .trim()
+  .replace(/\s+/g, ' ')
+  .replace(/\bT\s+([2-7])\b/gi, 'T$1')
+  .replace(/\b(\d{1,2})\s*(?:h|:)\s*(\d{0,2})\b/gi, match => normalizeCaDayLabel(match));

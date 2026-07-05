@@ -2,54 +2,25 @@
  * ClassesTab.tsx — màn quản lý dữ liệu lớp học gốc.
  */
 import React, { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { Clock, Plus, Trash2, X, Users, MapPin, User } from 'lucide-react';
-import { isStudentActive, parseDMY, resolveTeacher } from './helpers';
+import { fixVietnameseText, isStudentActive, normalizeCaDayLabel, normalizeScheduleCaText, resolveTeacher } from './helpers';
+import { getPaymentTuitionPeriod, getTuitionCycleState } from './measures';
 import { SearchBar, Select, Button } from './dsComponents';
-import { DataTable, EmptyState, MobileCard, MoneyText, PageToolbar, StatusBadge } from './uiSystem';
-import type { Student, ClassRecord, Payment, DeleteTarget } from './types';
+import { DataTable, DetailMetric, EmptyState, MobileCompactCard, MoneyText, PageToolbar, StatusBadge } from './uiSystem';
+import type { Student, ClassRecord, Payment, DeleteTarget, TeachingLog } from './types';
 
 interface Props {
   uClasses: ClassRecord[]; students: Student[];
   payments?: Payment[];
+  tlogs?: TeachingLog[];
   curMo: number; curYr: number;
   qCls: string; setQCls: (v: string) => void;
   fClsTeacher: string; setFClsTeacher: (v: string) => void;
-  isPaid: (sid: string, mo: number, yr: number) => boolean;
   onEditClass: (c: ClassRecord) => void; onDeleteClass?: (t: DeleteTarget) => void; onAddClass: () => void; uniqueBranches: string[];
   onAddDiary?: (classId?: string) => void;
   embedded?: boolean;
   toolbarPrefix?: React.ReactNode;
-}
-
-function isMonthBillable(s: Student, month: number, year: number): boolean {
-  const monthStart = new Date(year, month - 1, 1).getTime();
-
-  const startTs = parseDMY(s.startDate || '');
-  if (startTs) {
-    const d = new Date(startTs);
-    const startMonth = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
-    if (monthStart < startMonth) return false;
-  }
-
-  const endRaw = String(s.endDate || '').trim();
-  const endTs = parseDMY(endRaw);
-  if (endTs && endRaw && endRaw !== '---') {
-    const d = new Date(endTs);
-    const leaveMonth = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
-    if (monthStart >= leaveMonth) return false;
-  }
-
-  return true;
-}
-
-function paymentPeriod(p: Payment): { m: number; y: number } | null {
-  const m = Number(p.thangHP);
-  const y = Number(p.namHP);
-  if (m >= 1 && m <= 12 && y >= 2000) return { m, y };
-  const ts = parseDMY(p.date || '');
-  if (!ts) return null;
-  const d = new Date(ts);
-  return { m: d.getMonth() + 1, y: d.getFullYear() };
 }
 
 function paymentClassId(p: Payment, students: Student[]): string {
@@ -74,12 +45,41 @@ function normalizeText(value: unknown) {
     .trim();
 }
 
-function getClassGrade(c: ClassRecord) {
-  return String(c['Khối'] || c.Khoi || c.grade || '').trim();
+function readClassField(c: any, keys: string[]) {
+  for (const key of keys) {
+    const value = c?.[key];
+    if (value !== undefined && value !== null && String(value).trim() !== '') return fixVietnameseText(value);
+  }
+  return '';
+}
+
+function getClassCode(c: any) {
+  return readClassField(c, ['Mã Lớp', 'Mã lớp', 'MaLop', 'Ma Lop', 'classId', 'id']);
+}
+
+function getClassTeacher(c: any) {
+  return readClassField(c, ['Giáo viên', 'GiaoVien', 'Giao Vien', 'teacherName', 'teacher']);
+}
+
+function getClassBranch(c: any) {
+  return readClassField(c, ['Cơ sở', 'CoSo', 'Co So', 'branch']);
+}
+
+function getClassScheduleSlots(c: any) {
+  return [
+    { label: 'Buổi 1', value: normalizeScheduleCaText(readClassField(c, ['Buổi 1', 'Buoi 1', 'Buoi1'])) },
+    { label: 'Buổi 2', value: normalizeScheduleCaText(readClassField(c, ['Buổi 2', 'Buoi 2', 'Buoi2'])) },
+    { label: 'Buổi 3', value: normalizeScheduleCaText(readClassField(c, ['Buổi 3', 'Buoi 3', 'Buoi3'])) },
+  ];
+}
+
+function getClassSchedule(c: any) {
+  const slots = getClassScheduleSlots(c).map(slot => slot.value).filter(Boolean);
+  return slots.length > 0 ? slots.join(' | ') : readClassField(c, ['Ca học', 'Ca hoc', 'CaHoc']) || '---';
 }
 
 function getClassTitle(c: ClassRecord) {
-  return String(c['Tên Lớp'] || c['Mã Lớp'] || 'Lớp học').trim();
+  return getClassCode(c) || 'Lớp học';
 }
 
 function classStatusMeta(status: ClassStatus): { label: string; tone: 'success' | 'warning' | 'neutral' } {
@@ -98,14 +98,15 @@ function compactScheduleLabel(schedule: string) {
   const times: string[] = [];
 
   parts.forEach(part => {
-    const day = part.match(/\b(T[2-7]|CN)\b/i)?.[1]?.toUpperCase();
-    const time = part.match(/(\d{1,2})(?:h|:)(\d{0,2})/i);
+    const normalizedPart = part.replace(/\s+/g, ' ').replace(/\bT\s+([2-7])\b/gi, 'T$1');
+    const day = normalizedPart.match(/\b(T[2-7]|CN)\b/i)?.[1]?.toUpperCase();
+    const time = normalizedPart.match(/(\d{1,2})\s*(?:h|:)\s*(\d{0,2})/i);
 
     if (day && !days.includes(day)) days.push(day);
     if (time) {
       const hour = Number(time[1]);
       const minute = time[2] ? String(Number(time[2])).padStart(2, '0') : '00';
-      const label = `${hour}:${minute}`;
+      const label = normalizeCaDayLabel(`${hour}h${minute}`);
       if (!times.includes(label)) times.push(label);
     }
   });
@@ -115,40 +116,91 @@ function compactScheduleLabel(schedule: string) {
   return raw.length > 36 ? `${raw.slice(0, 33)}...` : raw;
 }
 
-function ClassDetailModal({ cls, curMo, curYr, students, isPaid, onClose, onEdit, onDelete }: {
+function ClassStudentListOverlay({ title, students, tone, onClose }: {
+  title: string;
+  students: Student[];
+  tone: 'unpaid' | 'paid';
+  onClose: () => void;
+}) {
+  const isUnpaid = tone === 'unpaid';
+  const content = (
+    <div style={{ position:'fixed',inset:0,zIndex:1000,background:'rgba(15,23,42,0.68)',backdropFilter:'blur(4px)',overflowY:'auto',padding:'18px 12px' }}>
+      <div style={{ width:'100%',maxWidth:680,margin:'0 auto',background:'white',borderRadius:18,overflow:'hidden',boxShadow:'0 24px 80px rgba(15,23,42,0.3)' }}>
+        <div style={{ position:'sticky',top:0,zIndex:1,background:'#f8fafc',borderBottom:'1px solid #e2e8f0',padding:'14px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:10 }}>
+          <div style={{ minWidth:0 }}>
+            <p style={{ margin:0,fontSize:16,fontWeight:950,color:'#0f172a' }}>{title}</p>
+            <p style={{ margin:'3px 0 0',fontSize:12,fontWeight:800,color:'#64748b' }}>{students.length} học sinh</p>
+          </div>
+          <button onClick={onClose} style={{ width:34,height:34,borderRadius:10,border:'none',background:'#eef2f7',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0 }}>
+            <X size={16} color="#64748b" />
+          </button>
+        </div>
+        <div style={{ display:'grid',gap:8,padding:12 }}>
+          {students.length === 0 ? (
+            <div style={{ padding:'24px 12px',textAlign:'center',fontSize:13,fontWeight:800,color:'#94a3b8' }}>Không có học sinh trong danh sách</div>
+          ) : students.map(s => (
+            <div key={s.id} style={{ display:'grid',gridTemplateColumns:'minmax(0,1fr) auto',gap:10,alignItems:'center',padding:'11px 12px',borderRadius:12,border:`1px solid ${isUnpaid ? '#fecaca' : '#a7f3d0'}`,background:isUnpaid ? '#fff5f5' : '#f0fdf4' }}>
+              <div style={{ minWidth:0 }}>
+                <p style={{ fontSize:14,fontWeight:900,color:'#0f172a',margin:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{s.name}</p>
+                <p style={{ fontSize:12,fontWeight:750,color:'#64748b',margin:'3px 0 0' }}>{s.id}{s.parentPhone ? ` · ${s.parentPhone}` : ''}</p>
+              </div>
+              <span style={{ fontSize:11,fontWeight:900,color:isUnpaid ? '#be123c' : '#047857',background:isUnpaid ? '#fee2e2' : '#dcfce7',padding:'5px 9px',borderRadius:999,whiteSpace:'nowrap' }}>
+                {isUnpaid ? 'Chưa đóng' : 'Đã đóng'}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+  return typeof document === 'undefined' ? content : createPortal(content, document.body);
+}
+
+function ClassDetailModal({ cls, curMo, curYr, students, payments = [], tlogs = [], onClose, onEdit, onDelete }: {
   cls: ClassRecord & { studentCount?: number; paidCount?: number; pct?: number };
   curMo: number; curYr: number;
   students: Student[];
-  isPaid: (sid: string, mo: number, yr: number) => boolean;
+  payments?: Payment[];
+  tlogs?: TeachingLog[];
   onClose: () => void; onEdit: () => void; onDelete?: () => void;
 }) {
   // Chỉ tính HS đang học — bỏ qua HS đã nghỉ
   const clsStudents = students.filter(s =>
-    s.classId === cls['Mã Lớp'] &&
+    s.classId === getClassCode(cls) &&
     isStudentActive(s)
   );
-  const billableStudents = clsStudents.filter(s => isMonthBillable(s, curMo, curYr));
-  const paid   = billableStudents.filter(s => isPaid(s.id, curMo, curYr));
-  const unpaid = billableStudents.filter(s => !isPaid(s.id, curMo, curYr));
+  const tuitionStates = clsStudents.map(student => getTuitionCycleState({
+    student,
+    classes: [cls],
+    payments,
+    tlogs,
+  }));
+  const billableStudents = tuitionStates.filter(state => state.billable).map(state => state.student);
+  const paid   = tuitionStates.filter(state => state.status === 'paid').map(state => state.student);
+  const unpaid = tuitionStates.filter(state => state.outstandingAmount > 0).map(state => state.student);
   const pct = billableStudents.length > 0 ? Math.round(paid.length / billableStudents.length * 100) : 0;
   const feeTone = tuitionTone(billableStudents.length, pct);
   const feeBg = feeTone === 'emerald' ? '#ecfdf5' : feeTone === 'amber' ? '#fefce8' : feeTone === 'rose' ? '#fff1f2' : '#f8fafc';
   const feeBorder = feeTone === 'emerald' ? '#a7f3d0' : feeTone === 'amber' ? '#fde68a' : feeTone === 'rose' ? '#fecaca' : '#e2e8f0';
   const feeColor = feeTone === 'emerald' ? '#059669' : feeTone === 'amber' ? '#d97706' : feeTone === 'rose' ? '#e11d48' : '#64748b';
+  const classCode = getClassCode(cls);
+  const teacherName = resolveTeacher(getClassTeacher(cls)) || 'Chưa phân công';
+  const scheduleSlots = getClassScheduleSlots(cls);
+  const [feeListMode, setFeeListMode] = useState<'unpaid' | 'paid' | null>(null);
 
   return (
-    <div style={{ position:'fixed',inset:0,zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:18,background:'rgba(15,23,42,0.6)',backdropFilter:'blur(4px)' }}>
-      <div style={{ background:'white',width:'100%',maxWidth:760,borderRadius:20,overflow:'hidden',boxShadow:'0 24px 80px rgba(15,23,42,0.28)',maxHeight:'88dvh',display:'flex',flexDirection:'column' }}>
+    <div style={{ position:'fixed',inset:0,zIndex:200,display:'flex',alignItems:'flex-start',justifyContent:'center',padding:'24px 18px',overflowY:'auto',background:'rgba(15,23,42,0.6)',backdropFilter:'blur(4px)' }}>
+      <div style={{ background:'white',width:'100%',maxWidth:760,borderRadius:20,overflow:'hidden',boxShadow:'0 24px 80px rgba(15,23,42,0.28)',display:'flex',flexDirection:'column',margin:'0 auto' }}>
 
         {/* Header */}
         <div style={{ padding:'16px 20px',borderBottom:'1px solid #f1f5f9',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0 }}>
           <div style={{ display:'flex',alignItems:'center',gap:10 }}>
             <div style={{ width:38,height:38,borderRadius:10,background:'#eef2ff',border:'1px solid #c7d2fe',display:'flex',alignItems:'center',justifyContent:'center' }}>
-              <span style={{ color:'#4f46e5',fontWeight:800,fontSize:12 }}>{(cls['Mã Lớp']||'').slice(0,3)}</span>
+              <span style={{ color:'#4f46e5',fontWeight:800,fontSize:12 }}>{classCode.slice(0,3)}</span>
             </div>
             <div>
-              <p style={{ fontSize:16,fontWeight:800,color:'#0f172a',margin:0 }}>{cls['Mã Lớp']}</p>
-              <p style={{ fontSize:12,color:'#6366f1',fontWeight:600,margin:0 }}>{cls['Tên Lớp'] || 'Chi tiết lớp học'}</p>
+              <p style={{ fontSize:16,fontWeight:850,color:'#0f172a',margin:0 }}>Lớp {classCode || '---'}</p>
+              <p style={{ fontSize:12,color:'#64748b',fontWeight:700,margin:'2px 0 0' }}>Giáo viên {teacherName}</p>
             </div>
           </div>
           <div style={{ display:'flex',alignItems:'center',gap:8,flexShrink:0 }}>
@@ -160,20 +212,35 @@ function ClassDetailModal({ cls, curMo, curYr, students, isPaid, onClose, onEdit
           </div>
         </div>
 
-        <div style={{ flex:1,overflowY:'auto',padding:'16px 20px',display:'flex',flexDirection:'column',gap:14 }}>
+        <div style={{ flex:'initial',overflowY:'visible',padding:'16px 20px',display:'flex',flexDirection:'column',gap:14 }}>
+
+          <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(96px,1fr))',gap:10 }}>
+            <DetailMetric label="Lớp" value={classCode || '---'} tone="violet" />
+            <DetailMetric label="Sĩ số" value={clsStudents.length} tone="sky" />
+            <DetailMetric label="Cần thu" value={billableStudents.length} tone="amber" />
+            <DetailMetric label="Đã đóng" value={`${paid.length}/${billableStudents.length}`} tone="emerald" />
+            <DetailMetric label={`T${curMo}/${curYr}`} value={`${pct}%`} tone={feeTone === 'rose' ? 'rose' : feeTone === 'amber' ? 'amber' : 'emerald'} />
+          </div>
 
           <section className="ltn-detail-section">
-            <p className="ltn-section-title">Thiết lập lớp</p>
+            <p className="ltn-section-title" style={{ textAlign:'left' }}>Chi tiết lớp</p>
             <div className="ltn-info-grid">
               {[
-                { label:'Giáo viên', value: resolveTeacher(cls['Giáo viên']||'')||'---' },
-                { label:'Cơ sở',     value: cls['Cơ sở']||'---' },
-                { label:'Lịch học',  value: [cls['Buổi 1'],cls['Buổi 2'],cls['Buổi 3']].filter(Boolean).join(' · ')||cls['Ca học']||'---' },
-                { label:'Sĩ số',     value: `${clsStudents.length} học sinh` },
+                { label:'Giáo viên', value: teacherName },
+                { label:'Cơ sở',     value: getClassBranch(cls) || '---' },
+                { label:'Lịch học',  value: scheduleSlots.filter(slot => slot.value).length ? `${scheduleSlots.filter(slot => slot.value).length} buổi/tuần` : 'Chưa có lịch' },
               ].map(row => (
-                <div key={row.label} className={row.label === 'Lịch học' ? 'ltn-info-cell wide' : 'ltn-info-cell compact'}>
+                <div key={row.label} className="ltn-info-cell compact">
                   <p>{row.label}</p>
                   <p>{row.value}</p>
+                </div>
+              ))}
+            </div>
+            <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:8 }}>
+              {scheduleSlots.map(slot => (
+                <div key={slot.label} className="ltn-info-cell" style={{ gridColumn:'auto', background:slot.value ? '#f8fafc' : '#fff', borderStyle:slot.value ? 'solid' : 'dashed' }}>
+                  <p>{slot.label}</p>
+                  <p>{slot.value || 'Chưa có lịch'}</p>
                 </div>
               ))}
             </div>
@@ -190,9 +257,60 @@ function ClassDetailModal({ cls, curMo, curYr, students, isPaid, onClose, onEdit
             </div>
           </section>
 
+          <section className="ltn-detail-section">
+            <p style={{ fontSize:11,fontWeight:800,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.08em',margin:'0 0 8px' }}>
+              Danh sách học sinh cần đóng ({billableStudents.length}/{clsStudents.length})
+            </p>
+            <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:8 }}>
+              <button type="button" onClick={() => setFeeListMode('unpaid')} style={{ minHeight:54,padding:'10px 12px',borderRadius:12,border:'1px solid #fecaca',background:'#fff5f5',textAlign:'left',cursor:'pointer' }}>
+                <span style={{ display:'block',fontSize:18,fontWeight:950,color:'#be123c' }}>{unpaid.length}</span>
+                <span style={{ display:'block',fontSize:12,fontWeight:900,color:'#7f1d1d' }}>Xem chưa đóng</span>
+              </button>
+              <button type="button" onClick={() => setFeeListMode('paid')} style={{ minHeight:54,padding:'10px 12px',borderRadius:12,border:'1px solid #a7f3d0',background:'#f0fdf4',textAlign:'left',cursor:'pointer' }}>
+                <span style={{ display:'block',fontSize:18,fontWeight:950,color:'#047857' }}>{paid.length}</span>
+                <span style={{ display:'block',fontSize:12,fontWeight:900,color:'#065f46' }}>Xem đã đóng</span>
+              </button>
+            </div>
+            {clsStudents.length > 0 && (
+              <div style={{ maxHeight:280,overflowY:'auto',display:'grid',gap:10,paddingRight:2 }}>
+                {unpaid.length > 0 && (
+                  <div style={{ display:'grid',gap:6 }}>
+                    <p style={{ fontSize:11,fontWeight:900,color:'#be123c',margin:0 }}>Chưa đóng ({unpaid.length})</p>
+                    {unpaid.map(s => (
+                      <div key={s.id} style={{ display:'grid',gridTemplateColumns:'minmax(0,1fr) auto',gap:8,alignItems:'center',padding:'9px 10px',background:'#fff5f5',borderRadius:10,border:'1px solid #fecaca' }}>
+                        <div style={{ minWidth:0 }}>
+                          <p style={{ fontSize:13,fontWeight:850,color:'#0f172a',margin:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{s.name}</p>
+                          <p style={{ fontSize:11,color:'#64748b',fontWeight:750,margin:'2px 0 0' }}>{s.id}{s.parentPhone ? ` · ${s.parentPhone}` : ''}</p>
+                        </div>
+                        <span style={{ fontSize:11,fontWeight:900,color:'#be123c',background:'#fee2e2',padding:'4px 8px',borderRadius:999,whiteSpace:'nowrap' }}>Chưa đóng</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {paid.length > 0 && (
+                  <div style={{ display:'grid',gap:6 }}>
+                    <p style={{ fontSize:11,fontWeight:900,color:'#047857',margin:0 }}>Đã đóng ({paid.length})</p>
+                    {paid.map(s => (
+                      <div key={s.id} style={{ display:'grid',gridTemplateColumns:'minmax(0,1fr) auto',gap:8,alignItems:'center',padding:'9px 10px',background:'#f0fdf4',borderRadius:10,border:'1px solid #a7f3d0' }}>
+                        <div style={{ minWidth:0 }}>
+                          <p style={{ fontSize:13,fontWeight:850,color:'#0f172a',margin:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{s.name}</p>
+                          <p style={{ fontSize:11,color:'#64748b',fontWeight:750,margin:'2px 0 0' }}>{s.id}{s.parentPhone ? ` · ${s.parentPhone}` : ''}</p>
+                        </div>
+                        <span style={{ fontSize:11,fontWeight:900,color:'#047857',background:'#dcfce7',padding:'4px 8px',borderRadius:999,whiteSpace:'nowrap' }}>Đã đóng</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {unpaid.length === 0 && paid.length === 0 && (
+                  <div style={{ padding:'18px 10px',textAlign:'center',fontSize:12,fontWeight:800,color:'#94a3b8' }}>Không có học sinh cần thu trong tháng này</div>
+                )}
+              </div>
+            )}
+          </section>
+
           {/* Danh sách học sinh */}
           {clsStudents.length > 0 && (
-            <section className="ltn-detail-section">
+            <section className="ltn-detail-section" style={{ display:'none' }}>
               <p style={{ fontSize:11,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.08em',margin:'0 0 8px' }}>
                 Danh sách học sinh cần đóng ({billableStudents.length}/{clsStudents.length})
               </p>
@@ -249,28 +367,34 @@ function ClassDetailModal({ cls, curMo, curYr, students, isPaid, onClose, onEdit
         </div>
 
         {/* Footer */}
-        <div style={{ padding:'10px 20px',borderTop:'1px solid #f1f5f9',display:'flex',gap:10,flexShrink:0 }}>
-          <Button variant="outline" intent="neutral" fullWidth size="lg" onClick={onClose}>Đóng</Button>
+        <div style={{ padding:'10px 20px',borderTop:'1px solid #f1f5f9',display:'flex',justifyContent:'flex-end',gap:10,flexShrink:0 }}>
+          <Button variant="outline" intent="neutral" size="sm" onClick={onClose}>Đóng</Button>
         </div>
       </div>
+      {feeListMode && (
+        <ClassStudentListOverlay
+          title={feeListMode === 'unpaid' ? `Chưa đóng phí lớp ${classCode}` : `Đã đóng phí lớp ${classCode}`}
+          students={feeListMode === 'unpaid' ? unpaid : paid}
+          tone={feeListMode}
+          onClose={() => setFeeListMode(null)}
+        />
+      )}
     </div>
   );
 }
 
-export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,qCls,setQCls,fClsTeacher,setFClsTeacher,isPaid,onEditClass,onDeleteClass,onAddClass,onAddDiary,embedded=false,toolbarPrefix }: Props) {
-  const [fGrade, setFGrade] = useState('');
+export default function ClassesTab({ uClasses,students,payments=[],tlogs=[],curMo,curYr,qCls,setQCls,fClsTeacher,setFClsTeacher,onEditClass,onDeleteClass,onAddClass,onAddDiary,embedded=false,toolbarPrefix }: Props) {
   const [detailCls, setDetailCls] = useState<any>(null);
 
   // FIX C4: memoize getSchedule helper (stable reference)
   const getSchedule = React.useCallback((c: any) => {
-    const p = [c['Buổi 1'], c['Buổi 2'], c['Buổi 3']].filter(Boolean);
-    return p.length > 0 ? p.join(' | ') : (c['Ca học'] || '---');
+    return getClassSchedule(c);
   }, []);
 
   const getClassStatus = React.useCallback((c: ClassRecord): ClassStatus => {
     const rawStatus = normalizeText(c.status || c.TrangThai || c['Trạng thái']);
     if (rawStatus.includes('nghi') || rawStatus.includes('tam dung') || rawStatus.includes('dong') || rawStatus.includes('inactive')) return 'inactive';
-    const teacherName = resolveTeacher(c['Giáo viên'] || c.GiaoVien || '');
+    const teacherName = resolveTeacher(getClassTeacher(c));
     if (!teacherName || teacherName === '---') return 'missingTeacher';
     const schedule = getSchedule(c);
     if (!schedule || schedule === '---') return 'missingSchedule';
@@ -280,81 +404,83 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
   // FIX C4: memoize clsStats — chỉ tính HS đang học (bỏ HS nghỉ)
   const clsStats = React.useMemo(() => uClasses.map(c => {
     const cls = students.filter(s =>
-      s.classId === c['Mã Lớp'] &&
+      s.classId === getClassCode(c) &&
       isStudentActive(s)
     );
-    const billable = cls.filter(s => isMonthBillable(s, curMo, curYr));
-    const paidCount = billable.filter(s => isPaid(s.id, curMo, curYr)).length;
+    const tuitionStates = cls.map(student => getTuitionCycleState({
+      student,
+      classes: [c],
+      payments,
+      tlogs,
+    }));
+    const billable = tuitionStates.filter(state => state.billable);
+    const paidCount = tuitionStates.filter(state => state.status === 'paid').length;
     const pct = billable.length > 0 ? Math.round(paidCount / billable.length * 100) : 0;
-    const classId = String(c['Mã Lớp'] || '').trim();
+    const classId = getClassCode(c);
     const paidAmount = payments
       .filter(p => {
-        const period = paymentPeriod(p);
+        const period = getPaymentTuitionPeriod(p);
         return paymentClassId(p, students) === classId && period?.m === curMo && period?.y === curYr;
       })
       .reduce((sum, p) => sum + (p.amount || 0), 0);
     return { ...c, studentCount: cls.length, billableCount: billable.length, paidCount, pct, paidAmount };
-  }).sort((a, b) => (a['Mã Lớp'] || '').localeCompare(b['Mã Lớp'] || '')),
-  [uClasses, students, payments, isPaid, curMo, curYr]);
+  }).sort((a, b) => getClassCode(a).localeCompare(getClassCode(b), 'vi')),
+  [uClasses, students, payments, tlogs, curMo, curYr]);
 
   // FIX C4: memoize teacher list (uses resolveTeacher per class)
   const teachers = React.useMemo(() =>
-    [...new Set(uClasses.map(c => resolveTeacher(c['Giáo viên'] || c.GiaoVien || '')).filter(Boolean))],
+    [...new Set(uClasses.map(c => resolveTeacher(getClassTeacher(c))).filter(Boolean))],
   [uClasses]);
 
   // FIX C3 Bug: filter compares resolveTeacher(raw) against fClsTeacher (already resolved)
   const filtCls = React.useMemo(() => {
     const q = qCls.toLowerCase();
     return clsStats.filter(c => {
-      const resolvedTeacher = resolveTeacher(c['Giáo viên'] || c.GiaoVien || '');
-      const grade = getClassGrade(c);
-      return (!q || (c['Mã Lớp'] || '').toLowerCase().includes(q) || (c['Tên Lớp'] || '').toLowerCase().includes(q))
-        && (!fClsTeacher || resolvedTeacher === fClsTeacher)
-        && (!fGrade || grade === fGrade);
+      const classCode = getClassCode(c);
+      const resolvedTeacher = resolveTeacher(getClassTeacher(c));
+      return (!q || classCode.toLowerCase().includes(q))
+        && (!fClsTeacher || resolvedTeacher === fClsTeacher);
     });
-  }, [clsStats, qCls, fClsTeacher, fGrade]);
+  }, [clsStats, qCls, fClsTeacher]);
 
   // FIX C4: memoize select options
   const teacherOptions = React.useMemo(() =>
     [{ value: '', label: 'Giáo viên' }, ...teachers.map(t => ({ value: t, label: t }))],
   [teachers]);
-  const gradeOptions = React.useMemo(() => {
-    const grades = [...new Set(uClasses.map(getClassGrade).filter(Boolean))]
-      .sort((a, b) => Number(a) - Number(b));
-    return [{ value: '', label: 'Khối' }, ...grades.map(g => ({ value: g, label: `Khối ${g}` }))];
-  }, [uClasses]);
-  const hasActiveFilter = !!(qCls || fClsTeacher || fGrade);
+  const hasActiveFilter = !!(qCls || fClsTeacher);
   const emptyText = hasActiveFilter ? 'Không tìm thấy lớp phù hợp' : 'Chưa có lớp học';
   const emptySub = hasActiveFilter ? 'Thử đổi từ khóa tìm kiếm hoặc bộ lọc.' : 'Tạo lớp đầu tiên để gán học sinh, giáo viên và lịch học.';
 
   const classColumns = useMemo(() => [
     {
       key: 'code',
-      label: 'Mã lớp',
-      width: '11%',
+      label: 'Lớp',
+      align: 'center' as const,
+      width: 72,
+      cellStyle: { whiteSpace: 'nowrap', paddingLeft: 8, paddingRight: 8 },
+      headerStyle: { paddingLeft: 8, paddingRight: 8 },
       render: (_: unknown, c: ClassRecord) => {
         const status = getClassStatus(c);
         const meta = classStatusMeta(status);
         return (
-          <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ minWidth: 0, fontSize: 13, fontWeight: 900, color: '#3730a3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {c['Mã Lớp'] || '—'}
+          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, maxWidth: '100%' }}>
+            <span style={{ minWidth: 0, fontSize: 13, fontWeight: 900, color: '#4f46e5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+              {getClassCode(c) || '—'}
             </span>
             {status !== 'active' && <StatusBadge domain="general" status={status} label={meta.label} tone={meta.tone} />}
-          </div>
+          </span>
         );
       },
     },
     {
       key: 'schedule',
       label: 'Lịch học',
-      width: '28%',
+      width: '25%',
       render: (_: unknown, c: ClassRecord) => {
         const schedule = compactScheduleLabel(getSchedule(c));
         return schedule ? (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, maxWidth: '100%', color: '#475569', fontSize: 12, fontWeight: 800 }}>
-            <Clock size={12} color="#6366f1" style={{ flexShrink: 0 }} />
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{schedule}</span>
+          <span style={{ display: 'block', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#475569', fontSize: 13, fontWeight: 900 }}>
+            {schedule}
           </span>
         ) : (
           <span style={{ color: '#94a3b8', fontWeight: 800, whiteSpace: 'nowrap' }}>Chưa có lịch</span>
@@ -364,11 +490,11 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
     {
       key: 'teacher',
       label: 'Giáo viên',
-      width: '20%',
+      width: '19%',
       render: (_: unknown, c: ClassRecord) => {
-        const teacherName = resolveTeacher(c['Giáo viên'] || c.GiaoVien || '');
+        const teacherName = resolveTeacher(getClassTeacher(c));
         return teacherName ? (
-          <span style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>{teacherName}</span>
+          <span style={{ fontSize: 13, fontWeight: 900, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>{teacherName}</span>
         ) : (
           <span style={{ color: '#94a3b8', fontWeight: 800, whiteSpace: 'nowrap' }}>Chưa phân công</span>
         );
@@ -378,7 +504,7 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
       key: 'students',
       label: 'Sĩ số',
       align: 'center' as const,
-      width: '9%',
+      width: 76,
       render: (_: unknown, c: ClassRecord & { studentCount?: number }) => (
         <span style={{ fontSize: 13, fontWeight: 900, color: '#0f172a', whiteSpace: 'nowrap' }}>
           {c.studentCount || 0} HS
@@ -389,14 +515,17 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
       key: 'tuitionRate',
       label: `Tỉ lệ T${curMo}`,
       align: 'center' as const,
-      width: '10%',
+      width: 110,
       render: (_: unknown, c: ClassRecord & { billableCount?: number; paidCount?: number; paidAmount?: number }) => {
         const billable = c.billableCount || 0;
         const paid = c.paidCount || 0;
         return (
-          <span style={{ fontSize: 12, fontWeight: 900, color: paid >= billable && billable > 0 ? '#059669' : '#b45309', whiteSpace: 'nowrap' }}>
-            {paid}/{billable}
-          </span>
+          <StatusBadge
+            domain="tuition"
+            status={billable > 0 && paid >= billable ? 'paid' : 'unpaid'}
+            label={`${paid}/${billable}`}
+            tone={billable > 0 && paid >= billable ? 'success' : 'warning'}
+          />
         );
       },
     },
@@ -413,17 +542,23 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
       key: 'actions',
       label: 'Thao tác',
       align: 'center' as const,
-      width: '10%',
+      width: 76,
+      cellStyle: { paddingLeft: 8, paddingRight: 8 },
+      headerStyle: { paddingLeft: 8, paddingRight: 8 },
       render: (_: unknown, c: ClassRecord) => {
+        const classId = getClassCode(c);
         const hasSchedule = !!compactScheduleLabel(getSchedule(c));
+        if (!onAddDiary || !hasSchedule) return <span title="Lớp chưa có lịch để ghi buổi" aria-label={`Lớp ${classId || 'này'} chưa có lịch để ghi buổi`} style={{ color: '#cbd5e1', fontWeight: 900 }}>—</span>;
         return (
-          <div onClick={e => e.stopPropagation()} style={{ display: 'flex', justifyContent: 'center' }}>
-            {onAddDiary && hasSchedule ? (
-              <Button intent="success" variant="outline" size="sm" onClick={() => onAddDiary(c['Mã Lớp'])}>Ghi buổi</Button>
-            ) : (
-              <span style={{ color: '#cbd5e1', fontWeight: 800 }}>—</span>
-            )}
-          </div>
+          <button
+            type="button"
+            title="Ghi buổi"
+            aria-label={`Ghi buổi ${classId || 'lớp'}`}
+            onClick={event => { event.stopPropagation(); onAddDiary(classId); }}
+            style={{ width: 32, height: 32, borderRadius: 999, border: '1px solid #bbf7d0', color: '#047857', background: '#f0fdf4', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+          >
+            <Clock size={14} />
+          </button>
         );
       },
     },
@@ -442,7 +577,7 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
         .class-toolbar-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
         .class-desktop-table{display:block}.class-mobile-cards{display:none}
         @media(max-width:767px){
-          .class-toolbar-filters{width:100%;display:grid;grid-template-columns:minmax(0,1fr) 92px minmax(112px,1fr);gap:8px}
+          .class-toolbar-filters{width:100%;display:grid;grid-template-columns:minmax(0,1fr) minmax(112px,1fr);gap:8px}
           .class-toolbar-filters > *{width:100%!important;min-width:0!important}
           .class-desktop-table{display:none!important}.class-mobile-cards{display:block!important}
         }
@@ -458,7 +593,6 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
         {toolbarPrefix}
         <div className="class-toolbar-filters">
           <SearchBar value={qCls} onChange={setQCls} placeholder="Tìm" width={126}/>
-          <Select value={fGrade} onChange={setFGrade} options={gradeOptions} style={{ width: 92, minWidth: 88 }}/>
           <Select value={fClsTeacher} onChange={setFClsTeacher} options={teacherOptions} style={{ width: 136, minWidth: 118 }}/>
         </div>
       </PageToolbar>
@@ -468,7 +602,7 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
           <DataTable
             columns={classColumns}
             data={filtCls}
-            rowKey={(c) => c['Mã Lớp'] || getClassTitle(c)}
+            rowKey={(c) => getClassCode(c) || getClassTitle(c)}
             emptyText={emptyText}
             emptySub={emptySub}
             emptyAction={!embedded ? { label: 'Thêm lớp đầu tiên', onClick: onAddClass, intent: 'success' } : undefined}
@@ -480,33 +614,33 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
 
         <div className="class-mobile-cards" style={{ padding: 10 }}>
           {filtCls.length === 0 ? emptyState : filtCls.map((c, idx) => {
-            const classId = c['Mã Lớp'];
+            const classId = getClassCode(c);
             const schedule = compactScheduleLabel(getSchedule(c));
             const hasSchedule = !!schedule;
-            const teacherName = resolveTeacher(c['Giáo viên'] || c.GiaoVien || '');
+            const teacherName = resolveTeacher(getClassTeacher(c));
+            const branch = getClassBranch(c);
             const status = getClassStatus(c);
             const meta = classStatusMeta(status);
             return (
-              <MobileCard
+              <MobileCompactCard
                 key={classId || idx}
                 title={getClassTitle(c)}
-                subtitle={classId || '—'}
+                subtitle={teacherName || branch || 'Chưa phân công'}
+                value={`${c.studentCount || 0} HS`}
                 badge={status !== 'active' ? <StatusBadge domain="general" status={status} label={meta.label} tone={meta.tone} /> : undefined}
                 tone={meta.tone}
                 onClick={() => setDetailCls(c)}
                 style={{ marginBottom: idx === filtCls.length - 1 ? 0 : 8 }}
-                rows={[
-                  { label: 'Mã lớp', value: classId || '—' },
-                  { label: 'Lịch học', value: hasSchedule ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Clock size={12} color="#6366f1" />{schedule}</span> : 'Chưa có lịch' },
-                  { label: 'Giáo viên', value: teacherName || 'Chưa phân công' },
-                  { label: 'Sĩ số', value: `${c.studentCount || 0} HS` },
-                  { label: `HP T${curMo}`, value: `${c.paidCount || 0}/${c.billableCount || 0} · ${c.paidAmount ? `${(c.paidAmount / 1000000).toFixed(1).replace('.0', '')}tr` : '0đ'}` },
+                meta={[
+                  { key: 'schedule', label: hasSchedule ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Clock size={12} color="#6366f1" />{schedule}</span> : 'Chưa có lịch', tone: hasSchedule ? 'primary' as const : 'warning' as const },
+                  { key: 'tuition', label: `HP T${curMo}: ${c.paidCount || 0}/${c.billableCount || 0}`, tone: (c.billableCount || 0) > 0 && (c.paidCount || 0) >= (c.billableCount || 0) ? 'success' as const : 'warning' as const },
+                  ...(branch ? [{ key: 'branch', label: branch, tone: 'neutral' as const }] : []),
                 ]}
                 actions={(
-                  <div onClick={e => e.stopPropagation()} style={{ display:'flex',gap:7,width:'100%',justifyContent:'flex-end',flexWrap:'wrap' }}>
+                  <div onClick={e => e.stopPropagation()} style={{ display:'flex',gap:6,justifyContent:'flex-end',flexWrap:'wrap' }}>
                     {onAddDiary && hasSchedule && (
                       <button onClick={() => onAddDiary(classId)}
-                        style={{ minHeight:40,padding:'8px 12px',borderRadius:999,background:'#f0fdf4',border:'1px solid #bbf7d0',color:'#047857',fontWeight:900,fontSize:12,cursor:'pointer' }}>
+                        style={{ minHeight:34,padding:'7px 10px',borderRadius:999,background:'#f0fdf4',border:'1px solid #bbf7d0',color:'#047857',fontWeight:900,fontSize:12,cursor:'pointer' }}>
                         Ghi buổi
                       </button>
                     )}
@@ -522,13 +656,14 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
         curMo={curMo}
         curYr={curYr}
         students={students}
-        isPaid={isPaid}
+        payments={payments}
+        tlogs={tlogs}
         onClose={()=>setDetailCls(null)}
         onEdit={()=>{onEditClass(detailCls);setDetailCls(null);}}
         onDelete={onDeleteClass ? () => {
-          const id = String(detailCls['Mã Lớp'] || detailCls.MaLop || detailCls.classId || '').trim();
+          const id = getClassCode(detailCls);
           if (!id) return;
-          onDeleteClass({ type: 'class', id, name: String(detailCls['Tên Lớp'] || id) });
+          onDeleteClass({ type: 'class', id, name: id });
           setDetailCls(null);
         } : undefined}
       />}

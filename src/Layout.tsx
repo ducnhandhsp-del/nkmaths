@@ -14,7 +14,7 @@ import {
   Wallet,
   X,
 } from 'lucide-react';
-import type { FinanceSub, OperationsSub, ReportsSub, Screen, TrainingSub } from './types';
+import type { CacheMeta, DataSyncState, FinanceSub, OperationsSub, ReportsSub, Screen, TrainingSub } from './types';
 
 export const NAV_ITEMS: {
   id: Screen;
@@ -49,6 +49,7 @@ export function useIsDesktop() {
 
 const SIDEBAR_W = 236;
 const SIDEBAR_COLLAPSED_W = 72;
+const BRAND_NAME = 'LỚP TOÁN NK';
 
 type SidebarNavProps = {
   active: Screen;
@@ -63,6 +64,8 @@ type SidebarNavProps = {
   setFinanceSubtab?: (sub: FinanceSub) => void;
   reportsSubtab?: ReportsSub;
   setReportsSubtab?: (sub: ReportsSub) => void;
+  cacheMeta?: CacheMeta | null;
+  syncState?: DataSyncState;
   collapsed?: boolean;
   setCollapsed?: (next: boolean) => void;
 };
@@ -79,6 +82,49 @@ const SIDEBAR_ITEMS: FlatNavItem[] = [
   { key: 'settings', screen: 'settings', label: 'Cài đặt', icon: Settings },
 ];
 
+function formatSyncTime(meta?: CacheMeta | null) {
+  if (!meta?.cachedAt) return '';
+  const date = new Date(meta.cachedAt);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+}
+
+function SyncBadge({ cacheMeta, syncState, compact = false }: {
+  cacheMeta?: CacheMeta | null;
+  syncState?: DataSyncState;
+  compact?: boolean;
+}) {
+  const time = formatSyncTime(cacheMeta);
+  const cfg =
+    syncState === 'syncing'
+      ? { label: 'Đang đồng bộ', bg: '#eef2ff', color: '#4f46e5' }
+      : syncState === 'cache' || cacheMeta?.source === 'cache'
+        ? { label: time ? `Cache ${time}` : 'Dữ liệu cache', bg: '#fffbeb', color: '#92400e' }
+        : syncState === 'error'
+          ? { label: 'Mất kết nối', bg: '#fff1f2', color: '#be123c' }
+          : { label: time ? `Cập nhật ${time}` : 'Đã cập nhật', bg: '#ecfdf5', color: '#047857' };
+  return (
+    <span
+      title={cacheMeta?.cachedAt ? `Dữ liệu cập nhật: ${new Date(cacheMeta.cachedAt).toLocaleString('vi-VN')}` : cfg.label}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: compact ? 24 : 28,
+        padding: compact ? '3px 8px' : '5px 10px',
+        borderRadius: 999,
+        background: cfg.bg,
+        color: cfg.color,
+        fontSize: compact ? 10 : 11,
+        fontWeight: 900,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {cfg.label}
+    </span>
+  );
+}
+
 const SidebarContent = memo(({
   active,
   set,
@@ -92,6 +138,8 @@ const SidebarContent = memo(({
   setFinanceSubtab,
   reportsSubtab,
   setReportsSubtab,
+  cacheMeta,
+  syncState,
   collapsed = false,
   setCollapsed,
 }: SidebarNavProps) => {
@@ -120,11 +168,8 @@ const SidebarContent = memo(({
           <GraduationCap size={19} color="white" />
         </button>
         {!collapsed && <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 900, color: '#fff', fontSize: 16, letterSpacing: '0.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {centerName}
-          </div>
-          <div style={{ fontSize: 10, color: 'rgba(226,232,240,0.68)', letterSpacing: '0.08em', fontWeight: 700, textTransform: 'uppercase', marginTop: 2 }}>
-            Quản lý giảng dạy
+          <div style={{ fontWeight: 900, color: '#fff', fontSize: 16, letterSpacing: '0.04em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {BRAND_NAME}
           </div>
         </div>}
         {onClose && (
@@ -190,13 +235,12 @@ const SidebarContent = memo(({
             {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
           </button>
         )}
-        {!collapsed && <div style={{ display: 'flex', alignItems: 'center', gap: 10, borderRadius: 13, background: 'rgba(255,255,255,0.07)', padding: '10px 11px' }}>
-          <div style={{ width: 30, height: 30, borderRadius: 10, background: '#312E81', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 900 }}>
-            NK
-          </div>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ color: '#fff', fontSize: 12, fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Lớp Toán NK</div>
-            <div style={{ color: 'rgba(226,232,240,0.46)', fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' }}>v29.2</div>
+        {!collapsed && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 13, background: 'rgba(255,255,255,0.07)', padding: '10px 11px' }}>
+          <div style={{ display: 'grid', justifyItems: 'center', gap: 7, minWidth: 0 }}>
+            <div style={{ color: '#fff', fontSize: 12, fontWeight: 900, letterSpacing: '0.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {BRAND_NAME}
+            </div>
+            <SyncBadge cacheMeta={cacheMeta} syncState={syncState} compact />
           </div>
         </div>}
       </div>
@@ -225,7 +269,6 @@ export const Sidebar = memo(({ isDesktop, ...navProps }: SidebarNavProps & { isD
 export const MobileHeader = memo(({ active, set, centerName, isDesktop, ...navProps }: SidebarNavProps & { isDesktop: boolean }) => {
   const [open, setOpen] = useState(false);
   if (isDesktop) return null;
-  const currentItem = NAV_ITEMS.find(n => n.id === active);
 
   return (
     <>
@@ -237,9 +280,9 @@ export const MobileHeader = memo(({ active, set, centerName, isDesktop, ...navPr
           <GraduationCap size={15} color="white" />
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 800, color: '#0f172a', fontSize: 13 }}>{centerName}</div>
-          {currentItem && <div style={{ fontSize: 9, color: '#6366f1', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>{currentItem.label}</div>}
+          <div style={{ fontWeight: 900, color: '#0f172a', fontSize: 13, letterSpacing: '0.04em' }}>{BRAND_NAME}</div>
         </div>
+        <SyncBadge cacheMeta={navProps.cacheMeta} syncState={navProps.syncState} compact />
       </header>
       {open && <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(2px)' }} />}
       <div style={{ position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 100, width: 240, transform: open ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform 0.22s cubic-bezier(0.4,0,0.2,1)', boxShadow: '8px 0 32px rgba(0,0,0,0.35)' }} className="print:hidden">

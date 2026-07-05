@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Plus } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Plus, X } from 'lucide-react';
 import { EmptyState as SystemEmptyState, PageToolbar as SystemPageToolbar } from './uiSystem';
 
 /* ── Định dạng số tiền theo triệu ── */
@@ -230,6 +230,104 @@ export function FAB({ onClick,label,icon:Icon=Plus,color='#4F46E5',shadow='0 8px
         {hov&&<span style={{ position:'absolute',right:58,whiteSpace:'nowrap',background:'#1E293B',color:'white',fontSize:12,fontWeight:700,padding:'5px 10px',borderRadius:8,pointerEvents:'none',boxShadow:'0 2px 8px rgba(0,0,0,0.2)' }}>{label}</span>}
       </button>
     </>
+  );
+}
+
+export type MobileActionFabAction = {
+  key: string;
+  label: string;
+  icon?: React.ReactNode;
+  tone?: 'primary' | 'success' | 'warning' | 'danger' | 'neutral' | 'zalo';
+  onClick: () => void;
+};
+
+const FAB_TONES: Record<NonNullable<MobileActionFabAction['tone']>, { bg: string; color: string; border: string }> = {
+  primary: { bg: '#eef2ff', color: '#4f46e5', border: '#c7d2fe' },
+  success: { bg: '#ecfdf5', color: '#047857', border: '#bbf7d0' },
+  warning: { bg: '#fffbeb', color: '#b45309', border: '#fde68a' },
+  danger: { bg: '#fff1f2', color: '#e11d48', border: '#fecaca' },
+  neutral: { bg: '#f8fafc', color: '#334155', border: '#e2e8f0' },
+  zalo: { bg: '#ecfeff', color: '#0891b2', border: '#a5f3fc' },
+};
+
+export function MobileActionFab({
+  actions,
+  label = 'Thao tác nhanh',
+  variant = 'floating',
+}: {
+  actions: MobileActionFabAction[];
+  label?: string;
+  variant?: 'floating' | 'inline';
+}) {
+  const [open, setOpen] = useState(false);
+  const activeActions = actions.filter(a => typeof a.onClick === 'function');
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  if (activeActions.length === 0) return null;
+
+  if (variant === 'inline') {
+    return (
+      <div className="ltn-mobile-action-inline print:hidden" aria-label={label}>
+        {activeActions.map(action => {
+          const tone = FAB_TONES[action.tone || 'primary'];
+          return (
+            <button
+              key={action.key}
+              type="button"
+              className="ltn-mobile-inline-action"
+              onClick={action.onClick}
+              style={{ borderColor: tone.border, color: tone.color, background: tone.bg }}
+            >
+              <span className="ltn-mobile-fab-action-icon">{action.icon}</span>
+              <span>{action.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  return (
+    <div className="ltn-mobile-action-fab print:hidden">
+      {open && <button type="button" className="ltn-mobile-fab-backdrop" aria-label="Đóng thao tác nhanh" onClick={() => setOpen(false)} />}
+      <div className={`ltn-mobile-fab-menu ${open ? 'open' : ''}`} aria-hidden={!open}>
+        {activeActions.map(action => {
+          const tone = FAB_TONES[action.tone || 'primary'];
+          return (
+            <button
+              key={action.key}
+              type="button"
+              className="ltn-mobile-fab-action"
+              onClick={() => {
+                setOpen(false);
+                action.onClick();
+              }}
+              style={{ borderColor: tone.border, color: tone.color, background: tone.bg }}
+            >
+              <span className="ltn-mobile-fab-action-icon">{action.icon}</span>
+              <span>{action.label}</span>
+            </button>
+          );
+        })}
+      </div>
+      <button
+        type="button"
+        className="ltn-mobile-fab-main"
+        aria-label={open ? 'Đóng thao tác nhanh' : label}
+        aria-expanded={open}
+        onClick={() => setOpen(v => !v)}
+      >
+        {open ? <X size={22} /> : <Plus size={24} />}
+      </button>
+    </div>
   );
 }
 

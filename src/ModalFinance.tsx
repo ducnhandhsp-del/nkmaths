@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import toast from 'react-hot-toast';
-import { X, Save, DollarSign, Printer, Check, TrendingDown, MessageCircle, Phone, User, Wallet } from 'lucide-react';
-import { fmtVND, formatDate, makeVietQR, BANK_DEFAULT, toInputDate, localDateStr, normalizePaymentMethod, buildSchoolYearMonths, parseDMY } from './helpers';
+import { X, Save, DollarSign, Printer, Check, TrendingDown, MessageCircle, Wallet } from 'lucide-react';
+import { fmtVND, formatDate, makeVietQR, BANK_DEFAULT, toInputDate, localDateStr, normalizePaymentMethod, buildSchoolYearMonths, fixVietnameseText } from './helpers';
+import { getPaymentTuitionPeriod, getTuitionCycleState, isStudentBillableInMonth } from './measures';
 import { Button, FilterTabs } from './dsComponents';
-import type { Student, Payment, Expense, ClassRecord } from './types';
+import type { Student, Payment, Expense, ClassRecord, TeachingLog } from './types';
 
 /* ─── Layout constants (same pattern as DiaryModal) ──────────────── */
 const FS_WRAP: React.CSSProperties = {
@@ -25,10 +26,10 @@ const extractStudentId = (raw: unknown) => {
 };
 
 const classIdOf = (c: ClassRecord | any) =>
-  String(c?.['Mã Lớp'] || c?.['Mã lớp'] || c?.['MÃ£ Lá»›p'] || c?.MaLop || c?.classId || '').trim();
+  fixVietnameseText(c?.['Mã Lớp'] || c?.['Mã lớp'] || c?.['MÃ£ Lá»›p'] || c?.MaLop || c?.classId || '');
 
 const teacherOf = (c: ClassRecord | any) =>
-  String(c?.['Giáo viên'] || c?.['GiÃ¡o viÃªn'] || c?.GiaoVien || c?.teacherName || '').trim();
+  fixVietnameseText(c?.['Giáo viên'] || c?.['GiÃ¡o viÃªn'] || c?.GiaoVien || c?.teacherName || '');
 
 const monthOptions = () => Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: `Tháng ${i + 1}` }));
 const yearOptions = (curYr: number) => [curYr - 1, curYr, curYr + 1].map(y => ({ value: String(y), label: String(y) }));
@@ -79,19 +80,25 @@ export function PaymentFormModal({
   onClose,
   students,
   classes = [],
+  payments = [],
+  tlogs = [],
   isSaving,
   onSave,
   baseTuition,
   editingPayment,
+  initialPayment,
 }: {
   open: boolean;
   onClose: () => void;
   students: Student[];
   classes?: ClassRecord[];
+  payments?: Payment[];
+  tlogs?: TeachingLog[];
   isSaving: boolean;
   onSave: (f: any) => Promise<void>;
   baseTuition: number;
   editingPayment?: Payment | null;
+  initialPayment?: any | null;
 }) {
   const today = localDateStr();
   const curMo = new Date().getMonth() + 1;
@@ -124,21 +131,21 @@ export function PaymentFormModal({
       setForm({
         method: 'Chuyển khoản',
         date: today,
-        soTien: baseTuition,
-        thangHP: curMo,
-        namHP: curYr,
-        maHS: '',
-        maLop: '',
-        nguoiThu: '',
-        nguoiNop: '',
-        note: '',
-        docNum: '',
+        soTien: initialPayment?.soTien || baseTuition,
+        thangHP: initialPayment?.thangHP || curMo,
+        namHP: initialPayment?.namHP || curYr,
+        maHS: initialPayment?.maHS || '',
+        maLop: initialPayment?.maLop || '',
+        nguoiThu: initialPayment?.nguoiThu || '',
+        nguoiNop: initialPayment?.nguoiNop || '',
+        note: initialPayment?.note || '',
+        docNum: initialPayment?.docNum || '',
       });
-      setManualPayer(false);
-      setManualClass(false);
-      setManualCollector(false);
+      setManualPayer(!!initialPayment?.nguoiNop);
+      setManualClass(!!initialPayment?.maLop);
+      setManualCollector(!!initialPayment?.nguoiThu);
     }
-  }, [open, editingPayment, baseTuition, today, curMo, curYr]);
+  }, [open, editingPayment, initialPayment, baseTuition, today, curMo, curYr]);
 
   const update = (key: string, value: any) => {
     setForm((prev: any) => ({ ...prev, [key]: value }));
@@ -158,6 +165,24 @@ export function PaymentFormModal({
   const rawStudentId = extractStudentId(form.maHS);
   const selectedStudent = students.find(s => s.id === rawStudentId);
   const selectedClass = classes.find(c => classIdOf(c) === String(form.maLop || selectedStudent?.classId || '').trim());
+  const cycleState = selectedStudent ? getTuitionCycleState({
+    student: selectedStudent,
+    classes,
+    payments,
+    tlogs,
+    baseTuition,
+  }) : null;
+  const duplicatePayment = useMemo(() => {
+    const thangHP = Number(form.thangHP);
+    const namHP = Number(form.namHP);
+    if (!rawStudentId || !thangHP || !namHP) return null;
+    return payments.find(payment => {
+      if (payment.studentId !== rawStudentId) return false;
+      if (editingPayment && (payment.id === editingPayment.id || payment.docNum === editingPayment.docNum)) return false;
+      const period = getPaymentTuitionPeriod(payment);
+      return period?.m === thangHP && period?.y === namHP;
+    }) || null;
+  }, [editingPayment, form.namHP, form.thangHP, payments, rawStudentId]);
 
   useEffect(() => {
     if (!open || !selectedStudent) return;
@@ -175,6 +200,13 @@ export function PaymentFormModal({
   if (!open) return null;
 
   const activeStudents = students.filter(s => s.status !== 'inactive' && (!s.endDate || s.endDate === '---' || s.endDate === ''));
+  const tuitionPeriodValue = form.thangHP && form.namHP ? `${Number(form.thangHP)}/${Number(form.namHP)}` : '';
+  const tuitionPeriodOptions = yearOptions(curYr).flatMap(year =>
+    monthOptions().map(month => ({
+      value: `${month.value}/${year.value}`,
+      label: `T${month.value}/${year.value}`,
+    })),
+  );
 
   const submit = () => {
     const maHS = rawStudentId;
@@ -182,6 +214,8 @@ export function PaymentFormModal({
     if (!form.date) { toast.error('Vui lòng chọn ngày thu'); return; }
     if (!form.soTien || Number(form.soTien) <= 0) { toast.error('Số tiền không hợp lệ'); return; }
     if (!form.thangHP) { toast.error('Vui lòng chọn tháng học phí'); return; }
+    if (!editingPayment && cycleState?.status === 'paid' && !window.confirm(`Chu kỳ hiện tại của ${selectedStudent?.name || maHS} đã thu (${cycleState.lastPayment?.docNum || cycleState.lastPayment?.id || 'phiếu gần nhất'}). Bạn vẫn muốn lưu thêm phiếu?`)) return;
+    if (duplicatePayment && !window.confirm(`Học sinh ${selectedStudent?.name || maHS} đã có phiếu thu T${form.thangHP}/${form.namHP || curYr} (${duplicatePayment.docNum || duplicatePayment.id}). Bạn vẫn muốn lưu thêm phiếu?`)) return;
     const maLop = String(form.maLop || selectedStudent?.classId || '').trim();
     const nguoiThu = String(form.nguoiThu || selectedStudent?.teacher || teacherOf(selectedClass) || '').trim();
     onClose();
@@ -190,7 +224,7 @@ export function PaymentFormModal({
 
   return (
     <FinanceFormShell
-      title={editingPayment ? 'Cập nhật phiếu thu' : 'Phiếu thu học phí'}
+      title={editingPayment ? 'Cập nhật phiếu thu' : 'Phiếu thu'}
       icon={<DollarSign size={18} />}
       tone="income"
       onClose={onClose}
@@ -205,41 +239,39 @@ export function PaymentFormModal({
       )}
     >
       <section className="ltn-quick-card">
-        <div className="ltn-quick-grid three">
-          <div className="ltn-quick-field">
-            <label>Học sinh</label>
+        <div className="ltn-grid-12">
+          <div className="ltn-quick-field span-4">
+            <label>Mã học sinh</label>
             <input value={form.maHS || ''} onChange={e => update('maHS', extractStudentId(e.target.value))} placeholder="HS001" list="payment-students" autoComplete="off" />
             <datalist id="payment-students">
               {activeStudents.map(s => <option key={s.id} value={`${s.id} - ${s.name}`} />)}
             </datalist>
           </div>
-          <div className="ltn-quick-field"><label>Số tiền</label><input type="number" value={form.soTien || ''} onChange={e => update('soTien', e.target.value)} placeholder="0" /></div>
-          <div className="ltn-quick-field"><label>Ngày thu</label><input type="date" value={form.date || ''} onChange={e => update('date', e.target.value)} /></div>
-        </div>
-        <div className="ltn-quick-grid three">
-          <div className="ltn-quick-field">
-            <label>Tháng HP</label>
-            <select value={String(form.thangHP || '')} onChange={e => update('thangHP', Number(e.target.value))}>
-              {monthOptions().map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          <div className="ltn-quick-field span-4">
+            <label>Tên học sinh</label>
+            <input value={selectedStudent?.name || ''} readOnly placeholder="Tự điền theo mã HS" />
+          </div>
+          <div className="ltn-quick-field span-4">
+            <label>Tháng</label>
+            <select value={tuitionPeriodValue} onChange={e => {
+              const [m, y] = e.target.value.split('/').map(Number);
+              update('thangHP', m);
+              update('namHP', y);
+            }}>
+              {tuitionPeriodOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
-          <div className="ltn-quick-field">
-            <label>Năm HP</label>
-            <select value={String(form.namHP || '')} onChange={e => update('namHP', Number(e.target.value))}>
-              {yearOptions(curYr).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </div>
-          <div className="ltn-quick-field">
+          <div className="ltn-quick-field span-4"><label>Số tiền</label><input type="number" value={form.soTien || ''} onChange={e => update('soTien', e.target.value)} placeholder="0" /></div>
+          <div className="ltn-quick-field span-4">
             <label>Hình thức</label>
             <select value={normalizePaymentMethod(form.method || 'Chuyển khoản')} onChange={e => update('method', e.target.value)}>
               <option value="Chuyển khoản">Chuyển khoản</option>
               <option value="Tiền mặt">Tiền mặt</option>
             </select>
           </div>
-        </div>
-        <div className="ltn-quick-grid">
-          <div className="ltn-quick-field"><label>Người nộp</label><input value={form.nguoiNop || ''} onChange={e => update('nguoiNop', e.target.value)} placeholder="Phụ huynh / học sinh" /></div>
-          <div className="ltn-quick-field"><label>Ghi chú</label><textarea value={form.note || ''} onChange={e => update('note', e.target.value)} rows={2} placeholder="Đóng trễ, đóng bù..." /></div>
+          <div className="ltn-quick-field span-4"><label>Ngày thu</label><input type="date" value={form.date || ''} onChange={e => update('date', e.target.value)} /></div>
+          <div className="ltn-quick-field span-4"><label>Người nộp</label><input value={form.nguoiNop || ''} onChange={e => update('nguoiNop', e.target.value)} placeholder="Phụ huynh / học sinh" /></div>
+          <div className="ltn-quick-field span-4 compact-note"><label>Ghi chú</label><textarea value={form.note || ''} onChange={e => update('note', e.target.value)} rows={1} placeholder="Đóng trễ, đóng bù..." /></div>
         </div>
       </section>
     </FinanceFormShell>
@@ -351,12 +383,12 @@ export function ExpenseFormModal({
 
 export function FABModal({
   open, onClose, students, classes = [], isSaving, onSaveFee, onSaveExpense,
-  baseTuition, editingPayment, editingExpense, initialTab,
+  baseTuition, editingPayment, editingExpense, initialTab, payments = [], tlogs = [],
 }: {
   open: boolean; onClose: () => void; students: Student[]; classes?: ClassRecord[]; isSaving: boolean;
   onSaveFee: (f: any) => Promise<void>; onSaveExpense: (f: any) => Promise<void>;
   baseTuition: number; editingPayment?: Payment | null;
-  editingExpense?: any | null; initialTab?: 'income' | 'expense';
+  editingExpense?: any | null; initialTab?: 'income' | 'expense'; payments?: Payment[]; tlogs?: TeachingLog[];
 }) {
   const today = localDateStr(), curMo = new Date().getMonth() + 1, curYr = new Date().getFullYear();
   const [tab, setTab] = useState<'income' | 'expense'>('income');
@@ -444,6 +476,25 @@ export function FABModal({
   const selectedClass = classes.find(c => String(c['Mã Lớp'] || c.MaLop || c.classId || '').trim() === String(selectedStudent?.classId || '').trim());
   const collectorName = String((fee as any).nguoiThu || selectedStudent?.teacher || selectedClass?.GiaoVien || selectedClass?.['Giáo viên'] || '').trim() || '---';
   const receiptAmount = Number(fee.soTien || 0);
+  const receiptClassId = String(selectedStudent?.classId || classIdOf(selectedClass) || '').trim();
+  const feeCycleState = selectedStudent ? getTuitionCycleState({
+    student: selectedStudent,
+    classes,
+    payments,
+    tlogs,
+    baseTuition,
+  }) : null;
+  const duplicateFeePayment = (() => {
+    const thangHP = Number(fee.thangHP);
+    const namHP = Number(fee.namHP);
+    if (!rawFeeId || !thangHP || !namHP) return null;
+    return payments.find(payment => {
+      if (payment.studentId !== rawFeeId) return false;
+      if (editingPayment && (payment.id === editingPayment.id || payment.docNum === editingPayment.docNum)) return false;
+      const period = getPaymentTuitionPeriod(payment);
+      return period?.m === thangHP && period?.y === namHP;
+    }) || null;
+  })();
 
   return (
     <div className="ltn-form-modal-overlay" style={FS_WRAP}>
@@ -457,18 +508,19 @@ export function FABModal({
                   <h2>LỚP TOÁN NK</h2>
                   <p>Biên lai học phí nội bộ</p>
                 </div>
-              </div>
-              <div className="ltn-receipt-meta">
-                <span className="ltn-receipt-paid">Đã thu</span>
-                <strong>{fee.docNum || 'PT-TAM-TINH'}</strong>
-              </div>
+            </div>
+            <div className="ltn-receipt-meta">
+              <strong>{fee.docNum || 'PT-TAM-TINH'}</strong>
+            </div>
             </header>
             <div className="ltn-receipt-body">
               <div className="ltn-receipt-grid">
                 <div className="ltn-receipt-info">
                   <div className="ltn-receipt-cell"><span>Học sinh</span><strong>{selectedStudent?.name || rawFeeId || '---'}</strong></div>
+                  <div className="ltn-receipt-cell"><span>Lớp</span><strong>{receiptClassId || '---'}</strong></div>
                   <div className="ltn-receipt-cell"><span>Học phí</span><strong>{receiptAmount > 0 ? fmtVND(receiptAmount) : '---'}</strong></div>
                   <div className="ltn-receipt-cell"><span>Kỳ học phí</span><strong>Tháng {fee.thangHP || curMo}/{fee.namHP || curYr}</strong></div>
+                  <div className="ltn-receipt-cell"><span>Ngày thu</span><strong>{formatDate(fee.ngay || fee.date || today)}</strong></div>
                   <div className="ltn-receipt-cell"><span>Hình thức</span><strong>{normalizePaymentMethod(fee.method || 'Chuyển khoản')}</strong></div>
                   <div className="ltn-receipt-cell"><span>Người nộp</span><strong>{fee.nguoiNop || selectedStudent?.parentName || 'Phụ huynh học sinh'}</strong></div>
                   <div className="ltn-receipt-cell"><span>Người thu</span><strong>{collectorName}</strong></div>
@@ -581,7 +633,16 @@ export function FABModal({
                 <div className="ltn-quick-grid">
                   <div className="ltn-quick-field"><label>Năm</label><select value={String(fee.namHP || '')} onChange={e => uf('namHP', Number(e.target.value))}>{yearOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
                   <div className="ltn-quick-field"><label>Người nộp</label><input value={fee.nguoiNop || ''} onChange={e => uf('nguoiNop', e.target.value)} placeholder="Phụ huynh / HS" /></div>
-                  <div className="ltn-quick-field full"><label>Ghi chú</label><textarea value={fee.note || ''} onChange={e => uf('note', e.target.value)} placeholder="Đóng trễ, thiếu..." /></div>
+                  <div className="ltn-quick-field full">
+                    <label>Ghi chú</label>
+                    <textarea
+                      value={fee.note || ''}
+                      onChange={e => uf('note', e.target.value)}
+                      rows={1}
+                      placeholder="Đóng trễ, thiếu..."
+                      style={{ minHeight: 50, height: 50, resize: 'vertical' }}
+                    />
+                  </div>
                 </div>
               </section>
             </>
@@ -612,6 +673,8 @@ export function FABModal({
                 if (!fee.date) { toast.error('⚠️ Vui lòng chọn ngày thu!'); return; }
                 if (!fee.soTien || Number(fee.soTien) <= 0) { toast.error('⚠️ Số tiền không hợp lệ!'); return; }
                 if (!fee.thangHP) { toast.error('⚠️ Vui lòng chọn tháng học phí!'); return; }
+                if (!editingPayment && feeCycleState?.status === 'paid' && !window.confirm(`Chu kỳ hiện tại của ${selectedStudent?.name || maHS} đã thu (${feeCycleState.lastPayment?.docNum || feeCycleState.lastPayment?.id || 'phiếu gần nhất'}). Bạn vẫn muốn lưu thêm phiếu?`)) return;
+                if (duplicateFeePayment && !window.confirm(`Học sinh ${selectedStudent?.name || maHS} đã có phiếu thu T${fee.thangHP}/${fee.namHP || curYr} (${duplicateFeePayment.docNum || duplicateFeePayment.id}). Bạn vẫn muốn lưu thêm phiếu?`)) return;
                 const maLop = selectedStudent?.classId || '';
                 onClose(); onSaveFee({ ...fee, maHS, maLop, MaLop: maLop, classId: maLop, nguoiThu: collectorName, collector: collectorName });
               }}
@@ -652,6 +715,7 @@ export function InvoiceModal({ payment, onClose, centerName, bankId, accountNo, 
   const receiptStudent = students.find(s => s.id === r.studentId);
   const receiptClass = classes.find(c => String(c['Mã Lớp'] || c.MaLop || c.classId || '').trim() === String(r.maLop || receiptStudent?.classId || '').trim());
   const collectorName = String((r as any).collector || (r as any).nguoiThu || receiptStudent?.teacher || receiptClass?.GiaoVien || receiptClass?.['Giáo viên'] || centerName).trim() || centerName;
+  const receiptClassId = String(r.maLop || receiptStudent?.classId || classIdOf(receiptClass) || '').trim();
   const qrUrl = accountNo && accountNo !== BANK_DEFAULT.accountNo
     ? makeVietQR(bankId, accountNo, r.amount, r.docNum, accountName)
     : null;
@@ -669,7 +733,6 @@ export function InvoiceModal({ payment, onClose, centerName, bankId, accountNo, 
               </div>
             </div>
             <div className="ltn-receipt-meta">
-              <span className="ltn-receipt-paid">Đã thu</span>
               <strong>{r.docNum}</strong>
             </div>
           </header>
@@ -677,8 +740,10 @@ export function InvoiceModal({ payment, onClose, centerName, bankId, accountNo, 
             <div className="ltn-receipt-grid">
               <div className="ltn-receipt-info">
                 <div className="ltn-receipt-cell"><span>Học sinh</span><strong>{r.studentName || '---'}</strong></div>
+                <div className="ltn-receipt-cell"><span>Lớp</span><strong>{receiptClassId || '---'}</strong></div>
                 <div className="ltn-receipt-cell"><span>Học phí</span><strong>{fmtVND(r.amount)}</strong></div>
                 <div className="ltn-receipt-cell"><span>Kỳ học phí</span><strong>{r.thangHP ? `Tháng ${r.thangHP}/${r.namHP || ''}` : '---'}</strong></div>
+                <div className="ltn-receipt-cell"><span>Ngày thu</span><strong>{formatDate(r.date)}</strong></div>
                 <div className="ltn-receipt-cell"><span>Hình thức</span><strong>{normalizePaymentMethod(r.method)}</strong></div>
                 <div className="ltn-receipt-cell"><span>Người nộp</span><strong>{r.payer || '---'}</strong></div>
                 <div className="ltn-receipt-cell"><span>Người thu</span><strong>{collectorName}</strong></div>
@@ -778,38 +843,15 @@ export function FinanceDetailModal({ student, payments, onClose, isPaid, schoolY
   isPaid: (sid: string, mo: number, yr: number) => boolean;
   schoolYear: string;
 }) {
-  const isFinanceMonthBillable = (s: Student, fm: { m: number; y: number }) => {
-    const monthStart = new Date(fm.y, fm.m - 1, 1).getTime();
-    const startTs = parseDMY(s.startDate || '');
-    if (startTs) {
-      const d = new Date(startTs);
-      if (monthStart < new Date(d.getFullYear(), d.getMonth(), 1).getTime()) return false;
-    }
-    const endTs = parseDMY(s.endDate || '');
-    if (endTs && s.endDate !== '---' && s.endDate !== '') {
-      const d = new Date(endTs);
-      if (monthStart >= new Date(d.getFullYear(), d.getMonth(), 1).getTime()) return false;
-    }
-    return true;
-  };
   const financeMonths = useMemo(() => {
     const now = new Date();
     return buildSchoolYearMonths(schoolYear).filter(fm => {
       if (fm.y > now.getFullYear()) return false;
       if (fm.y === now.getFullYear() && fm.m > now.getMonth() + 1) return false;
-      return isFinanceMonthBillable(student, fm);
+      return isStudentBillableInMonth(student, fm);
     });
   }, [schoolYear, student]);
 
-  const paymentPeriod = (p: Payment) => {
-    const m = Number((p as any).thangHP);
-    const y = Number((p as any).namHP);
-    if (m >= 1 && m <= 12 && y >= 2000) return { m, y };
-    const raw = String(p.date || '');
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) return { m: Number(raw.slice(3, 5)), y: Number(raw.slice(6, 10)) };
-    if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return { m: Number(raw.slice(5, 7)), y: Number(raw.slice(0, 4)) };
-    return null;
-  };
   const s = student;
   const sPayments = payments
     .filter(p => p.studentId === s.id)
@@ -823,18 +865,16 @@ export function FinanceDetailModal({ student, payments, onClose, isPaid, schoolY
   return (
     <div className="ltn-form-modal-overlay" style={{ ...FS_WRAP, alignItems: 'center', padding: 16 }}>
       <div className="ltn-form-modal-panel" style={{ ...FS_DLG, maxWidth: 720, borderRadius: 18, boxShadow: '0 24px 80px rgba(15,23,42,0.28)' }}>
-        <div className="ltn-form-modal-header" style={{ padding: '18px 22px', borderBottom: '1px solid #e2e8f0', background: 'white', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, minWidth: 0 }}>
-            <div style={{ width: 44, height: 44, borderRadius: 14, background: '#eef2ff', color: '#4f46e5', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <div className="ltn-form-modal-header" style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', background: 'white', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, minWidth: 0, flex: 1 }}>
+            <div style={{ width: 42, height: 42, borderRadius: 12, background: '#eef2ff', color: '#4f46e5', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <Wallet size={20} />
             </div>
             <div style={{ minWidth: 0 }}>
-              <h3 style={{ fontSize: 18, fontWeight: 900, color: '#0f172a', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</h3>
-              <p style={{ fontSize: 13, color: '#4f46e5', fontWeight: 800, margin: '3px 0 0' }}>{s.id || '—'} · Lớp {s.classId || '—'}</p>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 9 }}>
-                <span className="ltn-context-chip" style={{ minHeight: 30, padding: '5px 9px', display: 'inline-flex', alignItems: 'center', gap: 5 }}><User size={12} /> {s.parentName || 'Chưa có PH'}</span>
-                <span className="ltn-context-chip" style={{ minHeight: 30, padding: '5px 9px', display: 'inline-flex', alignItems: 'center', gap: 5 }}><Phone size={12} /> {s.parentPhone || 'Chưa có SĐT'}</span>
-              </div>
+              <h3 style={{ fontSize: 18, fontWeight: 900, color: '#0f172a', margin: 0, lineHeight: 1.25, overflowWrap: 'anywhere' }}>{s.name}</h3>
+              <p style={{ fontSize: 13, color: '#475569', fontWeight: 850, margin: '3px 0 0' }}>
+                Lớp {s.classId || '—'} · {s.id || '—'}
+              </p>
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
@@ -903,10 +943,10 @@ export function FinanceDetailModal({ student, payments, onClose, isPaid, schoolY
                   <div key={p.id || p.docNum || i} style={{ display: 'grid', gridTemplateColumns: 'minmax(86px,105px) minmax(0,1fr) auto', gap: 10, alignItems: 'center', padding: '11px 14px', borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? 'white' : '#fafafa' }}>
                     <div>
                       <p style={{ fontSize: 13, fontWeight: 900, color: '#0f172a', margin: 0 }}>{formatDate(p.date)}</p>
-                      <p style={{ fontSize: 11, color: '#64748b', margin: '2px 0 0', fontWeight: 800 }}>{(() => { const period = paymentPeriod(p); return period ? `T${period.m}/${period.y}` : 'Kỳ phí —'; })()}</p>
+                      <p style={{ fontSize: 11, color: '#64748b', margin: '2px 0 0', fontWeight: 800 }}>{(() => { const period = getPaymentTuitionPeriod(p); return period ? `T${period.m}/${period.y}` : 'Kỳ phí —'; })()}</p>
                     </div>
                     <div style={{ minWidth: 0 }}>
-                      <p style={{ fontSize: 13, fontWeight: 800, color: '#334155', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.description || p.docNum || 'Phiếu thu học phí'}</p>
+                      <p style={{ fontSize: 13, fontWeight: 800, color: '#334155', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.description || p.docNum || 'Phiếu thu'}</p>
                       <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 0', fontWeight: 800 }}>{normalizePaymentMethod(p.method || '') || '—'}</p>
                     </div>
                     <span style={{ fontSize: 13, fontWeight: 950, color: '#059669', background: '#ecfdf5', padding: '5px 9px', borderRadius: 999, border: '1px solid #a7f3d0', whiteSpace: 'nowrap' }}>+{fmtVND(p.amount)}</span>
@@ -916,8 +956,8 @@ export function FinanceDetailModal({ student, payments, onClose, isPaid, schoolY
             </div>
           </section>
         </div>
-        <div className="ltn-form-modal-footer" style={{ padding: '10px 18px', borderTop: '1px solid #f1f5f9', flexShrink: 0, display: 'flex', gap: 10 }}>
-          <Button variant="outline" intent="neutral" fullWidth size="lg" onClick={onClose}>Đóng</Button>
+        <div className="ltn-form-modal-footer" style={{ padding: '10px 18px', borderTop: '1px solid #f1f5f9', flexShrink: 0, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+          <Button variant="outline" intent="neutral" size="sm" onClick={onClose}>Đóng</Button>
         </div>
       </div>
     </div>

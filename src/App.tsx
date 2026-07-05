@@ -13,13 +13,14 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { BookOpen, CalendarCheck, FilePlus2, MessageCircle, ReceiptText, School, UserPlus, WalletCards } from 'lucide-react';
 
-import { loadSettings, parseDMY, SCRIPT_URL_DEFAULT, FEE_DEFAULT, CA_DAY_DEFAULT, TEACHER_LIST_DEFAULT } from './helpers';
+import { loadSettings, parseDMY, SCRIPT_URL_DEFAULT, FEE_DEFAULT, CA_DAY_DEFAULT, TEACHER_LIST_DEFAULT, normalizeCaDayOptions, LESSON_OFF_NOTE_TAG } from './helpers';
 import { RULES } from './rules';
 import type { Screen, Student, DeleteTarget, TrainingSub, OperationsSub, FinanceSub, ReportsSub } from './types';
 
 import { Sidebar, MobileHeader, BottomNav, useIsDesktop } from './Layout';
-import { ErrorBoundary } from './AppComponents';
+import { ErrorBoundary, MobileActionFab, type MobileActionFabAction } from './AppComponents';
 import CommandPalette from './CommandPalette';
 import { useCommands } from './useCommands';
 import { useAppData } from './useAppData';
@@ -72,7 +73,7 @@ export default function App() {
   const [tuitionDueDay, setTuitionDueDay] = useState<number>(_saved.current?.tuitionDueDay ?? 15);
   const [, setZaloTpl] = useState<string>(_saved.current?.zaloTpl ?? 'Chào phụ huynh em [Ten], LỚP TOÁN NK thông báo học phí tháng [Thang]/[Nam] của em hiện còn [SoTien]. Phụ huynh vui lòng kiểm tra và thanh toán giúp lớp. Em cảm ơn ạ.');
   const [scriptUrl,    setScriptUrl]    = useState<string>(_saved.current?.scriptUrl    ?? SCRIPT_URL_DEFAULT);
-  const [centerName,   setCenterName]   = useState<string>(_saved.current?.centerName   ?? 'Lớp Toán NK');
+  const [centerName,   setCenterName]   = useState<string>(_saved.current?.centerName   ?? 'LỚP TOÁN NK');
   const [teacher,      setTeacher]      = useState<string>(_saved.current?.teacher      ?? 'LÊ ĐỨC NHÂN');
   const [addr1,        setAddr1]        = useState<string>(_saved.current?.addr1        ?? '15/80 Đào Tấn');
   const [addr2,        setAddr2]        = useState<string>(_saved.current?.addr2        ?? '30 Nguyễn Quang Bích');
@@ -80,7 +81,7 @@ export default function App() {
   const [bankId,       setBankId]       = useState<string>(_saved.current?.bankId       ?? 'VCB');
   const [accountNo,    setAccountNo]    = useState<string>(_saved.current?.accountNo    ?? '1234567890');
   const [accountName,  setAccountName]  = useState<string>(_saved.current?.accountName  ?? 'LOP TOAN NK');
-  const [caDayOptions, setCaDayOptions] = useState<string[]>(_saved.current?.caDayOptions ?? CA_DAY_DEFAULT);
+  const [caDayOptions, setCaDayOptions] = useState<string[]>(normalizeCaDayOptions(_saved.current?.caDayOptions ?? CA_DAY_DEFAULT));
   const [teacherList,  setTeacherList]  = useState<string[]>(_saved.current?.teacherList  ?? TEACHER_LIST_DEFAULT);
 
   /* ── Responsive — 1 listener duy nhất cho toàn app ── */
@@ -91,7 +92,7 @@ export default function App() {
   const {
     students, uClasses, payments, expenses, tlogs,
     teachers, leaveRequests, materials, summary,
-    loading, gsOk, loadData,
+    loading, gsOk, loadData, cacheMeta, syncState, initialLoadError,
     setStudents, setUClasses, setPayments, setExpenses, setTlogs,
     setTeachers, setMaterials, setLeaveRequests,
     silentRef, lastLoadTimeRef, isSavingRef,
@@ -116,6 +117,7 @@ export default function App() {
   const [showExpense,  setShowExpense]  = useState(false);
   const [showDiary,    setShowDiary]    = useState(false);
   const [showBulkXfer, setShowBulkXfer] = useState(false);
+  const [paymentDraft, setPaymentDraft] = useState<any>(null);
   const [preselectedDiaryClass, setPreselectedDiaryClass] = useState('');
   const [preselectedDiaryDate,  setPreselectedDiaryDate]  = useState('');
   const [preselectedDiaryCaDay, setPreselectedDiaryCaDay] = useState('');
@@ -150,13 +152,85 @@ export default function App() {
     setShowDiary(true);
   }, [d.setEditDiary]); // stable: useState setter không thay đổi
 
+  const handleMarkLessonOff = useCallback((classId: string, date: string, caDay: string, reason: string, teacherName?: string) => {
+    const cleanReason = reason.trim() || 'Lớp nghỉ/GV bận.';
+    return d.handleSaveDiary({
+      date,
+      classId,
+      caDay,
+      content: 'Lớp nghỉ',
+      homework: '---',
+      teacherNote: `${LESSON_OFF_NOTE_TAG} ${cleanReason}`,
+      teacherName: teacherName || '',
+      attendance: [],
+    });
+  }, [d.handleSaveDiary]);
+
   const commands = useCommands({
     students, uClasses, goScreen, goTraining,
     onAddStudent: () => { goTraining('students'); d.setEditStudent(null); setShowStudent(true); },
     onAddClass:   () => { goTraining('classes'); d.setEditClass(null); setShowClass(true); },
     onAddDiary:   (classId?: string) => { goOperations('schedule'); handleAddDiary(classId); },
-    onAddPayment: () => { goFinance('ledger'); d.setEditPayment(null); d.setEditExpense(null); setShowPayment(true); },
+    onAddPayment: () => { goFinance('ledger'); d.setEditPayment(null); d.setEditExpense(null); setPaymentDraft(null); setShowPayment(true); },
   });
+
+  const openStudentModal = useCallback(() => {
+    goTraining('students');
+    d.setEditStudent(null);
+    setShowStudent(true);
+  }, [d.setEditStudent, goTraining]);
+
+  const openClassModal = useCallback(() => {
+    goTraining('classes');
+    d.setEditClass(null);
+    setShowClass(true);
+  }, [d.setEditClass, goTraining]);
+
+  const openIncomeModal = useCallback(() => {
+    goFinance('ledger');
+    d.setEditPayment(null);
+    d.setEditExpense(null);
+    setPaymentDraft(null);
+    setShowPayment(true);
+  }, [d.setEditExpense, d.setEditPayment, goFinance]);
+
+  const openExpenseModal = useCallback(() => {
+    goFinance('expense');
+    d.setEditPayment(null);
+    d.setEditExpense(null);
+    setPaymentDraft(null);
+    setShowExpense(true);
+  }, [d.setEditExpense, d.setEditPayment, goFinance]);
+
+  const mobileActions = useMemo<MobileActionFabAction[]>(() => {
+    if (screen === 'overview') {
+      return [
+        { key: 'diary', label: 'Điểm danh', icon: <CalendarCheck size={15} />, tone: 'primary', onClick: () => { goOperations('schedule'); handleAddDiary(); } },
+        { key: 'income', label: 'Thu học phí', icon: <ReceiptText size={15} />, tone: 'success', onClick: openIncomeModal },
+        { key: 'student', label: 'Thêm học sinh', icon: <UserPlus size={15} />, tone: 'neutral', onClick: openStudentModal },
+        { key: 'zalo', label: 'Nhắc phí Zalo', icon: <MessageCircle size={15} />, tone: 'zalo', onClick: () => goFinance('debt') },
+      ];
+    }
+    if (screen === 'training') {
+      if (trainingSubtab === 'students') {
+        return [{ key: 'student', label: 'Thêm học sinh', icon: <UserPlus size={15} />, tone: 'success', onClick: openStudentModal }];
+      }
+      if (trainingSubtab === 'classes') {
+        return [{ key: 'class', label: 'Thêm lớp', icon: <School size={15} />, tone: 'success', onClick: openClassModal }];
+      }
+      return [];
+    }
+    if (screen === 'operations') {
+      return [{ key: 'diary', label: 'Ghi buổi học', icon: <BookOpen size={15} />, tone: 'success', onClick: () => handleAddDiary() }];
+    }
+    if (screen === 'finance') {
+      if (financeSubtab === 'expense') {
+        return [{ key: 'expense', label: 'Thêm phiếu chi', icon: <FilePlus2 size={15} />, tone: 'danger', onClick: openExpenseModal }];
+      }
+      return [{ key: 'income', label: 'Thêm phiếu thu', icon: <WalletCards size={15} />, tone: 'success', onClick: openIncomeModal }];
+    }
+    return [];
+  }, [financeSubtab, goFinance, goOperations, handleAddDiary, openClassModal, openExpenseModal, openIncomeModal, openStudentModal, screen, trainingSubtab]);
 
   useEffect(() => {
     const routeKey = `${screen}:${trainingSubtab}:${operationsSubtab}:${financeSubtab}:${reportsSubtab}`;
@@ -220,7 +294,13 @@ export default function App() {
     return tlogs.length - thisM + lastM;
   }, [tlogs, d.curMo, d.curYr, d.prevMo, d.prevYr]);
 
-  if (loading) return <LoadingScreen />;
+  if (loading) {
+    return (
+      <LoadingScreen
+        error={initialLoadError}
+      />
+    );
+  }
   return (
     <div style={{ minHeight: '100dvh', background: '#F0F2F8', fontFamily: 'inherit' }}>
       <div style={{ display: 'flex' }}>
@@ -237,6 +317,8 @@ export default function App() {
           setFinanceSubtab={setFinanceSubtab}
           reportsSubtab={reportsSubtab}
           setReportsSubtab={setReportsSubtab}
+          cacheMeta={cacheMeta}
+          syncState={syncState}
         />
 
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: '100dvh' }}>
@@ -253,6 +335,8 @@ export default function App() {
             setFinanceSubtab={setFinanceSubtab}
             reportsSubtab={reportsSubtab}
             setReportsSubtab={setReportsSubtab}
+            cacheMeta={cacheMeta}
+            syncState={syncState}
           />
 
           <main
@@ -260,6 +344,10 @@ export default function App() {
             style={{ flex: 1, width: '100%', padding: isDesktop ? '24px 28px 32px' : '14px 16px 24px', boxSizing: 'border-box' }}
             className="print:p-0 mobile-main-content"
           >
+            {!isDesktop && screen !== 'overview' && (
+              <MobileActionFab actions={mobileActions} variant="inline" />
+            )}
+
             {screen === 'overview' && (
               <ErrorBoundary fallbackLabel="Tổng quan">
                 <OverviewTab
@@ -269,7 +357,7 @@ export default function App() {
                   goTraining={goTraining} goOperations={goOperations} goFinance={goFinance} isPaid={d.isPaid}
                   onAddStudent={() => { goTraining('students'); d.setEditStudent(null); setShowStudent(true); }}
                   onAddDiary={(classId, date, caDay) => { goOperations('schedule'); handleAddDiary(classId, date, caDay); }}
-                  onAddIncome={() => { goFinance('ledger'); d.setEditPayment(null); d.setEditExpense(null); setShowPayment(true); }}
+                  onAddIncome={() => { goFinance('ledger'); d.setEditPayment(null); d.setEditExpense(null); setPaymentDraft(null); setShowPayment(true); }}
                 />
               </ErrorBoundary>
             )}
@@ -286,6 +374,7 @@ export default function App() {
                   onViewDiary={log => setVDiary(log)}
                   onEditDiary={log => { d.setEditDiary(log); setShowDiary(true); }}
                   onAddDiary={handleAddDiary}
+                  onMarkLessonOff={handleMarkLessonOff}
                   onApproveLeave={d.handleApproveLeave} onRejectLeave={d.handleRejectLeave}
                 />
               </ErrorBoundary>
@@ -332,7 +421,7 @@ export default function App() {
                   financeSubtab={financeSubtab}
                   setFinanceSubtab={setFinanceSubtab}
                   payments={payments} expenses={expenses}
-                  students={students} uClasses={uClasses}
+                  students={students} uClasses={uClasses} tlogs={tlogs}
                   curMo={d.curMo} curYr={d.curYr}
                   qF={d.qF} setQF={d.setQF} fMo={d.fMo} setFMo={d.setFMo}
                   fTch={d.fTch} setFTch={d.setFTch} fFC={d.fFC} setFFC={d.setFFC}
@@ -341,13 +430,18 @@ export default function App() {
                   baseTuition={baseTuition} schoolYear={schoolYear} tuitionDueDay={tuitionDueDay}
                   onViewInvoice={p => d.setVInvoice(p)}
                   onViewFinance={s => setVFinance(s)}
-                  onShowFAB={(tab: 'income' | 'expense' = 'income') => {
+                  onShowFAB={(tab: 'income' | 'expense' = 'income', draft?: any) => {
                     d.setEditPayment(null);
                     d.setEditExpense(null);
-                    if (tab === 'expense') setShowExpense(true);
-                    else setShowPayment(true);
+                    if (tab === 'expense') {
+                      setPaymentDraft(null);
+                      setShowExpense(true);
+                    } else {
+                      setPaymentDraft(draft || null);
+                      setShowPayment(true);
+                    }
                   }}
-                  onEditPayment={p => { d.setEditPayment(p); d.setEditExpense(null); setShowPayment(true); }}
+                  onEditPayment={p => { d.setEditPayment(p); d.setEditExpense(null); setPaymentDraft(null); setShowPayment(true); }}
                   onDeletePayment={p => setDelTarget({ type:'payment', id:p.docNum, name:`${p.studentName} (${p.docNum})` })}
                   onEditExpense={e => { d.setEditExpense(e); d.setEditPayment(null); setShowExpense(true); }}
                   onDeleteExpense={e => setDelTarget({ type:'expense', id:e.docNum, name:`${e.description} (${e.docNum})` })}
@@ -394,6 +488,8 @@ export default function App() {
                   hideInactive={d.hideInactive} setHideInactive={d.setHideInactive}
                   caDayOptions={caDayOptions}   setCaDayOptions={setCaDayOptions}
                   teacherList={teacherList}     setTeacherList={setTeacherList}
+                  cacheMeta={cacheMeta}
+                  syncState={syncState}
                   saving={d.saving} loadData={loadData}
                 />
               </ErrorBoundary>
@@ -404,12 +500,13 @@ export default function App() {
             style={{ textAlign:'center', paddingBottom:20, paddingTop:12, fontSize:11, fontWeight:700, color:'#cbd5e1', textTransform:'uppercase', letterSpacing:'0.3em' }}
             className="print:hidden"
           >
-            LỚP TOÁN NK • 2026 • v28.0
+            LỚP TOÁN NK
           </footer>
         </div>
       </div>
 
       <BottomNav active={screen} set={goScreen} isDesktop={isDesktop} />
+      <MobileActionFab actions={screen === 'overview' ? mobileActions : []} />
       <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} commands={commands} />
 
       <StudentModal
@@ -428,10 +525,13 @@ export default function App() {
       />
       <PaymentFormModal
         open={showPayment}
-        onClose={() => { setShowPayment(false); d.setEditPayment(null); }}
+        onClose={() => { setShowPayment(false); d.setEditPayment(null); setPaymentDraft(null); }}
         students={students} classes={uClasses} baseTuition={baseTuition} isSaving={d.saving}
+        payments={payments}
+        tlogs={tlogs}
         onSave={d.handleSaveFee}
         editingPayment={d.editPayment}
+        initialPayment={paymentDraft}
       />
       <ExpenseFormModal
         open={showExpense}
@@ -445,6 +545,7 @@ export default function App() {
         open={showDiary}
         onClose={() => { setShowDiary(false); d.setEditDiary(null); setPreselectedDiaryClass(''); setPreselectedDiaryDate(''); setPreselectedDiaryCaDay(''); }}
         uniqueClasses={uClasses} students={students} isSaving={d.saving}
+        leaveRequests={leaveRequests}
         onSave={(f) => {
           // Đóng modal ngay lập tức — save chạy background, toast báo kết quả
           setShowDiary(false);
@@ -466,7 +567,7 @@ export default function App() {
         isSaving={d.saving} onConfirm={d.handleConfirmBulkTransfer}
       />
 
-      {vStudent   && <StudentDetailModal student={vStudent} onClose={() => setVStudent(null)} tlogs={tlogs} payments={payments} onToggleStatus={d.handleToggleStudentStatus} onSaveNote={d.handleSaveNote} onSaveFacebook={d.handleSaveFacebook} onEdit={(s) => { setVStudent(null); d.setEditStudent(s); setShowStudent(true); }} />}
+      {vStudent   && <StudentDetailModal student={vStudent} onClose={() => setVStudent(null)} tlogs={tlogs} payments={payments} onToggleStatus={d.handleToggleStudentStatus} onSaveNote={d.handleSaveNote} onSaveFacebook={d.handleSaveFacebook} onEdit={(s) => { setVStudent(null); d.setEditStudent(s); setShowStudent(true); }} onDelete={(target) => { setVStudent(null); setDelTarget(target); }} />}
       {vDiary     && <DiaryDetailModal log={vDiary} onClose={() => setVDiary(null)} onEdit={(log) => { setVDiary(null); d.setEditDiary(log); setShowDiary(true); }} />}
       {d.vInvoice && <InvoiceModal payment={d.vInvoice} onClose={() => d.setVInvoice(null)} centerName={centerName} bankId={bankId} accountNo={accountNo} accountName={accountName} students={students} classes={uClasses} />}
       {vExpense   && <ExpenseModal expense={vExpense} onClose={() => setVExpense(null)} centerName={centerName} />}

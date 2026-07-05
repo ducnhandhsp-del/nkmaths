@@ -3,9 +3,10 @@
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ReceiptText, UserPlus } from 'lucide-react';
-import { IPP, capitalizeName, isStudentActive, parseDMY } from './helpers';
-import { Badge, Pager, Button, Select } from './dsComponents';
-import { DataTable, EmptyState, MobileCard, PageToolbar, StatusBadge } from './uiSystem';
+import { IPP, capitalizeName, fixVietnameseText, isStudentActive } from './helpers';
+import { isStudentBillableInMonth } from './measures';
+import { Pager, Button, Select } from './dsComponents';
+import { DataTable, EmptyState, MobileCompactCard, PageToolbar, StatusBadge } from './uiSystem';
 import type { Student, DeleteTarget } from './types';
 
 interface Props {
@@ -34,25 +35,7 @@ interface Props {
 }
 
 const getClassCode = (c: any) =>
-  String(c?.['Mã Lớp'] || c?.['Mã lớp'] || c?.['MÃ£ Lá»›p'] || c?.MaLop || c?.classId || '').trim();
-
-function isMonthBillable(s: Student, month: number, year: number): boolean {
-  const monthStart = new Date(year, month - 1, 1).getTime();
-  const startTs = parseDMY(s.startDate || '');
-  if (startTs) {
-    const d = new Date(startTs);
-    const startMonth = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
-    if (monthStart < startMonth) return false;
-  }
-  const endRaw = String(s.endDate || '').trim();
-  const endTs = parseDMY(endRaw);
-  if (endTs && endRaw && endRaw !== '---') {
-    const d = new Date(endTs);
-    const leaveMonth = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
-    if (monthStart >= leaveMonth) return false;
-  }
-  return true;
-}
+  fixVietnameseText(c?.['Mã Lớp'] || c?.['Mã lớp'] || c?.['MÃ£ Lá»›p'] || c?.MaLop || c?.classId || '');
 
 function schoolMonthsUntil(month: number, year: number) {
   const startYear = month >= 7 ? year : year - 1;
@@ -94,10 +77,10 @@ function ZaloMark({ size = 18 }: { size?: number }) {
         justifyContent: 'center',
         background: '#0068ff',
         color: '#fff',
-        fontSize: Math.max(7, Math.round(size * 0.42)),
+        fontSize: Math.max(9, Math.round(size * 0.42)),
         fontWeight: 950,
         lineHeight: 1,
-        letterSpacing: '-0.05em',
+        letterSpacing: '-0.02em',
         fontFamily: 'Arial, sans-serif',
         boxShadow: 'inset 0 -1px 0 rgba(0,0,0,.14)',
       }}
@@ -131,7 +114,6 @@ export default function StudentsTab({
   toolbarPrefix,
 }: Props) {
   const [statusFilter, setStatusFilter] = useState<'active' | 'all' | 'inactive'>(hideInactive ? 'active' : 'all');
-  const [gradeFilter, setGradeFilter] = useState('');
 
   useEffect(() => {
     if (hideInactive && statusFilter !== 'active') setStatusFilter('active');
@@ -149,16 +131,10 @@ export default function StudentsTab({
     return [{ value: '', label: 'Lớp' }, ...rows];
   }, [uClasses]);
 
-  const gradeOptions = useMemo(() => {
-    const grades = [...new Set(students.map(s => String(s.grade || '').trim()).filter(Boolean))]
-      .sort((a, b) => Number(a) - Number(b));
-    return [{ value: '', label: 'Khối' }, ...grades.map(g => ({ value: g, label: `Khối ${g}` }))];
-  }, [students]);
-
   const debtMonthsOf = useCallback((s: Student): number | null => {
     if (!canShowDebt || !isStudentActive(s)) return null;
     return schoolMonthsUntil(curMo!, curYr!)
-      .filter(fm => isMonthBillable(s, fm.m, fm.y))
+      .filter(fm => isStudentBillableInMonth(s, fm))
       .filter(fm => !isPaid!(s.id, fm.m, fm.y))
       .length;
   }, [canShowDebt, curMo, curYr, isPaid]);
@@ -168,17 +144,15 @@ export default function StudentsTab({
       const active = isStudentActive(s);
       if (statusFilter === 'inactive' && isStudentActive(s)) return false;
       if (statusFilter === 'active' && !active) return false;
-      if (gradeFilter && String(s.grade || '').trim() !== gradeFilter) return false;
       return true;
     });
-  }, [filtS, gradeFilter, statusFilter]);
+  }, [filtS, statusFilter]);
 
   const paged = displayed.slice((pgS - 1) * IPP, pgS * IPP);
-  const hasActiveFilter = !!qS || !!fCls || !!gradeFilter;
+  const hasActiveFilter = !!qS || !!fCls;
   const resetFilters = () => {
     setQS('');
     setFCls('');
-    setGradeFilter('');
     setStatusFilter('active');
     setHideInactive(true);
     setPgS(1);
@@ -251,23 +225,6 @@ export default function StudentsTab({
       ),
     },
     {
-      key: 'parentPhone',
-      label: 'SĐT',
-      width: 112,
-      cellStyle: { whiteSpace: 'nowrap' },
-      render: (_: unknown, student: Student) => (
-        <span style={{
-          fontSize: 12,
-          fontWeight: 900,
-          color: student.parentPhone || student.studentPhone ? '#334155' : '#94a3b8',
-          fontVariantNumeric: 'tabular-nums',
-          whiteSpace: 'nowrap',
-        }}>
-          {student.parentPhone || student.studentPhone || '—'}
-        </span>
-      ),
-    },
-    {
       key: 'tuition',
       label: 'Học phí',
       align: 'center' as const,
@@ -297,7 +254,7 @@ export default function StudentsTab({
                 <ZaloMark size={20} />
               </a>
             ) : (
-              <span className="student-action-icon student-action-icon--empty" aria-hidden="true">—</span>
+              <span className="student-action-icon student-action-icon--empty" title="Chưa có số Zalo" aria-label={`Chưa có số Zalo ${capitalizeName(student.name)}`}>—</span>
             )}
             {onCollectFee && isStudentActive(student) && (
               <button
@@ -317,7 +274,7 @@ export default function StudentsTab({
   ], [debtMonthsOf, onCollectFee]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: embedded ? 10 : 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: embedded ? 10 : 14 }}>
       <style>{`
         .student-toolbar-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
         .student-toolbar-search{width:136px;min-width:118px;height:34px;border:1px solid #dbe3ef;border-radius:8px;background:#fff;padding:0 10px;font-size:13px;font-weight:800;color:#0f172a;outline:none}
@@ -333,11 +290,12 @@ export default function StudentsTab({
         .student-action-icon--receipt{background:#ecfdf5;border:1px solid #bbf7d0;color:#047857}
         .student-action-icon--empty{background:#f8fafc;border:1px solid #e2e8f0;color:#cbd5e1;cursor:default}
         .student-action-icon--empty:hover{box-shadow:none;transform:none}
-        .student-mobile-actions .student-action-icon{width:40px;height:40px;flex-basis:40px}
+        .student-mobile-actions .student-action-icon{width:34px;height:34px;flex-basis:34px}
         .student-desktop-table{display:block}.student-mobile-cards{display:none}
         @media(max-width:767px){
-          .student-toolbar-filters{width:100%;display:grid;grid-template-columns:minmax(0,1fr) 92px 92px;gap:8px}
+          .student-toolbar-filters{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
           .student-toolbar-search{width:100%;min-width:0}
+          .student-toolbar-filters > *{width:100%!important;min-width:0!important}
           .student-toolbar-filters select{width:100%!important;min-width:0!important}
           .student-toolbar-reset{grid-column:1/-1}
           .student-desktop-table{display:none!important}.student-mobile-cards{display:block!important}
@@ -363,7 +321,6 @@ export default function StudentsTab({
             aria-label="Tìm học sinh"
           />
           <Select value={fCls} onChange={v => { setFCls(v); setPgS(1); }} options={classOptions} style={{ width: 92, minWidth: 88 }} />
-          <Select value={gradeFilter} onChange={v => { setGradeFilter(v); setPgS(1); }} options={gradeOptions} style={{ width: 92, minWidth: 88 }} />
           {hasActiveFilter && (
             <button type="button" className="student-toolbar-reset" onClick={resetFilters}>
               Xóa lọc
@@ -396,23 +353,22 @@ export default function StudentsTab({
             const zaloPhone = String(s.parentPhone || s.studentPhone || '').replace(/\D/g, '');
             const debtMonths = debtMonthsOf(s);
             return (
-              <MobileCard
+              <MobileCompactCard
                 key={s.id}
                 title={capitalizeName(s.name)}
                 subtitle={`${s.id || '—'}${s.classId ? ` · ${s.classId}` : ''}`}
+                value={<DebtMonthsState months={debtMonths} />}
                 badge={<StatusBadge domain="student" status={inactive ? 'inactive' : 'active'} />}
                 tone={inactive ? 'neutral' : 'primary'}
+                muted={inactive}
                 onClick={() => onViewStudent(s)}
-                style={{ marginBottom: 8, opacity: inactive ? 0.58 : 1 }}
-                rows={[
-                  { label: 'Lớp', value: <Badge color="indigo">{s.classId || '—'}</Badge> },
-                  { label: 'Khối / học lực', value: `${s.grade ? `Khối ${s.grade}` : '—'}${s.academicLevel ? ` · ${s.academicLevel}` : ''}` },
-                  { label: 'Phụ huynh', value: s.parentName || '—' },
-                  { label: 'Liên hệ', value: s.parentPhone || s.studentPhone || '—' },
-                  { label: 'Học phí', value: <DebtMonthsState months={debtMonths} /> },
+                style={{ marginBottom: 8 }}
+                meta={[
+                  { key: 'parent', label: s.parentName || 'Chưa có PH', tone: s.parentName ? 'neutral' as const : 'warning' as const },
+                  { key: 'phone', label: s.parentPhone || s.studentPhone || 'Chưa có SĐT', tone: zaloPhone.length >= 9 ? 'success' as const : 'warning' as const },
                 ]}
                 actions={(
-                  <div onClick={e => e.stopPropagation()} className="student-mobile-actions" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', width: '100%', justifyContent: 'flex-end' }}>
+                  <div onClick={e => e.stopPropagation()} className="student-mobile-actions" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     {zaloPhone.length >= 9 && (
                       <a
                         href={`https://zalo.me/${zaloPhone}`}

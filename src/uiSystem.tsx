@@ -48,6 +48,38 @@ const TONE: Record<UiTone, { solid: string; text: string; bg: string; border: st
   teal:    { solid: colors.teal[500],    text: colors.teal[600],    bg: colors.teal[50],    border: '#99f6e4',          grad: colors.teal.grad },
 };
 
+export type DetailMetricTone = 'violet' | 'amber' | 'emerald' | 'sky' | 'rose';
+
+export function DetailMetric({
+  label,
+  value,
+  tone,
+  valueSize = 20,
+  truncate = false,
+}: {
+  label: string;
+  value: React.ReactNode;
+  tone: DetailMetricTone;
+  valueSize?: number;
+  truncate?: boolean;
+}) {
+  const cfg = {
+    violet: { bg: '#f5f3ff', color: '#7c3aed' },
+    amber: { bg: '#fffbeb', color: '#d97706' },
+    emerald: { bg: '#ecfdf5', color: '#059669' },
+    sky: { bg: '#f0f9ff', color: '#0284c7' },
+    rose: { bg: '#fff1f2', color: '#e11d48' },
+  }[tone];
+  return (
+    <div style={{ background: cfg.bg, borderRadius: 8, padding: '10px 8px', minWidth: 0, textAlign: 'center' }}>
+      <p style={{ fontSize: valueSize, fontWeight: 800, color: cfg.color, margin: 0, lineHeight: 1.1, ...(truncate ? { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const } : {}) }}>
+        {value}
+      </p>
+      <p style={{ fontSize: 10, color: '#64748b', margin: '3px 0 0', fontWeight: 800 }}>{label}</p>
+    </div>
+  );
+}
+
 const CARD: React.CSSProperties = {
   background: 'white',
   border: `1px solid ${colors.neutral[200]}`,
@@ -229,19 +261,19 @@ export function PageToolbar({
         <>
           <div style={{ flexShrink: 0 }}>
             {typeof title === 'string'
-              ? <h2 style={{ fontSize: 22, fontWeight: 800, color: colors.neutral[900], textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>{title}</h2>
+              ? <h2 className="ltn-page-toolbar-title" style={{ fontSize: 22, fontWeight: 800, color: colors.neutral[900], textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>{title}</h2>
               : title}
           </div>
-          <span style={{ width: 1, height: 22, background: colors.neutral[200], flexShrink: 0 }} />
+          <span className="ltn-page-toolbar-divider" style={{ width: 1, height: 22, background: colors.neutral[200], flexShrink: 0 }} />
         </>
       )}
       {children && (
-        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, minWidth: 0, ...controlsStyle }}>
+        <div className="ltn-page-toolbar-controls" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, minWidth: 0, ...controlsStyle }}>
           {children}
         </div>
       )}
       {actions && (
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div className="ltn-page-toolbar-actions" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           {actions}
         </div>
       )}
@@ -390,7 +422,7 @@ export function ContextBar({
 
 export function ActionableKpiGrid({ children, cols }: { children: React.ReactNode; cols?: number }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: cols ? `repeat(${cols},1fr)` : 'repeat(auto-fit,minmax(190px,1fr))', gap: 12 }}>
+    <div className="ltn-actionable-kpi-grid" style={{ display: 'grid', gridTemplateColumns: cols ? `repeat(${cols},1fr)` : 'repeat(auto-fit,minmax(190px,1fr))', gap: 12 }}>
       {children}
     </div>
   );
@@ -420,6 +452,7 @@ export function ActionableKpi({
   const clickable = !!onClick;
   return (
     <button
+      className="ltn-actionable-kpi"
       type="button"
       onClick={onClick}
       onMouseEnter={() => setHov(true)}
@@ -441,13 +474,13 @@ export function ActionableKpi({
         opacity: 1,
       }}
     >
-      <span style={{ width: 42, height: 42, borderRadius: radius.md, background: t.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+      <span className="ltn-actionable-kpi-icon" style={{ width: 42, height: 42, borderRadius: radius.md, background: t.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
         {iconNode(icon, 19, t.text)}
       </span>
       <span style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ display: 'block', fontSize: 22, fontWeight: 800, color: colors.neutral[900], lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</span>
-        <span style={{ display: 'block', fontSize: 12, fontWeight: 700, color: colors.neutral[500], marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
-        {sub && <span style={{ display: 'block', fontSize: 11, color: colors.neutral[400], marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</span>}
+        <span className="ltn-actionable-kpi-value" style={{ display: 'block', fontSize: 22, fontWeight: 800, color: colors.neutral[900], lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</span>
+        <span className="ltn-actionable-kpi-label" style={{ display: 'block', fontSize: 12, fontWeight: 700, color: colors.neutral[500], marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+        {sub && <span className="ltn-actionable-kpi-sub" style={{ display: 'block', fontSize: 11, color: colors.neutral[400], marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</span>}
       </span>
       {delta != null && (
         <span style={{ fontSize: 11, fontWeight: 800, padding: '3px 7px', borderRadius: 999, background: delta > 0 ? '#dcfce7' : delta < 0 ? '#fee2e2' : colors.neutral[100], color: delta > 0 ? '#16a34a' : delta < 0 ? '#dc2626' : colors.neutral[500], flexShrink: 0 }}>
@@ -1105,6 +1138,117 @@ export function MobileCard({
         </div>
       )}
       {actions && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>{actions}</div>}
+    </div>
+  );
+}
+
+export type MobileCompactMeta = {
+  key: string;
+  label: React.ReactNode;
+  tone?: UiTone;
+};
+
+export function MobileCompactCard({
+  title,
+  subtitle,
+  value,
+  badge,
+  meta,
+  actions,
+  onClick,
+  tone = 'neutral',
+  muted = false,
+  style,
+}: {
+  title: React.ReactNode;
+  subtitle?: React.ReactNode;
+  value?: React.ReactNode;
+  badge?: React.ReactNode;
+  meta?: MobileCompactMeta[];
+  actions?: React.ReactNode;
+  onClick?: () => void;
+  tone?: UiTone;
+  muted?: boolean;
+  style?: React.CSSProperties;
+}) {
+  const t = TONE[tone];
+  return (
+    <div
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={onClick ? (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onClick();
+        }
+      } : undefined}
+      style={{
+        ...CARD,
+        width: '100%',
+        padding: '12px 12px',
+        borderRadius: 14,
+        borderColor: onClick ? t.border : colors.neutral[200],
+        boxShadow: '0 1px 8px rgba(15,23,42,.045)',
+        cursor: onClick ? 'pointer' : 'default',
+        opacity: muted ? 0.64 : 1,
+        display: 'grid',
+        gridTemplateColumns: 'minmax(0,1fr) auto',
+        gap: 10,
+        alignItems: 'start',
+        fontFamily: typography.fontFamily,
+        ...style,
+      }}
+    >
+      <div style={{ minWidth: 0, display: 'grid', gap: 7 }}>
+        <div style={{ minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 950, color: colors.neutral[900], lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {title}
+          </p>
+          {subtitle && (
+            <p style={{ margin: '3px 0 0', fontSize: 11, fontWeight: 750, color: colors.neutral[400], lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {subtitle}
+            </p>
+          )}
+        </div>
+        {!!meta?.length && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 5, minWidth: 0 }}>
+            {meta.map(item => {
+              const mt = TONE[item.tone || 'neutral'];
+              return (
+                <span
+                  key={item.key}
+                  style={{
+                    minWidth: 0,
+                    width: '100%',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'flex-start',
+                    height: 24,
+                    padding: '0 8px',
+                    borderRadius: 999,
+                    border: `1px solid ${mt.border}`,
+                    background: mt.bg,
+                    color: mt.text,
+                    fontSize: 11,
+                    fontWeight: 850,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {item.label}
+                </span>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      <div style={{ minWidth: 74, display: 'grid', justifyItems: 'end', gap: 7 }}>
+        {value && <div style={{ fontSize: 15, fontWeight: 950, color: colors.neutral[900], textAlign: 'right', whiteSpace: 'nowrap' }}>{value}</div>}
+        {badge}
+        {actions && <div onClick={e => e.stopPropagation()} style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, flexWrap: 'wrap' }}>{actions}</div>}
+      </div>
     </div>
   );
 }

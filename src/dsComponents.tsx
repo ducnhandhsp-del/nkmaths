@@ -239,15 +239,19 @@ const stripHomeworkNoteTag = (note = '') =>
     .replace(/\s*;\s*/g, '; ')
     .replace(/^[\s;,-]+|[\s;,-]+$/g, '')
     .trim();
+const stripHomeworkNoteTagForInput = (note = '') =>
+  note
+    .replaceAll(HOMEWORK_NOTE_TAG, '')
+    .replace(/^[\s;,-]+/, '');
 const hasHomeworkNoteTag = (note = '') => note.includes(HOMEWORK_NOTE_TAG);
-const composeAttendanceNote = (note = '', homeworkMissing = false) => {
-  const cleanNote = stripHomeworkNoteTag(note);
+const composeAttendanceNote = (note = '', homeworkMissing = false, preserveInputSpaces = false) => {
+  const cleanNote = preserveInputSpaces ? stripHomeworkNoteTagForInput(note) : stripHomeworkNoteTag(note);
   if (!homeworkMissing) return cleanNote;
   return cleanNote ? `${HOMEWORK_NOTE_TAG}; ${cleanNote}` : HOMEWORK_NOTE_TAG;
 };
 export function AttendancePicker({students,onChange,readOnly=false}:AttendancePickerProps){
   const update=(id:string,status:AttendanceStatus)=>onChange(students.map(s=>s.id===id?{...s,status}:s));
-  const updateNote=(id:string,note:string)=>onChange(students.map(s=>s.id===id?{...s,note:composeAttendanceNote(note,hasHomeworkNoteTag(s.note))}:s));
+  const updateNote=(id:string,note:string)=>onChange(students.map(s=>s.id===id?{...s,note:composeAttendanceNote(note,hasHomeworkNoteTag(s.note),true)}:s));
   const updateHomework=(id:string,homeworkMissing:boolean)=>onChange(students.map(s=>s.id===id?{...s,note:composeAttendanceNote(s.note,homeworkMissing)}:s));
   return(
     <div style={{display:'flex',flexDirection:'column',gap:8}}>
@@ -260,7 +264,7 @@ export function AttendancePicker({students,onChange,readOnly=false}:AttendancePi
           .attendance-side-controls{grid-template-columns:auto minmax(0,1fr)!important}
         }
       `}</style>
-      {/* Danh sÃ¡ch há»c sinh â€” tÃªn KHÃ”NG bá»‹ cáº¯t */}
+      {/* Danh sách học sinh - tên không bị cắt */}
       <div style={{background:'white',borderRadius:radius.lg,border:`1px solid ${colors.neutral[200]}`,overflow:'hidden'}}>
         {students.map((s,idx)=>{
           const activeStatus=ST_CFG[s.status] || ST_CFG.present;
@@ -309,7 +313,7 @@ export function AttendancePicker({students,onChange,readOnly=false}:AttendancePi
                     </label>
                     <input
                       className="attendance-note-input"
-                      value={stripHomeworkNoteTag(s.note || '')}
+                      value={stripHomeworkNoteTagForInput(s.note || '')}
                       onChange={event => updateNote(s.id, event.target.value)}
                       placeholder="Ghi chú"
                       style={{

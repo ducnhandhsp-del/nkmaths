@@ -13,9 +13,12 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <Toaster
       position="top-center"
+      containerClassName="ltn-toast-zone"
+      containerStyle={{ pointerEvents: 'none' }}
       toastOptions={{
         duration: 3500,
         style: {
+          pointerEvents: 'auto',
           background: '#1e293b',
           color: '#fff',
           fontFamily: "'Be Vietnam Pro', 'Nunito', system-ui, -apple-system, Roboto, Arial, sans-serif",

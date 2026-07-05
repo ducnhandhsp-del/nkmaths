@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { GraduationCap } from 'lucide-react';
+import { RULES } from './rules';
 
 const SLOGANS = [
-  'Đang khởi tạo hệ thống Lớp Toán NK...',
+  'Đang khởi tạo hệ thống LỚP TOÁN NK...',
   'Đang đồng bộ dữ liệu lớp học...',
   'Đang chuẩn bị bảng điều khiển giảng dạy...',
   'Đang tải thông tin học sinh và lớp học...',
@@ -11,8 +12,13 @@ const SLOGANS = [
   'Sắp hoàn tất — sẵn sàng cho buổi dạy hiệu quả.',
 ];
 
-export default function LoadingScreen() {
+export default function LoadingScreen({
+  error,
+}: {
+  error?: string;
+}) {
   const [slogan, setSlogan] = useState(SLOGANS[0]);
+  const [showSlowHint, setShowSlowHint] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -21,6 +27,15 @@ export default function LoadingScreen() {
     }, 2000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (error) {
+      setShowSlowHint(true);
+      return;
+    }
+    const timer = setTimeout(() => setShowSlowHint(true), RULES.network.initialLoadRetryAfter);
+    return () => clearTimeout(timer);
+  }, [error]);
 
   return (
     <div
@@ -153,8 +168,16 @@ export default function LoadingScreen() {
           border: '1px solid rgba(255,255,255,0.2)',
         }}
       >
-        Lớp Toán NK
+        LỚP TOÁN NK
       </p>
+
+      {(showSlowHint || error) && (
+        <div style={{ marginTop: 18, display: 'grid', gap: 10, justifyItems: 'center', maxWidth: 420, textAlign: 'center' }}>
+          <p style={{ margin: 0, color: 'rgba(255,255,255,0.88)', fontSize: 14, fontWeight: 700, lineHeight: 1.45 }}>
+            {error || 'Google Apps Script đang phản hồi chậm hơn bình thường. Hệ thống vẫn đang tự tải lại.'}
+          </p>
+        </div>
+      )}
 
       {/* Progress bar ảo (tùy chọn) */}
       <div style={{

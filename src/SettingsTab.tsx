@@ -27,11 +27,12 @@ import {
   RefreshCw, CheckCircle, XCircle, Loader2, Save,
   Plus, X, Edit3, Check, Eye, Trash2,
   Plug, School, DollarSign, Landmark, MessageSquare,
-  Database, Clock, ExternalLink,
+  ExternalLink,
 } from 'lucide-react';
 import { saveSettings, makeVietQR, getCacheSize, fmtVND, formatDate } from './helpers';
 import { ModalWrap, useConfirm } from './UIComponents';
 import { Button, IconButton, Input } from './dsComponents';
+import type { CacheMeta, DataSyncState } from './types';
 
 interface Props {
   bankId: string;        setBankId: (v: string) => void;
@@ -39,6 +40,7 @@ interface Props {
   accountName: string;   setAccountName: (v: string) => void;
   scriptUrl: string;     setScriptUrl: (v: string) => void;
   gsOk: boolean | null;  saving: boolean; loadData: () => void;
+  cacheMeta?: CacheMeta | null; syncState?: DataSyncState;
   baseTuition: number;   setBaseTuition: (v: number) => void;
   schoolYear: string;    setSchoolYear: (v: string) => void;
   tuitionDueDay: number; setTuitionDueDay: (v: number) => void;
@@ -136,7 +138,7 @@ function SCard({ icon: Icon, title, accent = '#6366f1', children }: {
     <div style={{
       borderRadius: RADIUS, border: '1px solid #e8edf2',
       overflow: 'hidden', background: 'white',
-      boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
+      boxShadow: 'none',
     }}>
       <div style={{
         display: 'flex', alignItems: 'center', gap: 10,
@@ -171,38 +173,6 @@ function FormGrid({ children, cols = 2 }: { children: React.ReactNode; cols?: nu
   );
 }
 
-/* ─── ToggleRow ──────────────────────────────────────────────────── */
-function ToggleRow({ label, sub, val, onChange }: { label: string; sub?: string; val: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <div style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '11px 14px', borderRadius: 8,
-      background: val ? '#f5f3ff' : '#f8fafc',
-      border: `1px solid ${val ? '#ddd6fe' : '#e2e8f0'}`,
-      marginBottom: 8, transition: 'all 0.15s',
-    }}>
-      <div>
-        <p style={{ fontSize: 13, fontWeight: 600, color: '#1e293b', margin: 0 }}>{label}</p>
-        {sub && <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 0' }}>{sub}</p>}
-      </div>
-      <button
-        onClick={() => onChange(!val)}
-        style={{
-          width: 44, height: 24, background: val ? '#6366f1' : '#cbd5e1',
-          border: 'none', cursor: 'pointer', position: 'relative',
-          transition: 'background 0.2s', borderRadius: 12, flexShrink: 0,
-        }}
-      >
-        <div style={{
-          position: 'absolute', top: 2, width: 20, height: 20,
-          background: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
-          transition: 'left 0.2s', left: val ? 22 : 2, borderRadius: '50%',
-        }} />
-      </button>
-    </div>
-  );
-}
-
 function InfoPill({ children, tone = 'slate' }: { children: React.ReactNode; tone?: 'slate' | 'green' | 'amber' | 'blue' }) {
   const cfg = {
     slate: { bg: '#f8fafc', border: '#e2e8f0', color: '#475569' },
@@ -214,56 +184,6 @@ function InfoPill({ children, tone = 'slate' }: { children: React.ReactNode; ton
     <span style={{ display: 'inline-flex', alignItems: 'center', minHeight: 28, padding: '4px 10px', borderRadius: 999, background: cfg.bg, border: `1px solid ${cfg.border}`, color: cfg.color, fontSize: 12, fontWeight: 800 }}>
       {children}
     </span>
-  );
-}
-
-/* ─── TagList ─────────────────────────────────────────────────────── */
-function TagList({ items, setItems, placeholder }: { items: string[]; setItems: (v: string[]) => void; placeholder: string }) {
-  const [draft, setDraft] = useState('');
-  const add = () => { const v = draft.trim(); if (v && !items.includes(v)) setItems([...items, v]); setDraft(''); };
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-      <div style={{ display: 'flex', gap: 7 }}>
-        <input
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), add())}
-          placeholder={placeholder}
-          style={{ ...INP, flex: 1, fontSize: 12 }}
-        />
-        <button
-          onClick={add}
-          style={{
-            padding: '0 14px', background: '#6366f1', color: 'white',
-            border: 'none', borderRadius: 8, cursor: 'pointer',
-            fontWeight: 700, fontSize: 12, display: 'flex', alignItems: 'center',
-          }}
-        >
-          <Plus size={14} />
-        </button>
-      </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-        {items.map((item, i) => (
-          <span key={i} style={{
-            display: 'flex', alignItems: 'center', gap: 5,
-            background: '#eef2ff', border: '1px solid #c7d2fe',
-            color: '#3730a3', fontSize: 12, fontWeight: 700,
-            padding: '4px 10px', borderRadius: 20,
-          }}>
-            {item}
-            <button
-              onClick={() => setItems(items.filter((_, j) => j !== i))}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#a5b4fc', lineHeight: 1, padding: 0 }}
-            >
-              <X size={10} />
-            </button>
-          </span>
-        ))}
-        {items.length === 0 && (
-          <span style={{ fontSize: 12, color: '#94a3b8', fontStyle: 'italic' }}>Chưa có mục nào</span>
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -336,7 +256,7 @@ function TemplateModal({ open, onClose, initial, onSave }: {
 ══════════════════════════════════════════════════════════════════ */
 export default function SettingsTab({
   bankId, setBankId, accountNo, setAccountNo, accountName, setAccountName,
-  scriptUrl, setScriptUrl, gsOk, saving, loadData,
+  scriptUrl, setScriptUrl, gsOk, saving, loadData, cacheMeta, syncState,
   baseTuition, setBaseTuition, schoolYear, setSchoolYear, tuitionDueDay, setTuitionDueDay, setZaloTpl,
   centerName, setCenterName, teacher, setTeacher, addr1, setAddr1, addr2, setAddr2,
   phone, setPhone, hideInactive, setHideInactive,
@@ -349,6 +269,14 @@ export default function SettingsTab({
   const [teacher1, setTeacher1] = useState(teacherList[0] || teacher || '');
   const [teacher2, setTeacher2] = useState(teacherList[1] || '');
   const [phone1,   setPhone1]   = useState(phone || '');
+  const [phone2,   setPhone2]   = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('ltn-settings') || '{}');
+      return String(saved.manager2Phone || '0364760584');
+    } catch {
+      return '0364760584';
+    }
+  });
 
   useEffect(() => {
     setTeacher1(teacherList[0] || teacher || '');
@@ -369,11 +297,28 @@ export default function SettingsTab({
   const [tplContent, setTplContent]       = useState<string>(templates[0]?.content || DEFAULT_TEMPLATE.content);
   const [copiedVar, setCopiedVar]         = useState('');
   const [showDeleteTpl, setShowDeleteTpl] = useState(false);
-  const [activeSection, setActiveSection] = useState('center');
   const isMobile = useIsMobile();
 
   useEffect(() => { setCacheSize(getCacheSize()); }, []);
   useEffect(() => { const t = templates.find(t => t.id === activeTplId); if (t) setTplContent(t.content); }, [activeTplId, templates]);
+
+  const currentSettingsKey = JSON.stringify({
+    bankId, accountNo, accountName, scriptUrl, baseTuition, schoolYear, tuitionDueDay,
+    teacher1, teacher2, addr1, addr2, phone1, phone2,
+    templates, tplContent, sheetsUrl, docUrl,
+  });
+  const [lastSavedKey, setLastSavedKey] = useState(currentSettingsKey);
+  const hasUnsavedChanges = currentSettingsKey !== lastSavedKey;
+
+  type SettingIssue = { label: string; detail: string; tone: 'danger' | 'warning'; section: string };
+  const settingIssues: SettingIssue[] = [];
+  if (!scriptUrl.trim()) settingIssues.push({ label: 'Thiếu Script URL', detail: 'App chưa có nguồn đồng bộ Google Sheets.', tone: 'danger', section: 'system' });
+  else if (!scriptUrl.trim().startsWith('https://script.google.com/macros/s/')) settingIssues.push({ label: 'Script URL chưa chuẩn', detail: 'URL nên bắt đầu bằng link Web App của Google Apps Script.', tone: 'warning', section: 'system' });
+  if (baseTuition <= 0) settingIssues.push({ label: 'Học phí chưa hợp lệ', detail: 'Mức học phí mặc định phải lớn hơn 0.', tone: 'danger', section: 'finance' });
+  if (!/^\d{4}-\d{4}$/.test(schoolYear.trim())) settingIssues.push({ label: 'Niên khóa sai định dạng', detail: 'Dùng dạng 2026-2027.', tone: 'warning', section: 'finance' });
+  if (tuitionDueDay < 1 || tuitionDueDay > 31) settingIssues.push({ label: 'Hạn đóng chưa hợp lệ', detail: 'Hạn đóng học phí phải từ ngày 1 đến 31.', tone: 'danger', section: 'finance' });
+  if (!bankId.trim() || !accountNo.trim() || !accountName.trim()) settingIssues.push({ label: 'Thiếu thông tin ngân hàng', detail: 'QR/phiếu thu cần đủ Bank ID, STK và chủ tài khoản.', tone: 'warning', section: 'finance' });
+  if (!teacher1.trim()) settingIssues.push({ label: 'Thiếu giáo viên chính', detail: 'Thông tin này dùng cho phiếu thu và dữ liệu mặc định.', tone: 'warning', section: 'center' });
 
   /* ── Handlers ─────────────────────────────────────────────────── */
   const handleLoadData = () => {
@@ -404,12 +349,15 @@ export default function SettingsTab({
     if (!/^\d{4}-\d{4}$/.test(schoolYear.trim())) {
       toast.error('Niên khóa phải có định dạng YYYY-YYYY, ví dụ 2026-2027'); return;
     }
+    const defaultCenterName = 'LỚP TOÁN NK';
     const newTeacherList = [teacher1, teacher2].filter(Boolean);
+    setCenterName(defaultCenterName);
     setTeacherList(newTeacherList); setTeacher(teacher1); setPhone(phone1); setZaloTpl(tplContent);
-    saveSettings({ baseTuition, schoolYear, tuitionDueDay, zaloTpl: tplContent, bankId, accountNo, accountName, scriptUrl, centerName, teacher: teacher1, addr1, addr2, phone: phone1, hideInactive, caDayOptions, teacherList: newTeacherList });
+    saveSettings({ baseTuition, schoolYear, tuitionDueDay, zaloTpl: tplContent, bankId, accountNo, accountName, scriptUrl, centerName: defaultCenterName, teacher: teacher1, addr1, addr2, phone: phone1, manager2Phone: phone2, hideInactive, caDayOptions, teacherList: newTeacherList });
     saveTemplates(templates);
     try { localStorage.setItem('ltn-sheetsUrl', sheetsUrl); } catch {}
     try { localStorage.setItem('ltn-docUrl', docUrl); } catch {}
+    setLastSavedKey(currentSettingsKey);
     toast.success('Đã lưu cài đặt');
   };
 
@@ -440,116 +388,56 @@ export default function SettingsTab({
   const activeTpl = templates.find(t => t.id === activeTplId);
   // FIX: xoá activeNav — computed nhưng không dùng ở đâu trong JSX
 
-  /* ── Nav config ───────────────────────────────────────────────── */
-  const navItems = [
-    { id: 'center',        icon: School,        label: 'Trung tâm',  accent: '#0ea5e9' },
-    { id: 'finance',       icon: DollarSign,    label: 'Tài chính',  accent: '#059669' },
-    { id: 'operations',    icon: Clock,         label: 'Vận hành',   accent: '#d97706' },
-    { id: 'notifications', icon: MessageSquare, label: 'Thông báo',  accent: '#06b6d4' },
-    { id: 'system',        icon: Plug,          label: 'Hệ thống',   accent: '#6366f1' },
-  ];
-
   const connColor = gsOk === true ? '#059669' : gsOk === false ? '#e11d48' : '#64748b';
   const connBg    = gsOk === true ? '#ecfdf5' : gsOk === false ? '#fff1f2' : '#f8fafc';
   const connText  = gsOk === true ? 'Kết nối thành công' : gsOk === false ? 'Lỗi kết nối' : 'Đang kiểm tra...';
+  const cacheTimeText = cacheMeta?.cachedAt
+    ? new Date(cacheMeta.cachedAt).toLocaleString('vi-VN')
+    : 'Chưa có metadata cache';
+  const syncText =
+    syncState === 'syncing' ? 'Đang đồng bộ'
+      : syncState === 'cache' ? 'Đang dùng dữ liệu lưu gần nhất'
+        : syncState === 'error' ? 'Chưa đồng bộ được'
+          : syncState === 'fresh' ? 'Dữ liệu mới từ Google Sheets'
+            : 'Sẵn sàng';
 
   return (
-    <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 0 : 18, alignItems: 'flex-start' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: isMobile ? 96 : 0 }}>
+      <style>{`
+        .settings-command-grid{display:grid;grid-template-columns:minmax(220px,1fr) auto;gap:12px;align-items:center}
+        .settings-zalo-grid{display:grid;grid-template-columns:260px minmax(0,1fr) 300px;gap:14px;align-items:start}
+        @media(max-width:1180px){.settings-command-grid{grid-template-columns:1fr}.settings-zalo-grid{grid-template-columns:230px minmax(0,1fr)}.settings-zalo-preview{grid-column:1 / -1;position:static!important}}
+        @media(max-width:767px){.settings-command-grid{grid-template-columns:1fr}.settings-zalo-grid{grid-template-columns:1fr}}
+      `}</style>
 
-      {/* ── NAV: Sidebar on desktop / Horizontal scroll tabs on mobile ── */}
-      {isMobile ? (
-        /* ── Mobile: horizontal scroll tab bar ── */
-        <div style={{ position: 'sticky', top: 0, zIndex: 50, background: 'white', borderBottom: '1px solid #e8edf2', marginBottom: 12 }}>
-          <div style={{ display: 'flex', overflowX: 'auto', gap: 0, scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
-            {navItems.map(item => {
-              const isActive = activeSection === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveSection(item.id)}
-                  style={{
-                    flexShrink: 0,
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-                    padding: '10px 14px',
-                    background: 'white',
-                    border: 'none',
-                    borderBottom: isActive ? `2.5px solid ${item.accent}` : '2.5px solid transparent',
-                    cursor: 'pointer',
-                    color: isActive ? item.accent : '#94a3b8',
-                    minWidth: 60,
-                    transition: 'all 0.12s',
-                  }}
-                >
-                  <div style={{ position: 'relative' }}>
-                    <item.icon size={16} color={isActive ? item.accent : '#94a3b8'} />
-                    {item.id === 'system' && (
-                      <span style={{ position: 'absolute', top: -2, right: -3, width: 6, height: 6, borderRadius: '50%', background: connColor, border: '1px solid white' }} />
-                    )}
-                  </div>
-                  <span style={{ fontSize: 10, fontWeight: isActive ? 700 : 500, whiteSpace: 'nowrap' }}>{item.label}</span>
-                </button>
-              );
-            })}
+      <div style={{ borderRadius: 14, border: '1px solid #e2e8f0', background: 'white', boxShadow: '0 12px 32px rgba(15,23,42,0.06)', overflow: 'hidden' }}>
+        <div className="settings-command-grid" style={{ padding: isMobile ? 14 : 16, borderBottom: '1px solid #eef2f7', background: '#fbfdff' }}>
+          <div>
+            <p style={{ margin: 0, fontSize: 11, fontWeight: 900, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Trung tâm cấu hình</p>
+            <h2 style={{ margin: '4px 0 0', fontSize: isMobile ? 21 : 24, fontWeight: 950, color: '#0f172a', letterSpacing: 0 }}>CÀI ĐẶT</h2>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: isMobile ? 'stretch' : 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+            <InfoPill tone={gsOk === true ? 'green' : gsOk === false ? 'amber' : 'slate'}>{connText}</InfoPill>
+            <InfoPill tone={syncState === 'cache' ? 'amber' : syncState === 'error' ? 'amber' : syncState === 'fresh' ? 'green' : 'blue'}>{syncText}</InfoPill>
+            {settingIssues.length > 0 && <InfoPill tone="amber">{settingIssues.length} cảnh báo</InfoPill>}
+            <Button intent="neutral" variant="outline" size="sm" icon={<RefreshCw size={13} />} loading={saving} onClick={handleLoadData}>Tải dữ liệu</Button>
+            <Button intent={hasUnsavedChanges ? 'primary' : 'success'} size="sm" icon={<Save size={13} />} loading={saving} onClick={handleSaveAll}>
+              {hasUnsavedChanges ? 'Lưu thay đổi' : 'Đã lưu'}
+            </Button>
           </div>
         </div>
-      ) : (
-        /* ── Desktop: vertical sidebar ── */
-        <div style={{ width: 172, flexShrink: 0, position: 'sticky', top: 20, display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={{
-            borderRadius: RADIUS, border: '1px solid #e2e8f0',
-            overflow: 'hidden', background: 'white',
-            boxShadow: '0 1px 4px rgba(0,0,0,0.05)', marginBottom: 4,
-          }}>
-            <div style={{ padding: '10px 14px', background: '#F5F7FA', borderBottom: '1px solid #e8edf2' }}>
-              <p style={{ fontSize: 10, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.1em', margin: 0 }}>Cài đặt</p>
-            </div>
-            {navItems.map(item => {
-              const isActive = activeSection === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveSection(item.id)}
-                  style={{
-                    width: '100%', display: 'flex', alignItems: 'center', gap: 9,
-                    padding: '10px 14px',
-                    background: isActive ? item.accent + '12' : 'white',
-                    border: 'none',
-                    borderBottom: '1px solid #f1f5f9',
-                    borderLeft: isActive ? `3px solid ${item.accent}` : '3px solid transparent',
-                    cursor: 'pointer', textAlign: 'left',
-                    fontWeight: isActive ? 700 : 500,
-                    fontSize: 13,
-                    color: isActive ? item.accent : '#475569',
-                    transition: 'all 0.12s',
-                  }}
-                >
-                  <item.icon size={13} color={isActive ? item.accent : '#94a3b8'} />
-                  <span style={{ flex: 1 }}>{item.label}</span>
-                  {item.id === 'system' && (
-                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: connColor, flexShrink: 0 }} />
-                  )}
-                </button>
-              );
-            })}
-          </div>
-          <Button intent="primary" fullWidth icon={<Save size={14} />} loading={saving} onClick={handleSaveAll} style={{ borderRadius: 9, fontWeight: 700 }}>
-            Lưu cài đặt
-          </Button>
-        </div>
-      )}
 
-      {/* ── Main content ─────────────────────────────────────────── */}
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14, paddingBottom: isMobile ? 80 : 0 }}>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
         {/* ── HỆ THỐNG ── */}
-        {activeSection === 'system' && (
+        {(
           <SCard icon={Plug} title="Hệ thống & kết nối" accent="#6366f1">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-              <LField
-                label="Apps Script URL"
-                hint="URL triển khai Web App dùng để đọc/ghi dữ liệu. Chỉ chỉnh khi thay đổi nguồn dữ liệu."
-              >
+              <LField label="Apps Script URL">
                 <input value={scriptUrl} onChange={e => setScriptUrl(e.target.value)} placeholder="https://script.google.com/macros/s/..." style={INP} />
               </LField>
 
@@ -574,10 +462,10 @@ export default function SettingsTab({
 
               {/* Sheets + Doc links */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <LField label="Google Sheet ID / URL" hint="Có thể lưu ID hoặc link Google Sheets gốc để quản lý nhanh. Không ảnh hưởng Apps Script.">
+                <LField label="Google Sheet ID / URL">
                   <input value={sheetsUrl} onChange={e => setSheetsUrl(e.target.value)} placeholder="https://docs.google.com/spreadsheets/..." style={INP} />
                 </LField>
-                <LField label="Google Doc URL" hint="Tùy chọn, dùng để ghi nhớ mẫu in/báo cáo nếu có.">
+                <LField label="Google Doc URL">
                   <input value={docUrl} onChange={e => setDocUrl(e.target.value)} placeholder="https://docs.google.com/document/..." style={INP} />
                 </LField>
               </div>
@@ -596,62 +484,91 @@ export default function SettingsTab({
                   )}
                 </div>
               )}
+
+              <div style={{ borderTop: '1px dashed #e2e8f0', paddingTop: 14, display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 10 }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                  padding: '12px 14px', background: '#f8fafc',
+                  border: '1px solid #e2e8f0', borderRadius: 9,
+                }}>
+                  <div>
+                    <p style={{ fontSize: 13, fontWeight: 800, color: '#374151', margin: 0 }}>Cache offline</p>
+                    <p style={{ fontSize: 11, color: '#94a3b8', margin: '3px 0 0' }}>Dữ liệu lưu tạm từ Google Sheets</p>
+                    <p style={{ fontSize: 11, color: '#64748b', margin: '3px 0 0' }}>Cập nhật: {cacheTimeText}</p>
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <p style={{ fontSize: 15, fontWeight: 900, color: '#6366f1', margin: '0 0 4px' }}>{cacheSize || '…'}</p>
+                    <button
+                      onClick={handleClearCache}
+                      style={{ fontSize: 12, color: '#e11d48', fontWeight: 800, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                    >
+                      Xóa cache
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                  padding: '12px 14px', background: '#f8fafc',
+                  border: '1px solid #e2e8f0', borderRadius: 9,
+                }}>
+                  <div>
+                    <p style={{ fontSize: 13, fontWeight: 800, color: '#374151', margin: 0 }}>Cài đặt ứng dụng</p>
+                    <p style={{ fontSize: 11, color: '#94a3b8', margin: '3px 0 0' }}>Lưu trong trình duyệt hiện tại</p>
+                  </div>
+                  <button
+                    onClick={handleResetSettings}
+                    style={{ fontSize: 12, color: '#e11d48', fontWeight: 800, background: '#fff1f2', border: '1px solid #fecaca', padding: '6px 12px', cursor: 'pointer', borderRadius: 7, flexShrink: 0 }}
+                  >
+                    Reset
+                  </button>
+                </div>
+              </div>
             </div>
           </SCard>
         )}
 
         {/* ── TRUNG TÂM ── */}
-        {activeSection === 'center' && (
+        {(
           <SCard icon={School} title="Thông tin trung tâm" accent="#0ea5e9">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <FormGrid>
-                <LField label="Tên"><input value={centerName} onChange={e => setCenterName(e.target.value)} placeholder="LỚP TOÁN NK" style={{ ...INP, textTransform: 'uppercase' }} /></LField>
-                <LField label="SĐT/Zalo"><input value={phone1} onChange={e => setPhone1(e.target.value)} placeholder="0383634949" style={INP} /></LField>
-                <LField label="Địa chỉ cơ sở 1"><input value={addr1} onChange={e => setAddr1(e.target.value)} placeholder="15/80 Đào Tấn" style={INP} /></LField>
-                <LField label="Địa chỉ cơ sở 2"><input value={addr2} onChange={e => setAddr2(e.target.value)} placeholder="30 Nguyễn Quang Bích" style={INP} /></LField>
-                <LField label="Giáo viên/Người quản lý chính" hint="Dùng làm thông tin mặc định trên phiếu/in ấn và dữ liệu legacy.">
-                  <input value={teacher1} onChange={e => setTeacher1(e.target.value)} placeholder="Lê Đức Nhân" style={INP} />
-                </LField>
-                <LField label="Giáo viên/Quản lý phụ" hint="Tùy chọn, chỉ lưu trong cài đặt trình duyệt.">
-                  <input value={teacher2} onChange={e => setTeacher2(e.target.value)} placeholder="Nguyễn Thị Kiên" style={INP} />
-                </LField>
-              </FormGrid>
-            </div>
-          </SCard>
-        )}
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
+                <section style={{ border: '1px solid #dbeafe', borderRadius: 12, background: '#f8fbff', padding: 14, display: 'grid', gap: 12 }}>
+                  <div>
+                    <p style={{ margin: 0, fontSize: 11, fontWeight: 900, color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Quản lý Nguyễn Quang Bích</p>
+                  </div>
+                  <LField label="Giáo viên/Quản lý">
+                    <input value={teacher1} onChange={e => setTeacher1(e.target.value)} placeholder="Lê Đức Nhân" style={INP} />
+                  </LField>
+                  <LField label="SĐT/Zalo">
+                    <input value={phone1} onChange={e => setPhone1(e.target.value)} placeholder="0383634949" style={INP} />
+                  </LField>
+                  <LField label="Cơ sở">
+                    <input value={addr2} onChange={e => setAddr2(e.target.value)} placeholder="30 Nguyễn Quang Bích" style={INP} />
+                  </LField>
+                </section>
 
-        {/* ── VẬN HÀNH ── */}
-        {activeSection === 'operations' && (
-          <SCard icon={Clock} title="Vận hành buổi học" accent="#d97706">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-              <div>
-                <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 10px' }}>Trạng thái điểm danh</p>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <InfoPill tone="green">Có mặt</InfoPill>
-                  <InfoPill tone="amber">Có phép</InfoPill>
-                  <InfoPill>Vắng</InfoPill>
-                </div>
-                <p style={{ fontSize: 11, color: '#94a3b8', margin: '8px 0 0', fontStyle: 'italic' }}>
-                  Ba trạng thái này là chuẩn nghiệp vụ hiện tại. Chưa hỗ trợ thêm trạng thái mới trong Cài đặt để tránh lệch dữ liệu điểm danh.
-                </p>
-              </div>
-              <div style={{ borderTop: '1px dashed #e2e8f0', paddingTop: 14 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-                  <Clock size={12} color="#64748b" />
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Ca dạy</span>
-                </div>
-                <TagList items={caDayOptions} setItems={setCaDayOptions} placeholder="Thêm ca (VD: 7h30, 19h30)..." />
-              </div>
-              <div style={{ borderTop: '1px dashed #e2e8f0', paddingTop: 14 }}>
-                <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 10px' }}>Tùy chọn dữ liệu</p>
-                <ToggleRow label="Ẩn học sinh đã nghỉ học theo mặc định" sub="Áp dụng cho các danh sách có lọc trạng thái học sinh." val={hideInactive} onChange={setHideInactive} />
+                <section style={{ border: '1px solid #ccfbf1', borderRadius: 12, background: '#f0fdfa', padding: 14, display: 'grid', gap: 12 }}>
+                  <div>
+                    <p style={{ margin: 0, fontSize: 11, fontWeight: 900, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Quản lý Đào Tấn</p>
+                  </div>
+                  <LField label="Giáo viên/Quản lý">
+                    <input value={teacher2} onChange={e => setTeacher2(e.target.value)} placeholder="Nguyễn Thị Kiên" style={INP} />
+                  </LField>
+                  <LField label="SĐT/Zalo">
+                    <input value={phone2} onChange={e => setPhone2(e.target.value)} placeholder="0364760584" style={INP} />
+                  </LField>
+                  <LField label="Cơ sở">
+                    <input value={addr1} onChange={e => setAddr1(e.target.value)} placeholder="15/80 Đào Tấn" style={INP} />
+                  </LField>
+                </section>
               </div>
             </div>
           </SCard>
         )}
 
         {/* ── TÀI CHÍNH ── */}
-        {activeSection === 'finance' && (
+        {(
           <SCard icon={DollarSign} title="Học phí & Niên khóa" accent="#059669">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               <FormGrid>
@@ -665,12 +582,22 @@ export default function SettingsTab({
                   <input type="number" value={tuitionDueDay} onChange={e => setTuitionDueDay(Number(e.target.value))} placeholder="15" style={INP} min={1} max={31} />
                 </LField>
               </FormGrid>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 8 }}>
+                <div style={{ padding: '10px 12px', borderRadius: 10, border: '1px solid #bbf7d0', background: '#ecfdf5' }}>
+                  <p style={{ margin: 0, fontSize: 12, fontWeight: 900, color: '#047857' }}>Lớp 2 buổi/tuần</p>
+                  <p style={{ margin: '3px 0 0', fontSize: 11, fontWeight: 700, color: '#64748b' }}>Đến kỳ ở 8/8, quá hạn khi vượt 8 buổi.</p>
+                </div>
+                <div style={{ padding: '10px 12px', borderRadius: 10, border: '1px solid #bfdbfe', background: '#eff6ff' }}>
+                  <p style={{ margin: 0, fontSize: 12, fontWeight: 900, color: '#1d4ed8' }}>Lớp 3 buổi/tuần</p>
+                  <p style={{ margin: '3px 0 0', fontSize: 11, fontWeight: 700, color: '#64748b' }}>Đến kỳ ở 12/12, quá hạn khi vượt 12 buổi.</p>
+                </div>
+              </div>
             </div>
           </SCard>
         )}
 
         {/* ── NGÂN HÀNG ── */}
-        {activeSection === 'finance' && (
+        {(
           <SCard icon={Landmark} title="Ngân hàng (VietQR)" accent="#d97706">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <FormGrid>
@@ -695,73 +622,80 @@ export default function SettingsTab({
         )}
 
         {/* ── THÔNG BÁO ── */}
-        {activeSection === 'notifications' && (
+        {(
           <SCard icon={MessageSquare} title="Mẫu tin nhắn Zalo" accent="#06b6d4">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <InfoPill tone="blue">Nhắc phí</InfoPill>
-                <InfoPill tone="amber">Vắng học</InfoPill>
-                <InfoPill tone="green">Thông báo lịch</InfoPill>
-              </div>
+            <div className="settings-zalo-grid">
+              <section style={{ display: 'grid', gap: 8, minWidth: 0 }}>
+                <p style={{ margin: 0, fontSize: 11, fontWeight: 900, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Mẫu đang dùng</p>
+                {templates.map(t => {
+                  const active = t.id === activeTplId;
+                  return (
+                    <button key={t.id} type="button" onClick={() => setActiveTplId(t.id)} style={{ width: '100%', minWidth: 0, padding: isMobile ? '9px 11px' : '10px 11px', borderRadius: 10, border: `1.5px solid ${active ? '#06b6d4' : '#e2e8f0'}`, background: active ? '#ecfeff' : 'white', textAlign: 'left', cursor: 'pointer', overflow: 'hidden' }}>
+                      <span style={{ display: 'block', fontSize: 13, fontWeight: 900, color: active ? '#0e7490' : '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
+                      <span style={{ display: isMobile ? 'none' : 'block', marginTop: 3, fontSize: 11, fontWeight: 700, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.content}</span>
+                    </button>
+                  );
+                })}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}>
+                  <Button size="sm" intent="primary" icon={<Plus size={13} />} onClick={() => { setEditingTpl(null); setShowTplModal(true); }}>Thêm</Button>
+                  <Button size="sm" intent="warning" variant="outline" icon={<Edit3 size={13} />} onClick={() => { setEditingTpl(activeTpl || null); setShowTplModal(true); }}>Sửa</Button>
+                </div>
+                {templates.length > 1 && <Button size="sm" intent="danger" variant="outline" icon={<Trash2 size={13} />} onClick={() => setShowDeleteTpl(true)}>Xóa mẫu đang chọn</Button>}
+              </section>
 
-              {/* Template selector */}
-              <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center' }}>
-                <select
-                  value={activeTplId}
-                  onChange={e => setActiveTplId(e.target.value)}
-                  style={{ flex: 1, minWidth: 0, ...INP }}
-                >
-                  {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
-                <Button size="sm" intent="primary" icon={<Plus size={13} />} onClick={() => { setEditingTpl(null); setShowTplModal(true); }}>Thêm</Button>
-                <Button size="sm" intent="warning" variant="outline" icon={<Edit3 size={13} />} onClick={() => { setEditingTpl(activeTpl || null); setShowTplModal(true); }}>Sửa</Button>
-                {templates.length > 1 && <Button size="sm" intent="danger" variant="outline" icon={<Trash2 size={13} />} onClick={() => setShowDeleteTpl(true)}>Xóa</Button>}
-              </div>
-
-              {/* Content editor */}
-              <LField label="Nội dung mẫu">
-                <textarea
-                  value={tplContent}
-                  onChange={e => { setTplContent(e.target.value); setTemplates(ts => ts.map(t => t.id === activeTplId ? { ...t, content: e.target.value } : t)); }}
-                  rows={4}
-                  style={{ ...INP, resize: 'vertical' }}
-                  placeholder="Nội dung tin nhắn..."
-                />
-              </LField>
-
-              {/* Variables */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center' }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', marginRight: 2 }}>Chèn biến:</span>
-                {VARS.map(v => (
-                  <button
-                    key={v}
-                    onClick={() => insertVar(v)}
-                    style={{
-                      fontSize: 11, fontWeight: 700, fontFamily: 'monospace', padding: '6px 12px',
-                      border: '1px solid', borderRadius: 6, cursor: 'pointer',
-                      background: copiedVar === v ? '#10b981' : '#f8fafc',
-                      color: copiedVar === v ? 'white' : '#4338ca',
-                      borderColor: copiedVar === v ? '#10b981' : '#c7d2fe',
-                      transition: 'all 0.15s',
-                    }}
-                  >
-                    {copiedVar === v ? <Check size={10} /> : null}{v}
-                  </button>
-                ))}
-              </div>
-
-              <div style={{ padding: 12, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8 }}>
-                <p style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 8px' }}>
-                  Xem trước
+              <section style={{ display: 'grid', gap: 10, minWidth: 0 }}>
+                <LField label="Nội dung mẫu">
+                  <textarea
+                    value={tplContent}
+                    onChange={e => { setTplContent(e.target.value); setTemplates(ts => ts.map(t => t.id === activeTplId ? { ...t, content: e.target.value } : t)); }}
+                    rows={9}
+                    style={{ ...INP, resize: 'vertical', minHeight: 224, lineHeight: 1.55 }}
+                    placeholder="Nội dung tin nhắn..."
+                  />
+                </LField>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', padding: '8px 10px', borderRadius: 10, background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: '#64748b', marginRight: 2 }}>Chèn biến</span>
+                  {VARS.map(v => (
+                    <button
+                      key={v}
+                      onClick={() => insertVar(v)}
+                      style={{
+                        fontSize: 11, fontWeight: 800, fontFamily: 'monospace', padding: '6px 10px',
+                        border: '1px solid', borderRadius: 7, cursor: 'pointer',
+                        background: copiedVar === v ? '#10b981' : '#f8fafc',
+                        color: copiedVar === v ? 'white' : '#4338ca',
+                        borderColor: copiedVar === v ? '#10b981' : '#c7d2fe',
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      {copiedVar === v ? <Check size={10} /> : null}{v}
+                    </button>
+                  ))}
+                </div>
+                <p style={{ fontSize: 12, color: '#64748b', margin: 0, lineHeight: 1.45 }}>
+                  Biến hỗ trợ: [Ten], [Lop], [Thang], [Nam], [SoTien], [Ngay]. Nội dung chỉ được copy/mở Zalo ở tab Tài chính, chưa gửi hàng loạt tự động.
                 </p>
-                <p style={{ fontSize: 13, lineHeight: 1.6, color: '#334155', margin: 0, whiteSpace: 'pre-wrap' }}>
-                  {renderZaloPreview(tplContent)}
+              </section>
+
+              <section className="settings-zalo-preview" style={{ padding: 14, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, position: 'sticky', top: 12, minWidth: 0 }}>
+                <p style={{ fontSize: 11, fontWeight: 900, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 10px' }}>
+                  Xem trước tin nhắn
                 </p>
-              </div>
+                <div style={{ borderRadius: 12, background: 'white', border: '1px solid #e2e8f0', padding: 12 }}>
+                  <p style={{ fontSize: 13, lineHeight: 1.65, color: '#334155', margin: 0, whiteSpace: 'pre-wrap' }}>
+                    {renderZaloPreview(tplContent)}
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 10 }}>
+                  <InfoPill tone="blue">Nhắc phí</InfoPill>
+                  <InfoPill tone="amber">Vắng học</InfoPill>
+                  <InfoPill tone="green">Lịch học</InfoPill>
+                </div>
+              </section>
 
               {/* Delete confirm */}
               {showDeleteTpl && (
-                <div style={{ padding: 14, background: '#fff1f2', border: '1px solid #fecaca', borderRadius: 8 }}>
+                <div style={{ gridColumn: '1 / -1', padding: 14, background: '#fff1f2', border: '1px solid #fecaca', borderRadius: 8 }}>
                   <p style={{ fontSize: 13, fontWeight: 600, color: '#be123c', margin: '0 0 10px' }}>Xóa mẫu "<b>{activeTpl?.name}</b>"?</p>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <Button variant="outline" intent="neutral" fullWidth onClick={() => setShowDeleteTpl(false)}>Hủy</Button>
@@ -770,79 +704,12 @@ export default function SettingsTab({
                 </div>
               )}
 
-              <p style={{ fontSize: 12, color: '#94a3b8', margin: 0 }}>
-                Biến hỗ trợ: [Ten], [Lop], [Thang], [Nam], [SoTien], [Ngay]. Nội dung chỉ được copy/mở Zalo ở tab Tài chính, chưa gửi hàng loạt tự động.
-              </p>
               <TemplateModal open={showTplModal} onClose={() => { setShowTplModal(false); setEditingTpl(null); }} initial={editingTpl} onSave={handleSaveTpl} />
             </div>
           </SCard>
         )}
 
-        {/* ── DỮ LIỆU ── */}
-        {activeSection === 'system' && (
-          <SCard icon={Database} title="Dữ liệu hệ thống" accent="#dc2626">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-
-              {/* Cache row */}
-              <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '14px 16px', background: '#f8fafc',
-                border: '1px solid #e2e8f0', borderRadius: 9,
-              }}>
-                <div>
-                  <p style={{ fontSize: 13, fontWeight: 700, color: '#374151', margin: 0 }}>Cache offline</p>
-                  <p style={{ fontSize: 11, color: '#94a3b8', margin: '3px 0 0' }}>Dữ liệu lưu tạm từ Google Sheets</p>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <p style={{ fontSize: 17, fontWeight: 800, color: '#6366f1', margin: '0 0 4px' }}>{cacheSize || '…'}</p>
-                  <button
-                    onClick={handleClearCache}
-                    style={{ fontSize: 12, color: '#e11d48', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                  >
-                    Xóa cache
-                  </button>
-                </div>
-              </div>
-
-              {/* Settings row */}
-              <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '14px 16px', background: '#f8fafc',
-                border: '1px solid #e2e8f0', borderRadius: 9,
-              }}>
-                <div>
-                  <p style={{ fontSize: 13, fontWeight: 700, color: '#374151', margin: 0 }}>Cài đặt ứng dụng</p>
-                  <p style={{ fontSize: 11, color: '#94a3b8', margin: '3px 0 0' }}>Lưu trong localStorage của trình duyệt</p>
-                </div>
-                <button
-                  onClick={handleResetSettings}
-                  style={{ fontSize: 12, color: '#e11d48', fontWeight: 700, background: '#fff1f2', border: '1px solid #fecaca', padding: '6px 14px', cursor: 'pointer', borderRadius: 7 }}
-                >
-                  Reset cài đặt
-                </button>
-              </div>
-
-              <p style={{ fontSize: 11, color: '#cbd5e1', margin: '4px 0 0', textAlign: 'right' }}>v27.1 · Lớp Toán NK</p>
-            </div>
-          </SCard>
-        )}
-
       </div>
-
-      {/* ── Mobile sticky save bar ─────────────────────────────── */}
-      {isMobile && (
-        <div style={{
-          position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 60,
-          padding: '10px 16px',
-          background: 'white',
-          borderTop: '1px solid #e8edf2',
-          boxShadow: '0 -4px 20px rgba(0,0,0,0.1)',
-        }}>
-          <Button intent="primary" fullWidth icon={<Save size={14} />} loading={saving} onClick={handleSaveAll} style={{ borderRadius: 9, fontWeight: 700, height: 46 }}>
-            Lưu cài đặt
-          </Button>
-        </div>
-      )}
 
       <ConfirmDialog />
     </div>

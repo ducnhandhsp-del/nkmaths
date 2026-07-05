@@ -110,6 +110,14 @@ export interface SummaryData {
   chart:        ChartDataPoint[];
 }
 
+export interface CacheMeta {
+  cachedAt: string;
+  source:   'gas' | 'cache';
+  version:  number;
+}
+
+export type DataSyncState = 'idle' | 'syncing' | 'fresh' | 'cache' | 'error';
+
 export interface DeleteTarget {
   type: 'student' | 'payment' | 'expense' | 'lead' | 'teacher' | 'class' | 'material';
   id:   string;

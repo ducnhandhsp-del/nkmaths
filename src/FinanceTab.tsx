@@ -12,18 +12,25 @@
  * ✅ [v28.2] Chi tiêu: phân trang tương tự Sổ cái
  * ✅ [v28.2] Zalo: thêm nút copy message vào clipboard
  */
-import React, { useMemo, useState, useCallback, useEffect } from 'react';
-import { Plus, Copy, Check, TrendingDown, TrendingUp, Wallet, AlertTriangle, MessageCircle } from 'lucide-react';
-import { fmtVND, capitalizeName, parseDMY, isStudentActive, normalizePaymentMethod, resolveTeacher, buildSchoolYearMonths } from './helpers';
+import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
+import { Plus, Check, TrendingDown, TrendingUp, Wallet, AlertTriangle, MessageCircle, ReceiptText } from 'lucide-react';
+import { fmtVND, capitalizeName, isStudentActive, normalizePaymentMethod, resolveTeacher, buildSchoolYearMonths } from './helpers';
+import {
+  classIdOf,
+  getPaymentTuitionPeriod,
+  getTuitionCycleState,
+  isStudentBillableInMonth,
+  parsePeriod,
+} from './measures';
 import { Badge, Button, Pager, Select } from './dsComponents';
-import { ActionableKpi, ActionableKpiGrid, DataTable, DateText, EmptyState, MobileCard, MoneyText, MonthText, PageToolbar, StatusBadge, ToolbarTabs } from './uiSystem';
-import type { Payment, Expense, Student, FinanceSub } from './types';
+import { ActionableKpi, ActionableKpiGrid, DataTable, DateText, EmptyState, MobileCompactCard, MoneyText, MonthText, PageToolbar, StatusBadge, ToolbarTabs } from './uiSystem';
+import type { Payment, Expense, Student, FinanceSub, TeachingLog } from './types';
 
 interface Props {
   financeSubtab?: FinanceSub;
   setFinanceSubtab?: (sub: FinanceSub) => void;
   payments: Payment[]; expenses: Expense[];
-  students: Student[]; uClasses: any[];
+  students: Student[]; uClasses: any[]; tlogs: TeachingLog[];
   curMo: number; curYr: number;
   qF: string; setQF: (v: string) => void;
   fMo: string; setFMo: (v: string) => void;
@@ -36,13 +43,13 @@ interface Props {
   baseTuition: number; schoolYear: string; tuitionDueDay: number;
   onViewInvoice: (p: Payment) => void;
   onViewFinance: (s: Student) => void;
-  onShowFAB: (tab?: 'income' | 'expense') => void;
+  onShowFAB: (tab?: 'income' | 'expense', draft?: any) => void;
   onEditPayment: (p: Payment) => void; onDeletePayment: (p: Payment) => void;
   onEditExpense: (e: Expense) => void; onDeleteExpense: (e: Expense) => void;
   onViewExpense: (e: Expense) => void;
 }
 
-type DebtStatus = 'paid' | 'unpaid' | 'overdue' | 'inactive';
+type DebtStatus = 'paid' | 'unpaid' | 'overdue' | 'inactive' | 'due' | 'not_due' | 'no_schedule';
 
 interface DebtTableRow {
   id: string;
@@ -77,36 +84,11 @@ const debtStatusMeta = (status: DebtStatus): { label: string; tone: 'success' | 
   if (status === 'paid') return { label: 'Đã thu', tone: 'success' };
   if (status === 'overdue') return { label: 'Quá hạn', tone: 'danger' };
   if (status === 'inactive') return { label: 'Đã nghỉ', tone: 'neutral' };
+  if (status === 'due') return { label: 'Đến kỳ', tone: 'warning' };
+  if (status === 'no_schedule') return { label: 'Chưa có lịch', tone: 'neutral' };
+  if (status === 'not_due') return { label: 'Chưa đến kỳ', tone: 'neutral' };
   return { label: 'Chưa thu', tone: 'warning' };
 };
-
-/**
- * isMonthBillable — tháng `fm` có phải tháng học sinh phải đóng phí không?
- * - Trước startDate → chưa học → không tính nợ
- * - Sau endDate (nếu có) → đã nghỉ → không tính nợ
- */
-function isMonthBillable(s: Student, fm: { m: number; y: number }): boolean {
-  const monthStart = new Date(fm.y, fm.m - 1, 1).getTime();
-
-  // Kiểm tra startDate
-  const startTs = parseDMY(s.startDate || '');
-  if (startTs) {
-    const d = new Date(startTs);
-    const enrollStart = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
-    if (monthStart < enrollStart) return false;
-  }
-
-  // Kiểm tra endDate
-  const endTs = parseDMY(s.endDate || '');
-  if (endTs && s.endDate !== '---' && s.endDate !== '') {
-    const d = new Date(endTs);
-    const leaveMonth = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
-    // Tháng nghỉ học trở đi không cần đóng nữa
-    if (monthStart >= leaveMonth) return false;
-  }
-
-  return true;
-}
 
 /* ── MonthSelect — picker T/YYYY không phụ thuộc locale ── */
 function MonthSelect({ value, onChange, allowAll = true }: { value: string; onChange: (v: string) => void; allowAll?: boolean }) {
@@ -130,30 +112,9 @@ function MonthSelect({ value, onChange, allowAll = true }: { value: string; onCh
   );
 }
 
-function parseMoYr(raw: string): { m: number; y: number } | null {
-  const s = raw.includes(' - ') ? raw.split(' - ')[1] : raw;
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return { m: parseInt(s.split('/')[1]), y: parseInt(s.split('/')[2]) };
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return { m: parseInt(s.slice(5, 7)), y: parseInt(s.slice(0, 4)) };
-  const ts = parseDMY(raw);
-  if (!ts) return null;
-  const d = new Date(ts);
-  return { m: d.getMonth() + 1, y: d.getFullYear() };
-}
-
-function getPaymentTuitionPeriod(p: Payment): { m: number; y: number } | null {
-  const m = Number(p.thangHP);
-  const y = Number(p.namHP);
-  if (m >= 1 && m <= 12 && y >= 2000) return { m, y };
-  return parseMoYr(p.date || '');
-}
-
 function paymentClassId(p: Payment, students: Student[]): string {
   const raw = p as any;
   return String(raw.maLop || raw.MaLop || raw['Mã Lớp'] || raw.classId || students.find(s => s.id === p.studentId)?.classId || '');
-}
-
-function classIdOf(c: any): string {
-  return String(c?.['Mã Lớp'] || c?.['Mã lớp'] || c?.MaLop || c?.classId || '').trim();
 }
 
 function paymentCollector(p: Payment, students: Student[], classes: any[]): string {
@@ -171,7 +132,7 @@ function paymentCollector(p: Payment, students: Student[], classes: any[]): stri
 export default function FinanceTab({
   financeSubtab,
   setFinanceSubtab,
-  payments, expenses, students, uClasses,
+  payments, expenses, students, uClasses, tlogs,
   curMo, curYr, fMo, setFMo, fTch, setFTch, fFC, setFFC,
   pgF, setPgF, isPaid, baseTuition, schoolYear, tuitionDueDay,
   onViewInvoice, onViewFinance, onShowFAB, onEditPayment, onDeletePayment, onEditExpense, onDeleteExpense, onViewExpense,
@@ -189,6 +150,13 @@ export default function FinanceTab({
   };
   // FIX: dùng isStudentActive từ helpers, nhất quán toàn app
   const activeStudents = useMemo(() => students.filter(isStudentActive), [students]);
+  const [debtFocus, setDebtFocus] = useState<'all' | 'unpaid'>('all');
+  const debtListRef = useRef<HTMLDivElement>(null);
+  const ledgerListRef = useRef<HTMLDivElement>(null);
+  const expenseListRef = useRef<HTMLDivElement>(null);
+  const scrollTo = (ref: React.RefObject<HTMLDivElement | null>) => {
+    window.requestAnimationFrame(() => ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
   // Phân trang sổ cái
   const [pgLedger, setPgLedger] = useState(1);
   const [lFilterMo, setLFilterMo] = useState('');
@@ -223,7 +191,7 @@ export default function FinanceTab({
     const [eFM, eFY] = (eFilterMo || '').split('/').map(Number);
     return expenses.slice().reverse().filter(e => {
       if (eFilterMo) {
-        const r = parseMoYr(e.date || '');
+        const r = parsePeriod(e.date || '');
         if (!r || r.m !== eFM || r.y !== eFY) return false;
       }
       if (eFilterSpender && e.spender !== eFilterSpender) return false;
@@ -257,9 +225,17 @@ export default function FinanceTab({
   }, [schoolYear]);
 
   const currentMonthKey = `${String(curMo).padStart(2,'0')}/${curYr}`;
-  const unpaidNow = useMemo(() => activeStudents.filter(s =>
-    isMonthBillable(s, { m: curMo, y: curYr }) && !isPaid(s.id, curMo, curYr)
-  ).length, [activeStudents, curMo, curYr, isPaid]);
+  const cycleStateOf = useCallback((student: Student) => getTuitionCycleState({
+    student,
+    classes: uClasses,
+    payments,
+    tlogs,
+    baseTuition,
+  }), [baseTuition, payments, tlogs, uClasses]);
+  const unpaidNow = useMemo(() => activeStudents.filter(s => {
+    const state = cycleStateOf(s);
+    return state.status === 'due' || state.status === 'overdue';
+  }).length, [activeStudents, cycleStateOf]);
   useEffect(() => {
     if (fTch) setFTch('');
   }, [fTch, setFTch]);
@@ -274,7 +250,7 @@ export default function FinanceTab({
   const buildDebtRow = useCallback((s: Student): DebtTableRow => {
     const isInactive = s.status === 'inactive' || (s.endDate && s.endDate !== '---' && s.endDate !== '');
     const billableMonths = schoolYearMonths.filter(fm => {
-      if (!isMonthBillable(s, fm)) return false;
+      if (!isStudentBillableInMonth(s, fm)) return false;
       if (fm.y > curYr) return false;
       if (fm.y === curYr && fm.m > curMo) return false;
       return true;
@@ -282,10 +258,12 @@ export default function FinanceTab({
     const unpaidMonths = billableMonths.filter(fm => !isPaid(s.id, fm.m, fm.y));
     const paidCount = billableMonths.length - unpaidMonths.length;
     const paidPct = billableMonths.length > 0 ? Math.round(paidCount / billableMonths.length * 100) : 100;
-    const debtAmount = unpaidMonths.length * baseTuition;
-    const isProblem = !isInactive && unpaidMonths.length > 2;
-    const isWarning = !isInactive && unpaidMonths.length === 2;
-    const status: DebtStatus = isInactive ? 'inactive' : unpaidMonths.length === 0 ? 'paid' : isProblem ? 'overdue' : 'unpaid';
+    const cycleState = cycleStateOf(s);
+    const selectedPeriodPaid = isPaid(s.id, selectedDebtMonth.m, selectedDebtMonth.y);
+    const debtAmount = selectedPeriodPaid || !isStudentBillableInMonth(s, selectedDebtMonth) ? 0 : baseTuition;
+    const isProblem = cycleState.status === 'overdue';
+    const isWarning = cycleState.status === 'due';
+    const status: DebtStatus = selectedPeriodPaid ? 'paid' : cycleState.status === 'not_due' ? 'not_due' : cycleState.status;
     return {
       id: s.id,
       student: s,
@@ -299,22 +277,25 @@ export default function FinanceTab({
       isWarning,
       status,
     };
-  }, [baseTuition, curMo, curYr, isPaid, schoolYearMonths]);
+  }, [baseTuition, curMo, curYr, cycleStateOf, isPaid, schoolYearMonths, selectedDebtMonth]);
   const financeStudents = useMemo(() => {
     return activeStudents.filter(s => {
-      if (!isMonthBillable(s, selectedDebtMonth)) return false;
+      const state = cycleStateOf(s);
+      if (state.status === 'inactive') return false;
       if (fFC && s.classId !== fFC) return false;
+      if (!isStudentBillableInMonth(s, selectedDebtMonth)) return false;
       return true;
     });
-  }, [activeStudents, fFC, selectedDebtMonth]);
+  }, [activeStudents, cycleStateOf, fFC, selectedDebtMonth]);
 
   const debtTableRows = useMemo(() => financeStudents
     .map(buildDebtRow)
+    .filter(row => debtFocus !== 'unpaid' || row.status === 'due' || row.status === 'overdue' || row.status === 'unpaid' || row.status === 'not_due')
     .sort((a, b) => {
-      const rank = (row: DebtTableRow) => row.status === 'overdue' ? 0 : row.status === 'unpaid' ? 1 : row.status === 'paid' ? 2 : 3;
+      const rank = (row: DebtTableRow) => row.status === 'overdue' ? 0 : row.status === 'due' ? 1 : row.status === 'unpaid' ? 2 : row.status === 'not_due' ? 3 : row.status === 'paid' ? 4 : 5;
       return rank(a) - rank(b) || a.student.name.localeCompare(b.student.name, 'vi');
     }),
-  [buildDebtRow, financeStudents]);
+  [buildDebtRow, debtFocus, financeStudents]);
 
   const pagedDebtRows = useMemo(() => debtTableRows.slice((pgF - 1) * IPP, pgF * IPP), [debtTableRows, pgF]);
   const classOptions = useMemo(() => [
@@ -328,15 +309,6 @@ export default function FinanceTab({
       .map(v => ({ value: v, label: v })),
   ], [expenses]);
 
-  const getDebtPeriodAmount = useCallback((row: DebtTableRow) => (
-    isMonthBillable(row.student, selectedDebtMonth) ? baseTuition : 0
-  ), [baseTuition, selectedDebtMonth]);
-
-  const getDebtPeriodPayment = useCallback((row: DebtTableRow) => payments.find(p => {
-    if (p.studentId !== row.student.id) return false;
-    const period = getPaymentTuitionPeriod(p);
-    return period?.m === selectedDebtMonth.m && period?.y === selectedDebtMonth.y;
-  }), [payments, selectedDebtMonth]);
   const normalizedDueDay = Math.min(31, Math.max(1, Number(tuitionDueDay) || 15));
   const debtDueLabel = useCallback(() => {
     const lastDay = new Date(selectedDebtMonth.y, selectedDebtMonth.m, 0).getDate();
@@ -350,11 +322,35 @@ export default function FinanceTab({
     const due = new Date(selectedDebtMonth.y, selectedDebtMonth.m - 1, dueDay, 23, 59, 59, 999);
     return now.getTime() > due.getTime();
   }, [normalizedDueDay, selectedDebtMonth]);
+  const getDebtPeriodAmount = useCallback((row: DebtTableRow) => (
+    isStudentBillableInMonth(row.student, selectedDebtMonth) ? baseTuition : 0
+  ), [baseTuition, selectedDebtMonth]);
+
+  const getDebtPeriodPayment = useCallback((row: DebtTableRow) => payments.find(p => {
+    if (p.studentId !== row.student.id) return false;
+    const period = getPaymentTuitionPeriod(p);
+    return period?.m === selectedDebtMonth.m && period?.y === selectedDebtMonth.y;
+  }), [payments, selectedDebtMonth]);
   const getDebtPeriodStatus = useCallback((row: DebtTableRow): DebtStatus => {
     if (row.isInactive) return 'inactive';
+    if (!isStudentBillableInMonth(row.student, selectedDebtMonth)) return 'inactive';
     if (isPaid(row.student.id, selectedDebtMonth.m, selectedDebtMonth.y)) return 'paid';
-    return isSelectedPeriodPastDue() ? 'overdue' : 'unpaid';
+    return isSelectedPeriodPastDue() ? 'overdue' : 'not_due';
   }, [isPaid, isSelectedPeriodPastDue, selectedDebtMonth]);
+  const getDebtSessionProgress = useCallback((row: DebtTableRow) => {
+    return cycleStateOf(row.student).sessionProgress;
+  }, [cycleStateOf]);
+  const makePaymentDraft = useCallback((row: DebtTableRow) => {
+    const s = row.student;
+    const amount = getDebtPeriodAmount(row) || row.debtAmount || baseTuition;
+    return {
+      maHS: s.id,
+      maLop: s.classId || '',
+      soTien: amount,
+      thangHP: selectedDebtMonth.m,
+      namHP: selectedDebtMonth.y,
+    };
+  }, [baseTuition, getDebtPeriodAmount, selectedDebtMonth]);
 
   const selectedMonthPayments = useMemo(() => {
     return payments.slice().reverse().filter(p => {
@@ -367,7 +363,7 @@ export default function FinanceTab({
 
   const selectedMonthExpenses = useMemo(() => {
     return expenses.slice().reverse().filter(e => {
-      const period = parseMoYr(e.date || '');
+      const period = parsePeriod(e.date || '');
       if (period?.m !== selectedDebtMonth.m || period?.y !== selectedDebtMonth.y) return false;
       return true;
     });
@@ -375,60 +371,74 @@ export default function FinanceTab({
 
   const totalDueAmount = financeStudents.length * baseTuition;
   const collectedAmount = selectedMonthPayments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
-  const remainingAmount = financeStudents.filter(s => !isPaid(s.id, selectedDebtMonth.m, selectedDebtMonth.y)).length * baseTuition;
+  const remainingAmount = Math.max(totalDueAmount - collectedAmount, 0);
   const spentAmount = selectedMonthExpenses.reduce((sum, expense) => sum + (expense.amount || 0), 0);
-  const recentPayments = selectedMonthPayments.slice(0, 5);
-  const recentExpenses = selectedMonthExpenses.slice(0, 5);
 
   const debtColumns = useMemo(() => [
     {
-      key: 'student',
-      label: 'Học sinh',
-      width: '21%',
+      key: 'studentId',
+      label: 'Mã HS',
+      width: '7%',
       render: (_: unknown, row: DebtTableRow) => {
         const s = row.student;
         return (
-          <div style={{ minWidth: 0, opacity: row.isInactive ? 0.62 : 1 }}>
-            <p style={{ margin: 0, fontSize: 14, fontWeight: 900, color: row.isProblem ? '#be123c' : '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {capitalizeName(s.name)}
-            </p>
-            <p style={{ margin: '2px 0 0', fontSize: 11, color: '#94a3b8', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {s.id || '—'}{s.grade ? ` · Khối ${s.grade}` : ''}
-            </p>
-          </div>
+          <span style={{ display: 'block', opacity: row.isInactive ? 0.62 : 1, fontSize: 12, fontWeight: 900, color: s.id ? '#4f46e5' : '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {s.id || '—'}
+          </span>
         );
       },
+    },
+    {
+      key: 'studentName',
+      label: 'Tên học sinh',
+      width: '21%',
+      render: (_: unknown, row: DebtTableRow) => (
+        <span style={{ display: 'block', opacity: row.isInactive ? 0.62 : 1, margin: 0, fontSize: 14, fontWeight: 900, color: row.isProblem ? '#be123c' : '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {capitalizeName(row.student.name)}
+        </span>
+      ),
     },
     {
       key: 'class',
       label: 'Lớp',
       align: 'center' as const,
-      width: '12%',
+      width: '6%',
       render: (_: unknown, row: DebtTableRow) => row.student.classId ? <Badge color="indigo">{row.student.classId}</Badge> : <span style={{ color: '#94a3b8', fontWeight: 800 }}>—</span>,
     },
     {
       key: 'sessions',
       label: 'Số buổi',
       align: 'center' as const,
-      width: '9%',
-      render: () => (
-        <span style={{ color: '#94a3b8', fontWeight: 900 }}>—</span>
-      ),
+      width: '6%',
+      render: (_: unknown, row: DebtTableRow) => {
+        const progress = getDebtSessionProgress(row);
+        const periodStatus = getDebtPeriodStatus(row);
+        if (!progress.target) return <span style={{ color: '#94a3b8', fontWeight: 900 }}>—</span>;
+        const needsReminder = (progress.due || progress.overdue) && periodStatus !== 'paid' && periodStatus !== 'inactive';
+        const sessionStatusLabel = periodStatus === 'overdue' ? 'Quá hạn' : 'Đến kỳ';
+        return (
+          <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 2, color: periodStatus === 'overdue' ? '#be123c' : needsReminder ? '#b45309' : '#334155', fontWeight: 950, fontSize: 12, lineHeight: 1.1 }}>
+            {progress.done}/{progress.target}
+            {needsReminder && <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.04em', color: periodStatus === 'overdue' ? '#e11d48' : '#d97706' }}>{sessionStatusLabel}</span>}
+          </span>
+        );
+      },
     },
     {
       key: 'amount',
       label: 'Thành tiền',
       align: 'right' as const,
-      width: '13%',
-      render: (_: unknown, row: DebtTableRow) => (
-        <MoneyText value={getDebtPeriodAmount(row)} compact tone={row.status === 'paid' ? 'success' : row.status === 'overdue' ? 'danger' : undefined} />
-      ),
+      width: '12%',
+      render: (_: unknown, row: DebtTableRow) => {
+        const periodStatus = getDebtPeriodStatus(row);
+        return <MoneyText value={getDebtPeriodAmount(row)} compact tone={periodStatus === 'paid' ? 'success' : periodStatus === 'overdue' ? 'danger' : undefined} />;
+      },
     },
     {
       key: 'due',
       label: 'Hạn đóng',
       align: 'center' as const,
-      width: '11%',
+      width: '10%',
       render: () => (
         <span style={{ color: '#475569', fontWeight: 900, whiteSpace: 'nowrap' }}>{debtDueLabel()}</span>
       ),
@@ -437,7 +447,7 @@ export default function FinanceTab({
       key: 'status',
       label: 'Trạng thái',
       align: 'center' as const,
-      width: '12%',
+      width: '11%',
       render: (_: unknown, row: DebtTableRow) => {
         const periodStatus = getDebtPeriodStatus(row);
         const meta = debtStatusMeta(periodStatus);
@@ -448,7 +458,7 @@ export default function FinanceTab({
       key: 'actions',
       label: 'Thao tác',
       align: 'center' as const,
-      width: '18%',
+      width: '13%',
       render: (_: unknown, row: DebtTableRow) => {
         const s = row.student;
         const ph = String(s.parentPhone || '').replace(/\D/g, '');
@@ -461,9 +471,17 @@ export default function FinanceTab({
           <div className="ltn-mobile-action-row" onClick={e => e.stopPropagation()} style={{ display: 'flex', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>
             {periodStatus === 'paid' && receipt ? (
               <Button intent="primary" variant="outline" size="sm" onClick={() => onViewInvoice(receipt)}>Biên lai</Button>
-            ) : periodStatus === 'unpaid' || periodStatus === 'overdue' ? (
+            ) : periodStatus === 'unpaid' || periodStatus === 'overdue' || periodStatus === 'due' || periodStatus === 'not_due' ? (
               <>
-                <Button intent="success" variant="outline" size="sm" onClick={() => onShowFAB('income')}>Thu phí</Button>
+                <button
+                  type="button"
+                  aria-label="Thu phí"
+                  title="Thu phí"
+                  onClick={() => onShowFAB('income', makePaymentDraft(row))}
+                  style={{ width: 34, height: 34, padding: 0, borderRadius: 10, background: '#ecfdf5', border: '1px solid #bbf7d0', color: '#047857', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                >
+                  <ReceiptText size={15} />
+                </button>
                 {zaloPhone.length >= 9 && (
                   <a
                     className="ltn-zalo-action"
@@ -471,34 +489,34 @@ export default function FinanceTab({
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => copyMsg(s.id, makeZaloMsg(s, amount))}
-                    title="Copy tin nhắn và mở Zalo"
-                    style={{ minHeight: 34, padding: '7px 11px', borderRadius: 999, border: `1px solid ${copiedId === s.id ? '#a7f3d0' : '#bfdbfe'}`, background: copiedId === s.id ? '#ecfdf5' : '#eef6ff', color: copiedId === s.id ? '#059669' : '#0068ff', fontSize: 12, fontWeight: 900, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, textDecoration: 'none' }}
+                    aria-label={copiedId === s.id ? 'Đã copy tin nhắn' : 'Copy tin nhắn và mở Zalo'}
+                    title={copiedId === s.id ? 'Đã copy tin nhắn' : 'Copy tin nhắn và mở Zalo'}
+                    style={{ width: 34, height: 34, padding: 0, borderRadius: 10, border: `1px solid ${copiedId === s.id ? '#a7f3d0' : '#bfdbfe'}`, background: copiedId === s.id ? '#ecfdf5' : '#eef6ff', color: copiedId === s.id ? '#059669' : '#0068ff', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}
                   >
-                    {copiedId === s.id ? <Check size={12} /> : <MessageCircle size={12} />}
-                    {copiedId === s.id ? 'Đã copy' : 'Zalo'}
+                    {copiedId === s.id ? <Check size={14} /> : <MessageCircle size={14} />}
                   </a>
                 )}
               </>
             ) : (
-              <span style={{ color: '#cbd5e1', fontWeight: 900 }}>—</span>
+              <span title="Không có thao tác khả dụng" aria-label={`Không có thao tác khả dụng cho ${s.name}`} style={{ color: '#cbd5e1', fontWeight: 900 }}>—</span>
             )}
           </div>
         );
       },
     },
-  ], [baseTuition, copiedId, copyMsg, debtDueLabel, getDebtPeriodAmount, getDebtPeriodPayment, getDebtPeriodStatus, makeZaloMsg, onShowFAB, onViewInvoice]);
+  ], [baseTuition, copiedId, copyMsg, debtDueLabel, getDebtPeriodAmount, getDebtPeriodPayment, getDebtPeriodStatus, getDebtSessionProgress, makePaymentDraft, makeZaloMsg, onShowFAB, onViewInvoice]);
 
   const ledgerColumns = useMemo(() => [
     {
       key: 'date',
       label: 'Ngày',
-      width: '12%',
+      width: '11%',
       render: (_: unknown, p: Payment) => <DateText value={p.date} />,
     },
     {
       key: 'student',
       label: 'Học sinh',
-      width: '22%',
+      width: '20%',
       render: (_: unknown, p: Payment) => {
         const st = students.find(s => s.id === p.studentId);
         return (
@@ -514,7 +532,7 @@ export default function FinanceTab({
       key: 'classId',
       label: 'Lớp',
       align: 'center' as const,
-      width: '11%',
+      width: '9%',
       render: (_: unknown, p: Payment) => (
         <StatusBadge domain="general" status="class" label={paymentClassId(p, students) || '—'} tone="violet" dot={false} />
       ),
@@ -523,7 +541,7 @@ export default function FinanceTab({
       key: 'period',
       label: 'Kỳ phí',
       align: 'center' as const,
-      width: '13%',
+      width: '11%',
       render: (_: unknown, p: Payment) => {
         const period = getPaymentTuitionPeriod(p);
         return period ? <MonthText month={period.m} year={period.y} /> : <span style={{ color: '#94a3b8', fontWeight: 800 }}>—</span>;
@@ -533,13 +551,24 @@ export default function FinanceTab({
       key: 'amount',
       label: 'Số tiền',
       align: 'right' as const,
-      width: '14%',
+      width: '12%',
       render: (_: unknown, p: Payment) => <MoneyText value={p.amount} tone="success" />,
+    },
+    {
+      key: 'method',
+      label: 'Hình thức',
+      align: 'center' as const,
+      width: '12%',
+      render: (_: unknown, p: Payment) => (
+        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 24, padding: '3px 8px', borderRadius: 999, background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569', fontSize: 11, fontWeight: 900, whiteSpace: 'nowrap' }}>
+          {normalizePaymentMethod(p.method) || '—'}
+        </span>
+      ),
     },
     {
       key: 'collector',
       label: 'Người thu',
-      width: '14%',
+      width: '12%',
       render: (_: unknown, p: Payment) => {
         const collector = paymentCollector(p, students, uClasses);
         return (
@@ -553,7 +582,7 @@ export default function FinanceTab({
       key: 'actions',
       label: 'Thao tác',
       align: 'center' as const,
-      width: '14%',
+      width: '13%',
       render: (_: unknown, p: Payment) => (
         <div onClick={e => e.stopPropagation()} style={{ display: 'flex', justifyContent: 'center', gap: 6, flexWrap: 'nowrap' }}>
           <Button intent="primary" variant="outline" size="sm" onClick={() => onEditPayment(p)}>Sửa</Button>
@@ -629,7 +658,10 @@ export default function FinanceTab({
         { id: 'expense' as FinanceSub, label: 'Phiếu chi' },
       ]}
       active={finSub}
-      onChange={id => setFinanceSubtab?.(id)}
+      onChange={id => {
+        if (id === 'debt') setDebtFocus('all');
+        setFinanceSubtab?.(id);
+      }}
     />
   );
 
@@ -656,6 +688,32 @@ export default function FinanceTab({
     </>
   );
 
+  const focusDebtAll = () => {
+    setFinanceSubtab?.('debt');
+    setDebtFocus('all');
+    setPgF(1);
+    scrollTo(debtListRef);
+  };
+  const focusDebtUnpaid = () => {
+    setFinanceSubtab?.('debt');
+    setDebtFocus('unpaid');
+    setPgF(1);
+    scrollTo(debtListRef);
+  };
+  const focusLedger = () => {
+    setFinanceSubtab?.('ledger');
+    setLFilterMo(debtPeriodValue);
+    setLFilterCls(fFC);
+    setPgLedger(1);
+    scrollTo(ledgerListRef);
+  };
+  const focusExpense = () => {
+    setFinanceSubtab?.('expense');
+    setEFilterMo(debtPeriodValue);
+    setPgExpense(1);
+    scrollTo(expenseListRef);
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <style>{`
@@ -663,11 +721,12 @@ export default function FinanceTab({
         .finance-toolbar-filters select{min-width:96px}
         @media(max-width:767px){
           .finance-toolbar-filters{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+          .finance-toolbar-filters > *{width:100%!important;min-width:0!important}
           .finance-toolbar-filters select{width:100%!important;min-width:0!important}
         }
       `}</style>
       <PageToolbar
-        title="Học phí"
+        title={finSub === 'debt' ? 'HỌC PHÍ' : finSub === 'ledger' ? 'Phiếu thu' : 'Phiếu chi'}
         actions={(
           <Button intent={finSub === 'expense' ? 'danger' : 'success'} size="sm" icon={<Plus size={13} />} onClick={() => onShowFAB(finSub === 'expense' ? 'expense' : 'income')}>
             {finSub === 'expense' ? 'Thêm phiếu chi' : 'Thêm phiếu thu'}
@@ -688,6 +747,8 @@ export default function FinanceTab({
             label="Phải thu tháng này"
             sub={`${financeStudents.length} học sinh tính phí`}
             tone="primary"
+            onClick={focusDebtAll}
+            actionLabel="Xem bảng"
           />
           <ActionableKpi
             icon={TrendingUp}
@@ -695,6 +756,8 @@ export default function FinanceTab({
             label="Đã thu"
             sub={`${selectedMonthPayments.length} phiếu thu`}
             tone="success"
+            onClick={focusLedger}
+            actionLabel="Mở phiếu thu"
           />
           <ActionableKpi
             icon={AlertTriangle}
@@ -702,6 +765,8 @@ export default function FinanceTab({
             label="Còn nợ"
             sub={`T${selectedDebtMonth.m}/${selectedDebtMonth.y}`}
             tone={remainingAmount > 0 ? 'danger' : 'success'}
+            onClick={focusDebtUnpaid}
+            actionLabel="Lọc còn nợ"
           />
           <ActionableKpi
             icon={TrendingDown}
@@ -709,20 +774,25 @@ export default function FinanceTab({
             label="Đã chi"
             sub={`${selectedMonthExpenses.length} phiếu chi`}
             tone="danger"
+            onClick={focusExpense}
+            actionLabel="Mở phiếu chi"
           />
         </ActionableKpiGrid>
       )}
 
       {/* ══ CÔNG NỢ ══ */}
       {finSub === 'debt' && (
-        <div style={{ display: 'grid', gap: 14 }}>
+        <div ref={debtListRef} style={{ display: 'grid', gap: 14 }}>
           <style>{`
             .fin-debt-desktop{display:block}.fin-debt-mobile{display:none}
             @media(max-width:767px){.fin-debt-desktop{display:none!important}.fin-debt-mobile{display:block!important}}
-            .finance-recent-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-            .finance-section-title{margin:0 0 8px;font-size:13px;font-weight:900;color:#475569;text-transform:uppercase;letter-spacing:.06em}
-            @media(max-width:900px){.finance-recent-grid{grid-template-columns:1fr}}
           `}</style>
+          {debtFocus === 'unpaid' && (
+            <div style={{ padding: '8px 10px', borderRadius: 10, border: '1px solid #fecaca', background: '#fff1f2', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+              <span style={{ fontSize: 12, fontWeight: 900, color: '#be123c' }}>Đang lọc học sinh đến kỳ hoặc quá hạn học phí</span>
+              <Button intent="danger" variant="outline" size="sm" onClick={() => setDebtFocus('all')}>Bỏ lọc</Button>
+            </div>
+          )}
           <section>
           <div className="fin-debt-desktop">
             <DataTable
@@ -749,36 +819,43 @@ export default function FinanceTab({
               const meta = debtStatusMeta(periodStatus);
               const receipt = getDebtPeriodPayment(row);
               const amount = getDebtPeriodAmount(row);
+              const progress = getDebtSessionProgress(row);
               const actionAmount = amount || row.debtAmount || baseTuition;
+              const sessionAlert = (progress.due || progress.overdue) && periodStatus !== 'paid' ? ` · ${periodStatus === 'overdue' ? 'Quá hạn' : 'Đến kỳ'}` : '';
+              const sessionLabel = progress.target ? `${progress.done}/${progress.target}${sessionAlert}` : '—';
               return (
-                <MobileCard
+                <MobileCompactCard
                   key={`${s.id}-debt-card`}
                   title={capitalizeName(s.name)}
-                  subtitle={`${s.id || '—'}${s.grade ? ` · Khối ${s.grade}` : ''} · ${s.classId || 'Chưa có lớp'}`}
+                  subtitle={`${s.id || '—'} · ${s.classId || 'Chưa có lớp'}`}
+                  value={<MoneyText value={amount} compact tone={periodStatus === 'paid' ? 'success' : periodStatus === 'overdue' ? 'danger' : undefined} />}
                   badge={<StatusBadge domain="tuition" status={periodStatus} label={meta.label} tone={meta.tone} />}
                   tone={meta.tone}
+                  muted={row.isInactive}
                   onClick={() => onViewFinance(s)}
-                  style={{ marginBottom: 8, opacity: row.isInactive ? 0.68 : 1 }}
-                  rows={[
-                    { label: 'Lớp', value: s.classId || '—' },
-                    { label: 'Số buổi', value: '—' },
-                    { label: 'Thành tiền', value: <MoneyText value={amount} compact tone={periodStatus === 'paid' ? 'success' : periodStatus === 'overdue' ? 'danger' : undefined} /> },
-                    { label: 'Hạn đóng', value: '—' },
+                  style={{ marginBottom: 8 }}
+                  meta={[
+                    { key: 'sessions', label: `Buổi ${sessionLabel}`, tone: progress.overdue ? 'danger' : progress.due ? 'warning' : 'neutral' },
+                    { key: 'period', label: `T${selectedDebtMonth.m}/${selectedDebtMonth.y}`, tone: 'primary' },
                   ]}
                   actions={(
-                    <div className="ltn-mobile-action-row" onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 7, width: '100%', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                    <div className="ltn-mobile-action-row" onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                       {periodStatus === 'paid' && receipt ? (
-                        <button onClick={() => onViewInvoice(receipt)} style={{ minHeight: 40, padding: '8px 12px', borderRadius: 999, background: '#eef2ff', border: '1px solid #c7d2fe', color: '#4f46e5', fontWeight: 900, fontSize: 12, cursor: 'pointer' }}>
+                        <button onClick={() => onViewInvoice(receipt)} style={{ minHeight: 34, padding: '7px 10px', borderRadius: 999, background: '#eef2ff', border: '1px solid #c7d2fe', color: '#4f46e5', fontWeight: 900, fontSize: 11, cursor: 'pointer' }}>
                           Biên lai
                         </button>
-                      ) : periodStatus === 'overdue' && (ph.length >= 9 || sh.length >= 9) ? (
-                        <button className="ltn-zalo-action" onClick={() => copyMsg(s.id, makeZaloMsg(s, actionAmount))} style={{ minHeight: 42, padding: '9px 13px', borderRadius: 999, background: copiedId === s.id ? '#ecfdf5' : '#f0fdf4', border: `1px solid ${copiedId === s.id ? '#a7f3d0' : '#bbf7d0'}`, color: copiedId === s.id ? '#059669' : '#16a34a', fontWeight: 900, fontSize: 12, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
-                          {copiedId === s.id ? <Check size={13} /> : <Copy size={13} />}
-                          {copiedId === s.id ? 'Đã copy' : 'Nhắc phí'}
-                        </button>
-                      ) : periodStatus === 'unpaid' || periodStatus === 'overdue' ? (
-                        <button onClick={() => onShowFAB('income')} style={{ minHeight: 40, padding: '8px 12px', borderRadius: 999, background: '#ecfdf5', border: '1px solid #bbf7d0', color: '#047857', fontWeight: 900, fontSize: 12, cursor: 'pointer' }}>
-                          Thu phí
+                      ) : (periodStatus === 'overdue' || periodStatus === 'due') && (ph.length >= 9 || sh.length >= 9) ? (
+                        <>
+                          <button aria-label="Thu phí" title="Thu phí" onClick={() => onShowFAB('income', makePaymentDraft(row))} style={{ minHeight: 34, minWidth: 34, padding: 0, borderRadius: 999, background: '#ecfdf5', border: '1px solid #bbf7d0', color: '#047857', fontWeight: 900, fontSize: 12, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <ReceiptText size={15} />
+                          </button>
+                          <button className="ltn-zalo-action" aria-label={copiedId === s.id ? 'Đã copy tin nhắn' : 'Nhắc phí'} title={copiedId === s.id ? 'Đã copy tin nhắn' : 'Nhắc phí'} onClick={() => copyMsg(s.id, makeZaloMsg(s, actionAmount))} style={{ minHeight: 34, minWidth: 34, padding: 0, borderRadius: 999, background: copiedId === s.id ? '#ecfdf5' : '#f0fdf4', border: `1px solid ${copiedId === s.id ? '#a7f3d0' : '#bbf7d0'}`, color: copiedId === s.id ? '#059669' : '#16a34a', fontWeight: 900, fontSize: 12, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                            {copiedId === s.id ? <Check size={15} /> : <MessageCircle size={15} />}
+                          </button>
+                        </>
+                      ) : periodStatus === 'unpaid' || periodStatus === 'overdue' || periodStatus === 'due' || periodStatus === 'not_due' ? (
+                        <button aria-label="Thu phí" title="Thu phí" onClick={() => onShowFAB('income', makePaymentDraft(row))} style={{ minHeight: 34, minWidth: 34, padding: 0, borderRadius: 999, background: '#ecfdf5', border: '1px solid #bbf7d0', color: '#047857', fontWeight: 900, fontSize: 12, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <ReceiptText size={15} />
                         </button>
                       ) : null}
                     </div>
@@ -789,55 +866,12 @@ export default function FinanceTab({
             <Pager page={pgF} total={debtTableRows.length} perPage={IPP} setPage={setPgF} showTotal />
           </div>
           </section>
-
-          <section className="finance-recent-grid">
-            <div>
-              <h3 className="finance-section-title">Phiếu thu gần đây</h3>
-              <DataTable
-                columns={[
-                  { key: 'date', label: 'Ngày', width: '16%', render: (_: unknown, p: Payment) => <DateText value={p.date} /> },
-                  { key: 'student', label: 'Học sinh', width: '28%', render: (_: unknown, p: Payment) => <span style={{ fontSize: 13, fontWeight: 900, color: '#0f172a' }}>{capitalizeName(p.studentName) || '—'}</span> },
-                  { key: 'period', label: 'Kỳ phí', align: 'center' as const, width: '18%', render: (_: unknown, p: Payment) => {
-                    const period = getPaymentTuitionPeriod(p);
-                    return period ? <MonthText month={period.m} year={period.y} /> : <span style={{ color: '#94a3b8', fontWeight: 800 }}>—</span>;
-                  } },
-                  { key: 'amount', label: 'Số tiền', align: 'right' as const, width: '18%', render: (_: unknown, p: Payment) => <MoneyText value={p.amount} compact tone="success" /> },
-                  { key: 'method', label: 'Thanh toán', width: '20%', render: (_: unknown, p: Payment) => normalizePaymentMethod(p.method) || '—' },
-                ]}
-                data={recentPayments}
-                rowKey={(p) => p.id || p.docNum || `${p.studentId}-${p.date}-${p.amount}`}
-                emptyText="Chưa có phiếu thu trong kỳ"
-                emptySub="Phiếu thu mới sẽ hiển thị tại đây."
-                onRowClick={onViewInvoice}
-                scrollX={false}
-                density="compact"
-              />
-            </div>
-            <div>
-              <h3 className="finance-section-title">Phiếu chi gần đây</h3>
-              <DataTable
-                columns={[
-                  { key: 'date', label: 'Ngày', width: '18%', render: (_: unknown, e: Expense) => <DateText value={e.date} /> },
-                  { key: 'description', label: 'Khoản chi', width: '34%', render: (_: unknown, e: Expense) => <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13, fontWeight: 900, color: '#0f172a' }}>{e.description || '—'}</span> },
-                  { key: 'category', label: 'Phân loại', width: '24%', render: (_: unknown, e: Expense) => e.category || '—' },
-                  { key: 'amount', label: 'Số tiền', align: 'right' as const, width: '24%', render: (_: unknown, e: Expense) => <MoneyText value={e.amount} compact tone="danger" /> },
-                ]}
-                data={recentExpenses}
-                rowKey={(e) => e.id || e.docNum || `${e.date}-${e.description}-${e.amount}`}
-                emptyText="Chưa có phiếu chi trong kỳ"
-                emptySub="Phiếu chi mới sẽ hiển thị tại đây."
-                onRowClick={onViewExpense}
-                scrollX={false}
-                density="compact"
-              />
-            </div>
-          </section>
         </div>
       )}
 
       {/* ══ SỔ CÁI — NO stat blocks ══ */}
       {finSub === 'ledger' && (
-        <div>
+        <div ref={ledgerListRef}>
           <style>{`
             .fin-ledger-desktop{display:block}.fin-ledger-mobile{display:none}
             .fin-expense-desktop{display:block}.fin-expense-mobile{display:none}
@@ -865,21 +899,21 @@ export default function FinanceTab({
                 const period = getPaymentTuitionPeriod(p);
                 const cls = paymentClassId(p, students);
                 return (
-                  <MobileCard
+                  <MobileCompactCard
                     key={p.id || p.docNum || `${p.studentId}-${p.date}-${p.amount}`}
                     title={capitalizeName(p.studentName) || p.docNum || 'Phiếu thu'}
                     subtitle={`${p.studentId || '—'}${cls ? ` · ${cls}` : ''}`}
-                    badge={<MoneyText value={p.amount} tone="success" />}
+                    value={<MoneyText value={p.amount} compact tone="success" />}
+                    badge={<StatusBadge domain="tuition" status="paid" label="Đã thu" tone="success" />}
                     tone="success"
                     onClick={() => onViewInvoice(p)}
-                    rows={[
-                      { label: 'Ngày thu', value: <DateText value={p.date} /> },
-                      { label: 'Lớp', value: cls || '—' },
-                      { label: 'Kỳ phí', value: period ? <MonthText month={period.m} year={period.y} /> : '—' },
-                      { label: 'Người thu', value: paymentCollector(p, students, uClasses) },
+                    meta={[
+                      { key: 'date', label: <DateText value={p.date} />, tone: 'neutral' },
+                      { key: 'period', label: period ? <MonthText month={period.m} year={period.y} /> : 'Chưa rõ kỳ', tone: 'primary' },
+                      { key: 'collector', label: paymentCollector(p, students, uClasses) || 'Chưa rõ người thu', tone: 'success' },
                     ]}
                     actions={(
-                      <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 7, width: '100%', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                      <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                         <Button intent="primary" variant="outline" size="sm" onClick={() => onEditPayment(p)}>Sửa</Button>
                         <Button intent="danger" variant="outline" size="sm" onClick={() => onDeletePayment(p)}>Xóa</Button>
                       </div>
@@ -893,7 +927,7 @@ export default function FinanceTab({
         </div>
       )}
       {finSub === 'expense' && (
-        <div>
+        <div ref={expenseListRef}>
           <style>{`
             .fin-expense-desktop{display:block}.fin-expense-mobile{display:none}
             @media(max-width:767px){.fin-expense-desktop{display:none!important}.fin-expense-mobile{display:grid!important}}
@@ -915,20 +949,21 @@ export default function FinanceTab({
             {pagedExpense.length === 0 ? (
               <EmptyState text="Chưa có phiếu chi phù hợp" sub="Thử đổi tháng hoặc người chi." compact />
             ) : pagedExpense.map(e => (
-                <MobileCard
+                <MobileCompactCard
                   key={e.id || e.docNum || `${e.date}-${e.description}-${e.amount}`}
                   title={e.description || e.docNum || 'Phiếu chi'}
                   subtitle={e.docNum || '—'}
-                  badge={<MoneyText value={e.amount} tone="danger" />}
+                  value={<MoneyText value={e.amount} compact tone="danger" />}
+                  badge={<StatusBadge domain="general" status="danger" label="Đã chi" tone="danger" />}
                   tone="danger"
                   onClick={() => onViewExpense(e)}
-                  rows={[
-                    { label: 'Ngày chi', value: <DateText value={e.date} /> },
-                    { label: 'Hạng mục', value: e.category || '—' },
-                    { label: 'Người chi', value: e.spender || '—' },
+                  meta={[
+                    { key: 'date', label: <DateText value={e.date} />, tone: 'neutral' },
+                    { key: 'category', label: e.category || 'Chưa phân loại', tone: 'warning' },
+                    { key: 'spender', label: e.spender || 'Chưa rõ người chi', tone: 'danger' },
                   ]}
                   actions={(
-                    <div onClick={event => event.stopPropagation()} style={{ display: 'flex', gap: 7, width: '100%', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                    <div onClick={event => event.stopPropagation()} style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                       <Button intent="primary" variant="outline" size="sm" onClick={() => onEditExpense(e)}>Sửa</Button>
                       <Button intent="danger" variant="outline" size="sm" onClick={() => onDeleteExpense(e)}>Xóa</Button>
                     </div>
