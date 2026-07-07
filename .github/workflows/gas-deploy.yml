@@ -1,0 +1,90 @@
+name: Deploy GAS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/gas/**"
+      - "apps-script/**"
+      - "scripts/*gas*.mjs"
+      - "scripts/prepare-gas-release.mjs"
+      - "scripts/check-gas-bundle.mjs"
+      - "scripts/smoke-gas-webapp.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/gas-deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gas-prod-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test:domain
+      - run: npm run build
+      - run: npm run gas:prepare
+      - run: git diff --exit-code apps-script/Code.gs
+      - run: npm run gas:check
+
+      - name: Restore clasp config
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          CLASP_JSON_PROD: ${{ secrets.CLASP_JSON_PROD }}
+          GAS_DEPLOYMENT_ID_PROD: ${{ secrets.GAS_DEPLOYMENT_ID_PROD }}
+        run: |
+          test -n "$CLASPRC_JSON"
+          test -n "$CLASP_JSON_PROD"
+          test -n "$GAS_DEPLOYMENT_ID_PROD"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          printf '%s' "$CLASP_JSON_PROD" > .clasp.json
+
+      - name: Push GAS source
+        run: npx @google/clasp push --force
+
+      - name: Create GAS version
+        id: version
+        shell: bash
+        run: |
+          DESC="prod ${GITHUB_SHA::7} $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          OUT="$(npx @google/clasp create-version "$DESC")"
+          echo "$OUT"
+          VERSION="$(echo "$OUT" | grep -Eo '[0-9]+' | tail -1)"
+          test -n "$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "description=$DESC" >> "$GITHUB_OUTPUT"
+
+      - name: Update existing Web App deployment
+        shell: bash
+        env:
+          GAS_DEPLOYMENT_ID_PROD: ${{ secrets.GAS_DEPLOYMENT_ID_PROD }}
+          GAS_VERSION: ${{ steps.version.outputs.version }}
+          GAS_DESCRIPTION: ${{ steps.version.outputs.description }}
+        run: |
+          test -n "$GAS_DEPLOYMENT_ID_PROD"
+          test -n "$GAS_VERSION"
+          npx @google/clasp create-deployment \
+            --deploymentId "$GAS_DEPLOYMENT_ID_PROD" \
+            --versionNumber "$GAS_VERSION" \
+            --description "$GAS_DESCRIPTION"
+
+      - name: Smoke test Web App
+        env:
+          GAS_WEB_APP_URL_PROD: ${{ secrets.GAS_WEB_APP_URL_PROD }}
+        run: npm run gas:smoke -- "$GAS_WEB_APP_URL_PROD"

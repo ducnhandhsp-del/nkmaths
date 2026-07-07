@@ -91,13 +91,13 @@ export const RULES = {
   ───────────────────────────────────────── */
   network: {
     /** Timeout fetch foreground khi chua co cache/data (ms) */
-    initialFetchTimeout: 8_000,
+    initialFetchTimeout: 25_000,
     /** Timeout fetch silent/background khi da co cache/data (ms) */
     fetchTimeout: 30_000,
     /** Sau nguong nay loading lan dau hien thong bao GAS cham (ms) */
     initialLoadRetryAfter: 8_000,
-    /** Thoi gian cho truoc khi loading lan dau tu thu lai (ms) */
-    initialLoadAutoRetryDelay: 5_000,
+    /** Backoff huu han cho loading lan dau khi chua co cache/data (ms) */
+    initialLoadRetryDelays: [5_000, 15_000, 30_000] as const,
     /** Tu dong reload nen khi app dang mo. Tat de tranh thay data giua thao tac nghiep vu. */
     autoReloadEnabled: false,
     /** Interval tự động reload khi tab active (ms) */

@@ -316,7 +316,13 @@ const buildCachePayload = ({
   meta,
 });
 
+type LoadMode = 'foreground' | 'background';
+type LoadReason = 'boot' | 'manual' | 'mutation' | 'retry' | 'visibility' | 'interval';
+
 type LoadDataOptions = {
+  mode?: LoadMode;
+  reason?: LoadReason;
+  /** Backward compatibility for existing domain callers. */
   silent?: boolean;
   timeout?: number;
 };
@@ -324,6 +330,7 @@ type LoadDataOptions = {
 export function useAppData({ scriptUrl, teacherList }: { scriptUrl: string; teacherList: string[] }) {
   const initialCacheRef = useRef<CachePayload | null>(readCacheSnapshot());
   const initialCache = initialCacheRef.current;
+  const hasInitialData = hasCacheData(initialCache);
 
   const [students,      setStudents]      = useState<Student[]>(() => initialCache?.hs || []);
   const [uClasses,      setUClasses]      = useState<any[]>(() => initialCache?.uCls || []);
@@ -333,10 +340,10 @@ export function useAppData({ scriptUrl, teacherList }: { scriptUrl: string; teac
   const [teachers,      setTeachers]      = useState<Teacher[]>(() => initialCache?.teachers || loadLocal<Teacher[]>('ltn-teachers', []));
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(() => initialCache?.leaveRequests || loadLocal<LeaveRequest[]>('ltn-leaves', []));
   const [materials,     setMaterials]     = useState<Material[]>(() => initialCache?.materials || loadLocal<Material[]>('ltn-materials', []));
-  const [loading,       setLoading]       = useState(true);
+  const [loading,       setLoading]       = useState(!hasInitialData);
   const [gsOk,          setGsOk]          = useState<boolean | null>(null);
   const [cacheMeta,     setCacheMeta]     = useState<CacheMeta | null>(() => initialCache?.meta || null);
-  const [syncState,     setSyncState]     = useState<DataSyncState>('syncing');
+  const [syncState,     setSyncState]     = useState<DataSyncState>(hasInitialData ? 'cache' : 'syncing');
   const [initialLoadError, setInitialLoadError] = useState('');
 
   /* FIX L3: summary là useMemo — tự cập nhật ngay khi payments/expenses thay đổi (kể cả optimistic) */
@@ -347,7 +354,10 @@ export function useAppData({ scriptUrl, teacherList }: { scriptUrl: string; teac
   }), [payments, expenses]);
 
   const loadingRef      = useRef(false);
-  const dataReadyRef    = useRef(false);
+  const dataReadyRef    = useRef(hasInitialData);
+  const queuedLoadRef   = useRef<LoadDataOptions | null>(null);
+  const initialRetryRef = useRef(0);
+  const loadDataRef     = useRef<(options?: LoadDataOptions) => Promise<void>>(async () => {});
   /* FIX S1+S3: silentRef là Ref object — return trực tiếp để useDomains set mà không cần hack */
   const silentRef       = useRef(false);
   /* FIX D4: return để useDomains reset cooldown sau manual save */
@@ -375,10 +385,19 @@ export function useAppData({ scriptUrl, teacherList }: { scriptUrl: string; teac
   /* ── Core fetch ── */
   /* FIX S2: dependency chỉ còn [scriptUrl] — teacherList thay đổi KHÔNG re-create loadData */
   const loadData = useCallback(async (options: LoadDataOptions = {}) => {
-    if (loadingRef.current) return;
+    const reason = options.reason ?? 'manual';
+    if (loadingRef.current) {
+      // StrictMode may invoke the boot effect twice. Only user/domain requests
+      // need one trailing revalidation after the active request completes.
+      if (reason !== 'boot' && reason !== 'retry') queuedLoadRef.current = options;
+      return;
+    }
+
+    if (reason === 'manual') initialRetryRef.current = 0;
     loadingRef.current = true;
-    const silent = options.silent ?? silentRef.current ?? dataReadyRef.current;
-    const foreground = !silent && !dataReadyRef.current;
+    const legacySilent = options.silent ?? silentRef.current;
+    const mode = options.mode ?? ((legacySilent || dataReadyRef.current) ? 'background' : 'foreground');
+    const foreground = mode === 'foreground' && !dataReadyRef.current;
     if (foreground) setLoading(true);
     setSyncState('syncing');
     setInitialLoadError('');
@@ -437,6 +456,7 @@ export function useAppData({ scriptUrl, teacherList }: { scriptUrl: string; teac
       setGsOk(true);
       setSyncState('fresh');
       dataReadyRef.current = true;
+      initialRetryRef.current = 0;
       const meta: CacheMeta = {
         cachedAt: new Date().toISOString(),
         source: 'gas',
@@ -462,12 +482,14 @@ export function useAppData({ scriptUrl, teacherList }: { scriptUrl: string; teac
     } catch (err: any) {
       setGsOk(false);
       const fallbackCache = readCacheSnapshot();
-      const canUseFallback = silent || dataReadyRef.current;
+      const canUseFallback = mode === 'background' || dataReadyRef.current;
       const hasFallback = canUseFallback && (hasCacheData(fallbackCache) || dataReadyRef.current);
       if (hasFallback) {
         if (fallbackCache) applyCache(fallbackCache, 'cache');
         setSyncState('cache');
-        toast('Đang dùng dữ liệu lưu gần nhất.', { icon: 'ℹ' });
+        if (reason !== 'boot' && reason !== 'visibility' && reason !== 'interval') {
+          toast('Đang dùng dữ liệu lưu gần nhất.', { icon: 'i' });
+        }
       } else {
         if (fallbackCache?.meta) setCacheMeta({ ...fallbackCache.meta, source: 'cache' });
         setSyncState('error');
@@ -481,20 +503,43 @@ export function useAppData({ scriptUrl, teacherList }: { scriptUrl: string; teac
       if (dataReadyRef.current) setLoading(false);
       loadingRef.current = false;
       silentRef.current  = false;
+
+      const queued = queuedLoadRef.current;
+      queuedLoadRef.current = null;
+      if (queued && !isSavingRef.current) {
+        window.setTimeout(() => {
+          void loadDataRef.current({ ...queued, mode: 'background' });
+        }, 0);
+      }
     }
   }, [applyCache, scriptUrl]);
+  loadDataRef.current = loadData;
 
   /* ── Initial load ── */
   useEffect(() => {
-    loadData({ silent: false, timeout: RULES.network.initialFetchTimeout });
+    const mode: LoadMode = dataReadyRef.current ? 'background' : 'foreground';
+    void loadData({
+      mode,
+      reason: 'boot',
+      timeout: mode === 'foreground' ? RULES.network.initialFetchTimeout : RULES.network.fetchTimeout,
+    });
   }, [loadData]);
 
-  /* ── Initial retry: khi chua co du lieu moi, loading tu tai lai, khong can bam nut ── */
+  /* ── Initial retry: bounded backoff when no usable cache exists ── */
   useEffect(() => {
     if (!loading || syncState !== 'error' || dataReadyRef.current) return;
+    const retryIndex = initialRetryRef.current;
+    if (retryIndex >= RULES.network.initialLoadRetryDelays.length) return;
+    const delay = RULES.network.initialLoadRetryDelays[retryIndex];
     const timer = window.setTimeout(() => {
-      loadData({ silent: false, timeout: RULES.network.initialFetchTimeout });
-    }, RULES.network.initialLoadAutoRetryDelay);
+      if (!navigator.onLine || document.visibilityState !== 'visible') return;
+      initialRetryRef.current = retryIndex + 1;
+      void loadData({
+        mode: 'foreground',
+        reason: 'retry',
+        timeout: RULES.network.initialFetchTimeout,
+      });
+    }, delay);
     return () => window.clearTimeout(timer);
   }, [loading, syncState, loadData]);
 
@@ -506,14 +551,14 @@ export function useAppData({ scriptUrl, teacherList }: { scriptUrl: string; teac
       if (isSavingRef.current) return;
       if (Date.now() - lastLoadTimeRef.current > RULES.network.silentReloadCooldown) {
         silentRef.current = true;
-        loadData();
+        void loadData({ mode: 'background', reason: 'visibility' });
         lastLoadTimeRef.current = Date.now();
       }
     };
     const handleOnline = () => {
       if (isSavingRef.current) return; // FIX D5
       silentRef.current = true;
-      loadData();
+      void loadData({ mode: 'background', reason: 'visibility' });
       lastLoadTimeRef.current = Date.now();
     };
     const handleVis = () => {
@@ -522,7 +567,11 @@ export function useAppData({ scriptUrl, teacherList }: { scriptUrl: string; teac
     window.addEventListener('online', handleOnline);
     document.addEventListener('visibilitychange', handleVis);
     const iv = setInterval(() => {
-      if (document.visibilityState === 'visible' && navigator.onLine) reload();
+      if (document.visibilityState === 'visible' && navigator.onLine && !isSavingRef.current) {
+        silentRef.current = true;
+        void loadData({ mode: 'background', reason: 'interval' });
+        lastLoadTimeRef.current = Date.now();
+      }
     }, RULES.network.autoReloadInterval);
     return () => {
       window.removeEventListener('online', handleOnline);

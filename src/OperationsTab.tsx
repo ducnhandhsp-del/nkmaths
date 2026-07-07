@@ -988,6 +988,7 @@ export default function OperationsTab({
       `}</style>
       <PageToolbar
         title={title}
+        hideActionsOnMobile
         actions={(
           <Button intent="success" size="sm" icon={<Plus size={13} />} onClick={() => onAddDiary()}>
             Ghi buổi học

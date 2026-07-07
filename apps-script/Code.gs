@@ -1,3 +1,5 @@
+// Generated from docs/gas/LOP_TOAN_NK_GAS_2026_2027_FULL.gs.
+// Do not edit this generated bundle directly until apps-script/ is promoted to the source of truth.
 // LOP_TOAN_NK_2026_2027 - Google Apps Script
 // Schema mới theo SHEET_SPEC_2026_2027.md
 // Mục tiêu:

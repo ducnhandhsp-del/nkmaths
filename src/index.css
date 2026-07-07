@@ -158,6 +158,9 @@ body {
     gap: 8px;
     margin: 0 0 10px;
   }
+  .ltn-page-toolbar-actions--mobile-hidden {
+    display: none !important;
+  }
   .ltn-mobile-inline-action {
     min-height: 38px;
     max-width: 100%;

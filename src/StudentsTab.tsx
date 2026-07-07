@@ -305,6 +305,7 @@ export default function StudentsTab({
       <PageToolbar
         title="Học sinh"
         embedded={embedded}
+        hideActionsOnMobile
         actions={!embedded && (
           <Button intent="success" size="sm" icon={<UserPlus size={14} />} iconPosition="left" onClick={onAddStudent}>
             Thêm học sinh

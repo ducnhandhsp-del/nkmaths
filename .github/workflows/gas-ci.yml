@@ -1,0 +1,36 @@
+name: GAS CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "docs/gas/**"
+      - "apps-script/**"
+      - "scripts/*gas*.mjs"
+      - "scripts/prepare-gas-release.mjs"
+      - "scripts/check-gas-bundle.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/gas-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test:domain
+      - run: npm run build
+      - run: npm run gas:prepare
+      - run: git diff --exit-code apps-script/Code.gs
+      - run: npm run gas:check

@@ -13,7 +13,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { BookOpen, CalendarCheck, FilePlus2, MessageCircle, ReceiptText, School, UserPlus, WalletCards } from 'lucide-react';
+import { CalendarCheck, FilePlus2, MessageCircle, ReceiptText, School, UserPlus } from 'lucide-react';
 
 import { loadSettings, parseDMY, SCRIPT_URL_DEFAULT, FEE_DEFAULT, CA_DAY_DEFAULT, TEACHER_LIST_DEFAULT, normalizeCaDayOptions, LESSON_OFF_NOTE_TAG } from './helpers';
 import { RULES } from './rules';
@@ -212,22 +212,16 @@ export default function App() {
       ];
     }
     if (screen === 'training') {
-      if (trainingSubtab === 'students') {
-        return [{ key: 'student', label: 'Thêm học sinh', icon: <UserPlus size={15} />, tone: 'success', onClick: openStudentModal }];
-      }
       if (trainingSubtab === 'classes') {
         return [{ key: 'class', label: 'Thêm lớp', icon: <School size={15} />, tone: 'success', onClick: openClassModal }];
       }
       return [];
     }
-    if (screen === 'operations') {
-      return [{ key: 'diary', label: 'Ghi buổi học', icon: <BookOpen size={15} />, tone: 'success', onClick: () => handleAddDiary() }];
-    }
     if (screen === 'finance') {
       if (financeSubtab === 'expense') {
         return [{ key: 'expense', label: 'Thêm phiếu chi', icon: <FilePlus2 size={15} />, tone: 'danger', onClick: openExpenseModal }];
       }
-      return [{ key: 'income', label: 'Thêm phiếu thu', icon: <WalletCards size={15} />, tone: 'success', onClick: openIncomeModal }];
+      return [];
     }
     return [];
   }, [financeSubtab, goFinance, goOperations, handleAddDiary, openClassModal, openExpenseModal, openIncomeModal, openStudentModal, screen, trainingSubtab]);
@@ -298,6 +292,7 @@ export default function App() {
     return (
       <LoadingScreen
         error={initialLoadError}
+        onRetry={() => { void loadData({ mode: 'foreground', reason: 'manual' }); }}
       />
     );
   }

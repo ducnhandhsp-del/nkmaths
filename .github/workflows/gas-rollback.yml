@@ -1,0 +1,59 @@
+name: Rollback GAS
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "GAS version number to redeploy"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gas-prod-deploy
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Restore clasp config
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          CLASP_JSON_PROD: ${{ secrets.CLASP_JSON_PROD }}
+          GAS_DEPLOYMENT_ID_PROD: ${{ secrets.GAS_DEPLOYMENT_ID_PROD }}
+        run: |
+          test -n "$CLASPRC_JSON"
+          test -n "$CLASP_JSON_PROD"
+          test -n "$GAS_DEPLOYMENT_ID_PROD"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          printf '%s' "$CLASP_JSON_PROD" > .clasp.json
+
+      - name: Redeploy requested GAS version
+        shell: bash
+        env:
+          GAS_DEPLOYMENT_ID_PROD: ${{ secrets.GAS_DEPLOYMENT_ID_PROD }}
+          GAS_VERSION: ${{ inputs.version }}
+        run: |
+          [[ "$GAS_VERSION" =~ ^[0-9]+$ ]]
+          npx @google/clasp create-deployment \
+            --deploymentId "$GAS_DEPLOYMENT_ID_PROD" \
+            --versionNumber "$GAS_VERSION" \
+            --description "rollback to version $GAS_VERSION"
+
+      - name: Smoke test Web App
+        env:
+          GAS_WEB_APP_URL_PROD: ${{ secrets.GAS_WEB_APP_URL_PROD }}
+        run: npm run gas:smoke -- "$GAS_WEB_APP_URL_PROD"

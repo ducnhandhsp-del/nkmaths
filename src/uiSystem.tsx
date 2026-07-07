@@ -234,6 +234,7 @@ export function PageToolbar({
   children,
   actions,
   embedded = false,
+  hideActionsOnMobile = false,
   style,
   controlsStyle,
 }: {
@@ -241,6 +242,7 @@ export function PageToolbar({
   children?: React.ReactNode;
   actions?: React.ReactNode;
   embedded?: boolean;
+  hideActionsOnMobile?: boolean;
   style?: React.CSSProperties;
   controlsStyle?: React.CSSProperties;
 }) {
@@ -273,7 +275,10 @@ export function PageToolbar({
         </div>
       )}
       {actions && (
-        <div className="ltn-page-toolbar-actions" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div
+          className={`ltn-page-toolbar-actions${hideActionsOnMobile ? ' ltn-page-toolbar-actions--mobile-hidden' : ''}`}
+          style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}
+        >
           {actions}
         </div>
       )}

@@ -5,6 +5,7 @@ coverage/
 output/
 test-results/
 playwright-report/
+.playwright-cli/
 .DS_Store
 *.log
 *.job
@@ -12,3 +13,9 @@ playwright-report/
 !.env.example
 
 .vercel
+
+# Google Apps Script / clasp credentials
+.clasprc.json
+.clasp.json
+client_secret*.json
+service-account*.json

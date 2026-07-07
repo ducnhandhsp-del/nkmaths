@@ -727,6 +727,7 @@ export default function FinanceTab({
       `}</style>
       <PageToolbar
         title={finSub === 'debt' ? 'HỌC PHÍ' : finSub === 'ledger' ? 'Phiếu thu' : 'Phiếu chi'}
+        hideActionsOnMobile={finSub !== 'expense'}
         actions={(
           <Button intent={finSub === 'expense' ? 'danger' : 'success'} size="sm" icon={<Plus size={13} />} onClick={() => onShowFAB(finSub === 'expense' ? 'expense' : 'income')}>
             {finSub === 'expense' ? 'Thêm phiếu chi' : 'Thêm phiếu thu'}

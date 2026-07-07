@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { GraduationCap } from 'lucide-react';
+import { GraduationCap, RefreshCw } from 'lucide-react';
 import { RULES } from './rules';
 
 const SLOGANS = [
@@ -14,8 +14,10 @@ const SLOGANS = [
 
 export default function LoadingScreen({
   error,
+  onRetry,
 }: {
   error?: string;
+  onRetry?: () => void;
 }) {
   const [slogan, setSlogan] = useState(SLOGANS[0]);
   const [showSlowHint, setShowSlowHint] = useState(false);
@@ -176,6 +178,30 @@ export default function LoadingScreen({
           <p style={{ margin: 0, color: 'rgba(255,255,255,0.88)', fontSize: 14, fontWeight: 700, lineHeight: 1.45 }}>
             {error || 'Google Apps Script đang phản hồi chậm hơn bình thường. Hệ thống vẫn đang tự tải lại.'}
           </p>
+          {error && onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              style={{
+                minHeight: 40,
+                padding: '8px 14px',
+                borderRadius: 8,
+                border: '1px solid rgba(255,255,255,0.45)',
+                background: 'rgba(255,255,255,0.14)',
+                color: '#fff',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                fontSize: 13,
+                fontWeight: 800,
+                cursor: 'pointer',
+              }}
+            >
+              <RefreshCw size={15} />
+              Thử tải lại
+            </button>
+          )}
         </div>
       )}
 

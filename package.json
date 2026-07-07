@@ -9,7 +9,10 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "test:domain": "tsx tests/domainRules.test.ts"
+    "test:domain": "tsx tests/domainRules.test.ts",
+    "gas:prepare": "node scripts/prepare-gas-release.mjs",
+    "gas:check": "node scripts/check-gas-bundle.mjs",
+    "gas:smoke": "node scripts/smoke-gas-webapp.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
