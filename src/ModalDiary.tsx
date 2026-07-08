@@ -28,10 +28,10 @@ function normalizeAttendanceType(raw: any): 'regular' | 'extra' {
 type LessonType = 'regular' | 'extra' | 'makeup' | 'review';
 
 const LESSON_TYPE_OPTIONS: { value: LessonType; label: string }[] = [
-  { value: 'regular', label: 'Theo lich' },
-  { value: 'extra', label: 'Them buoi' },
-  { value: 'makeup', label: 'Hoc bu' },
-  { value: 'review', label: 'On tap' },
+  { value: 'regular', label: 'Theo lịch' },
+  { value: 'extra', label: 'Thêm buổi' },
+  { value: 'makeup', label: 'Học bù' },
+  { value: 'review', label: 'Ôn tập' },
 ];
 
 function normalizeLessonType(raw: any): LessonType {
@@ -67,6 +67,14 @@ function classCode(c: any): string {
   return readClassField(c, ['Mã Lớp', 'Mã lớp', 'MaLop', 'classId']);
 }
 
+function normalizeSearchText(value: string): string {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
 function extractScheduleTimes(c: any): string[] {
   const raw = [
     readClassField(c, ['Ca học', 'Ca hoc', 'CaHoc']),
@@ -95,7 +103,7 @@ export function DiaryModal({
   const [manualCaDay,setManualCaDay]=useState(false);
   const [att,setAtt]=useState<Record<string,{trangThai:string;ghiChu:string}>>({});
   const [extraIds,setExtraIds]=useState<string[]>([]);
-  const [extraPick,setExtraPick]=useState('');
+  const [extraQuery,setExtraQuery]=useState('');
 
   // Chỉ reset form khi modal vừa mở (false→true).
   // Bỏ uniqueClasses khỏi deps: silent-reload tạo array reference mới nhưng
@@ -125,7 +133,7 @@ export function DiaryModal({
       });
       setAtt(attInit);
       setExtraIds([...new Set(extraInit)]);
-      setExtraPick('');
+      setExtraQuery('');
     } else {
       setClassId(preselectedClassId||'');
       setDate(preselectedDate||localDateStr());
@@ -137,7 +145,7 @@ export function DiaryModal({
       setTeacherNote('');
       setAtt({});
       setExtraIds([]);
-      setExtraPick('');
+      setExtraQuery('');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[open,editingLog,preselectedClassId,preselectedDate,preselectedCaDay]);
@@ -149,7 +157,7 @@ export function DiaryModal({
     (!s.endDate || s.endDate==='---' || s.endDate==='')
   ), [classId, students]);
   const extraStudents = useMemo(() => students.filter(s => extraIds.includes(s.id)), [extraIds, students]);
-  const extraStudentOptions = useMemo(() => students
+  const eligibleExtraStudents = useMemo(() => students
     .filter(s =>
       s.id &&
       s.classId !== classId &&
@@ -157,18 +165,25 @@ export function DiaryModal({
       (!s.endDate || s.endDate === '---' || s.endDate === '') &&
       !extraIds.includes(s.id)
     )
-    .sort((a, b) => a.name.localeCompare(b.name, 'vi'))
-    .map(s => ({ value: s.id, label: `${s.name} · ${s.classId || 'Chưa lớp'} · ${s.id}` })),
+    .sort((a, b) => a.name.localeCompare(b.name, 'vi')),
   [classId, extraIds, students]);
-  const handleAddExtraStudent = () => {
-    const picked = students.find(s => s.id === extraPick);
+  const filteredExtraStudents = useMemo(() => {
+    const q = normalizeSearchText(extraQuery);
+    if (!q) return [];
+    return eligibleExtraStudents
+      .filter(s => normalizeSearchText(`${s.name} ${s.id} ${s.classId || ''}`).includes(q))
+      .slice(0, 8);
+  }, [eligibleExtraStudents, extraQuery]);
+  const handleAddExtraStudent = (studentId?: string) => {
+    if (!extraQuery.trim() && !studentId) return;
+    const picked = students.find(s => s.id === (studentId || filteredExtraStudents[0]?.id));
     if (!picked) return;
     setExtraIds(prev => prev.includes(picked.id) ? prev : [...prev, picked.id]);
     setAtt(prev => ({
       ...prev,
-      [picked.id]: prev[picked.id] || { trangThai: normalizeAttendanceLabel(''), ghiChu: 'Hoc ngoai lop' },
+      [picked.id]: prev[picked.id] || { trangThai: normalizeAttendanceLabel(''), ghiChu: 'Học ngoài lớp' },
     }));
-    setExtraPick('');
+    setExtraQuery('');
   };
   const removeExtraStudent = (id: string) => {
     setExtraIds(prev => prev.filter(item => item !== id));
@@ -189,7 +204,8 @@ export function DiaryModal({
   ), [classId, date, leaveRequests]);
   const caList=normalizeCaDayOptions(caDayOptions);
   const classOptions=[{value:'',label:'-- Chọn lớp học --'},...uniqueClasses.map(c=>({value:classCode(c),label:`Lớp ${classCode(c)}`})).filter(o=>o.value)];
-  const caOptions=[{value:'',label:'-- Chọn ca dạy --'},...caList.map(ca=>({value:ca,label:`⏰ ${ca}`}))];
+  const caSelectList = caDay && !caList.includes(caDay) ? [...caList, caDay] : caList;
+  const caOptions=[{value:'',label:'-- Chọn ca dạy --'},...caSelectList.map(ca=>({value:ca,label:`⏰ ${ca}`}))];
   const suggestedCaDay = clsRecord ? extractScheduleTimes(clsRecord)[0] || '' : '';
   const handleClassChange = (nextClassId: string) => {
     const nextClass = uniqueClasses.find(c => classCode(c) === nextClassId);
@@ -197,7 +213,7 @@ export function DiaryModal({
     setClassId(nextClassId);
     setAtt({});
     setExtraIds([]);
-    setExtraPick('');
+    setExtraQuery('');
     setManualCaDay(false);
     if (nextCa) setCaDay(nextCa);
   };
@@ -249,8 +265,12 @@ export function DiaryModal({
 
   const saveAttendance = [
     ...cls.map(s=>({maHS:s.id,tenHS:s.name,trangThai:att[s.id]?.trangThai||normalizeAttendanceLabel('present'),ghiChu:att[s.id]?.ghiChu||'',loaiDiemDanh:'regular'})),
-    ...extraStudents.map(s=>({maHS:s.id,tenHS:s.name,trangThai:att[s.id]?.trangThai||normalizeAttendanceLabel('present'),ghiChu:att[s.id]?.ghiChu||'Hoc ngoai lop',loaiDiemDanh:'extra'})),
+    ...extraStudents.map(s=>({maHS:s.id,tenHS:s.name,trangThai:att[s.id]?.trangThai||normalizeAttendanceLabel('present'),ghiChu:att[s.id]?.ghiChu||'Học ngoài lớp',loaiDiemDanh:'extra'})),
   ];
+  const diaryContext = classId && date && caDay
+    ? `Lớp ${classId} · ${formatDate(date)} · ${caDay}`
+    : 'Chọn lớp, ngày học và ca dạy để bắt đầu';
+  const canAddExtraStudent = extraQuery.trim() && filteredExtraStudents.length > 0;
 
   const doSave=()=>{
     if(!classId){toast.error('⚠️ Vui lòng chọn lớp học!');return;}
@@ -271,6 +291,7 @@ export function DiaryModal({
               <div className="ltn-quick-icon">✓</div>
               <div>
                 <h2>{editingLog ? 'Cập nhật buổi học' : 'Ghi buổi học'}</h2>
+                <p>{editingLog ? `Đang sửa nhật ký đã lưu · ${diaryContext}` : diaryContext}</p>
               </div>
             </div>
             <button className="ltn-quick-close" onClick={onClose} aria-label="Đóng">×</button>
@@ -279,6 +300,7 @@ export function DiaryModal({
 
         <div className="ltn-quick-body">
           <section className="ltn-quick-card" style={{ borderColor:'#bfdbfe', background:'#f8fbff' }}>
+              <p className="ltn-section-title">Thông tin buổi học</p>
               <div className="ltn-quick-grid three">
                 <div className="ltn-quick-field">
                   <label>Lớp</label>
@@ -297,7 +319,7 @@ export function DiaryModal({
                   </select>
                 </div>
                 <div className="ltn-quick-field">
-                  <label>Loai buoi</label>
+                  <label>Loại buổi</label>
                   <select value={lessonType} onChange={e=>setLessonType(normalizeLessonType(e.target.value))}>
                     {LESSON_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
@@ -306,9 +328,10 @@ export function DiaryModal({
           </section>
 
           <section className="ltn-quick-card">
+            <p className="ltn-section-title">Nội dung & bài tập</p>
             <div className="ltn-quick-grid three">
               <div className="ltn-quick-field">
-                <label>Nội dung</label>
+                <label>Nội dung bài dạy</label>
                 <textarea value={content} onChange={e=>setContent(e.target.value)} rows={2} placeholder="VD: Phương trình bậc 2..." />
               </div>
               <div className="ltn-quick-field">
@@ -324,7 +347,7 @@ export function DiaryModal({
 
           <section className="ltn-quick-card soft">
             <div className="ltn-quick-card-head">
-              <h3>Điểm danh · {cls.length} học sinh</h3>
+              <h3>Điểm danh học sinh · {cls.length} trong lớp · {extraIds.length} học bù / ngoài lớp</h3>
             </div>
             {approvedLeaves.length > 0 && (
               <div style={{ marginBottom: 8, border: '1px solid #fde68a', background: '#fffbeb', color: '#92400e', borderRadius: 10, padding: '8px 10px', fontSize: 12, fontWeight: 800 }}>
@@ -332,12 +355,44 @@ export function DiaryModal({
               </div>
             )}
             {classId && (
-              <div style={{ marginBottom: 10, display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 8, alignItems: 'center' }}>
-                <select value={extraPick} onChange={e=>setExtraPick(e.target.value)} style={{ minHeight: 36, border: '1px solid #e2e8f0', borderRadius: 10, padding: '0 10px', fontSize: 12, fontWeight: 800, color: '#334155', background: 'white', minWidth: 0 }}>
-                  <option value="">+ Them hoc sinh ngoai lop</option>
-                  {extraStudentOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-                <Button intent="primary" variant="outline" size="sm" onClick={handleAddExtraStudent} disabled={!extraPick}>Them</Button>
+              <div style={{ marginBottom: 10, display: 'grid', gap: 8 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 8, alignItems: 'center' }}>
+                  <input
+                    value={extraQuery}
+                    onChange={e=>setExtraQuery(e.target.value)}
+                    onKeyDown={e=>{
+                      if (e.key !== 'Enter') return;
+                      e.preventDefault();
+                      if (canAddExtraStudent) handleAddExtraStudent(filteredExtraStudents[0].id);
+                    }}
+                    placeholder="Tìm học sinh"
+                    aria-label="Tìm học sinh học bù hoặc ngoài lớp"
+                    style={{ minHeight: 36, border: '1px solid #e2e8f0', borderRadius: 10, padding: '0 10px', fontSize: 12, fontWeight: 800, color: '#334155', background: 'white', minWidth: 0 }}
+                  />
+                  <Button intent="primary" variant="outline" size="sm" onClick={()=>handleAddExtraStudent()} disabled={!canAddExtraStudent}>Thêm</Button>
+                </div>
+                {extraQuery.trim() && (
+                  <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, background: 'white', overflow: 'hidden', maxHeight: 220, overflowY: 'auto' }}>
+                    {filteredExtraStudents.length > 0 ? filteredExtraStudents.map(s => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={()=>handleAddExtraStudent(s.id)}
+                        style={{ width:'100%', minHeight: 46, padding:'8px 11px', border:0, borderBottom:'1px solid #f1f5f9', background:'white', display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, cursor:'pointer', textAlign:'left' }}
+                      >
+                        <span style={{ minWidth:0 }}>
+                          <span style={{ display:'block', fontSize:13, fontWeight:900, color:'#0f172a', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{s.name}</span>
+                          <span style={{ display:'block', marginTop:2, fontSize:11, fontWeight:800, color:'#64748b' }}>{s.id} · {s.classId || 'Chưa lớp'}</span>
+                        </span>
+                        <span style={{ flexShrink:0, fontSize:11, fontWeight:900, color:'#4f46e5', background:'#eef2ff', border:'1px solid #c7d2fe', borderRadius:999, padding:'3px 8px' }}>Thêm</span>
+                      </button>
+                    )) : (
+                      <div style={{ padding:'11px 12px', fontSize:12, fontWeight:800, color:'#94a3b8', textAlign:'center' }}>
+                        Không có học sinh phù hợp
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
             {allAttStudents.length > 0 ? (
