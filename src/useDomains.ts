@@ -431,7 +431,10 @@ export function useDomains(cfg: DomainConfig) {
         return st === 'Có phép' || st === 'Nghỉ có phép';
       }).length;
       const dateFormatted = formatDate(form.date);
+      const originalId = form.originalId || form.maBuoi || form.id || '';
       const optimisticLog = {
+        id: originalId || undefined,
+        maBuoi: originalId || undefined,
         rawDate: form.date, date: dateFormatted,
         originalDate: form.originalDate || form.date,
         originalClassId: form.originalClassId || form.classId,
@@ -439,13 +442,16 @@ export function useDomains(cfg: DomainConfig) {
         classId: form.classId, content: form.content || '',
         homework: form.homework || '---', teacherNote: form.teacherNote || '',
         teacherName: form.teacherName || '', caDay: form.caDay || '',
+        lessonType: form.lessonType || 'regular',
         present, absent, late, excused, attendanceList: attList,
       };
       if (isEdit) {
         setTlogs(prev => prev.map(l =>
-          l.classId === form.originalClassId &&
-          formatDate(l.date) === formatDate(form.originalDate) &&
-          l.caDay === (form.originalCaDay || form.caDay)
+          (originalId && ((l as any).maBuoi === originalId || (l as any).id === originalId)) ||
+          (!originalId &&
+            l.classId === form.originalClassId &&
+            formatDate(l.date) === formatDate(form.originalDate) &&
+            l.caDay === (form.originalCaDay || form.caDay))
             ? optimisticLog : l
         ));
       } else {
@@ -463,7 +469,9 @@ export function useDomains(cfg: DomainConfig) {
         content:        form.content,
         homework:       form.homework || '---',
         teacherNote:    form.teacherNote || '',
+        lessonType:      form.lessonType || 'regular',
         ...(isEdit && {
+          originalId,
           originalDate:     form.originalDate,
           originalClassId:  form.originalClassId,
           originalCaDay:    form.originalCaDay || '',

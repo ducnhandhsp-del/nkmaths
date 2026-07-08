@@ -304,6 +304,15 @@ function lessonOffReasonLabel(log: TeachingLog) {
   return getLessonOffReason(log) || 'Chưa ghi lý do nghỉ';
 }
 
+function lessonTypeLabel(log: TeachingLog) {
+  const type = String(log.lessonType || log.LoaiBuoiHoc || 'regular');
+  if (type === 'makeup') return 'Hoc bu';
+  if (type === 'review') return 'On tap';
+  if (type === 'extra') return 'Them buoi';
+  return '';
+}
+
+
 function attendanceWarning(row: AttendanceRow): { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' } {
   return getAttendanceRisk({ absent: row.absent, pct: attendanceRate(row), streak: row.streak });
 }
@@ -659,8 +668,14 @@ export default function OperationsTab({
       width: '42%',
       render: (_: unknown, log: TeachingLog) => {
         const isOff = isLessonOffLog(log);
+        const typeLabel = lessonTypeLabel(log);
         return (
           <div style={{ minWidth: 0 }}>
+            {typeLabel && (
+              <span style={{ display: 'inline-flex', marginBottom: 3 }}>
+                <StatusBadge domain="general" status="lesson-type" label={typeLabel} tone="info" dot={false} />
+              </span>
+            )}
             <span style={{ display: 'block', maxWidth: 520, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13, fontWeight: 800, color: log.content ? '#0f172a' : '#94a3b8' }}>
               {log.content || 'Chưa nhập nội dung'}
             </span>
@@ -1141,6 +1156,7 @@ export default function OperationsTab({
               const st = lessonStatus(log);
               const homework = String(log.homework || '').trim();
               const isOff = isLessonOffLog(log);
+              const typeLabel = lessonTypeLabel(log);
               return (
                 <MobileCompactCard
                   key={`${log.classId}-${log.rawDate || log.date}-${log.caDay}`}
@@ -1151,6 +1167,7 @@ export default function OperationsTab({
                   tone={st.tone}
                   onClick={() => onViewDiary(log)}
                   meta={[
+                    ...(typeLabel ? [{ key: 'lessonType', label: typeLabel, tone: 'info' as const }] : []),
                     { key: 'content', label: log.content || 'Chưa nhập nội dung', tone: log.content ? 'neutral' as const : 'warning' as const },
                     isOff
                       ? { key: 'reason', label: `Lý do: ${lessonOffReasonLabel(log)}`, tone: 'neutral' as const }

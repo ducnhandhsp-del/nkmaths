@@ -52,6 +52,8 @@ export type ConnectionState = 'connected'|'disconnected'|'loading'|'error';
 
 export interface AttendanceStudent {
   id:string; name:string; classId?:string; status:AttendanceStatus; note?:string;
+  attendanceType?:'regular'|'extra';
+  onRemove?:()=>void;
 }
 export interface SelectOption { value:string; label:string; disabled?:boolean; }
 export interface RadioOption   { value:string; label:string; description?:string; disabled?:boolean; }

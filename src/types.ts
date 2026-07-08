@@ -67,6 +67,8 @@ export interface Expense {
 }
 
 export interface TeachingLog {
+  id?:             string;
+  maBuoi?:        string;
   rawDate:         string;
   date:            string;
   originalDate:    string;
@@ -79,6 +81,8 @@ export interface TeachingLog {
   teacherName:     string;
   maGV?:           string;
   caDay:           string;
+  lessonType?:     string;
+  LoaiBuoiHoc?:    string;
   present:         number;
   absent:          number;
   late:            number;
@@ -94,6 +98,9 @@ export interface AttendanceEntry {
   tenHS?:     string;
   trangThai?: string;
   ghiChu?:    string;
+  loaiDiemDanh?: 'regular' | 'extra' | string;
+  LoaiDiemDanh?: 'regular' | 'extra' | string;
+  attendanceType?: 'regular' | 'extra' | string;
   'Trạng thái'?: string;
   'Ghi chú'?:    string;
 }

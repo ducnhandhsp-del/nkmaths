@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { AlertTriangle, ChevronLeft, ChevronRight, Inbox, Info, RotateCcw, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -229,6 +229,26 @@ export const notify = {
   zaloCopied: () => toast.success('Đã copy tin nhắn Zalo'),
 };
 
+function useIsMobileViewport() {
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(max-width: 767px)').matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const media = window.matchMedia('(max-width: 767px)');
+    const update = () => setIsMobile(media.matches);
+
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+
+  return isMobile;
+}
+
 export function PageToolbar({
   title,
   children,
@@ -246,6 +266,9 @@ export function PageToolbar({
   style?: React.CSSProperties;
   controlsStyle?: React.CSSProperties;
 }) {
+  const isMobileViewport = useIsMobileViewport();
+  const shouldRenderActions = actions && (!hideActionsOnMobile || !isMobileViewport);
+
   return (
     <div
       className="ltn-page-toolbar"
@@ -274,7 +297,7 @@ export function PageToolbar({
           {children}
         </div>
       )}
-      {actions && (
+      {shouldRenderActions && (
         <div
           className={`ltn-page-toolbar-actions${hideActionsOnMobile ? ' ltn-page-toolbar-actions--mobile-hidden' : ''}`}
           style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}

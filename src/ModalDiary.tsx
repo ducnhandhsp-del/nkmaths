@@ -20,6 +20,41 @@ function normalizeAttendanceLabel(raw: string): 'Có mặt' | 'Vắng' | 'Có ph
   return 'Có mặt';
 }
 
+function normalizeAttendanceType(raw: any): 'regular' | 'extra' {
+  const s = String(raw || '').trim().toLowerCase();
+  return s === 'extra' || s === 'ngoai_lop' || s === 'ngoai lop' ? 'extra' : 'regular';
+}
+
+type LessonType = 'regular' | 'extra' | 'makeup' | 'review';
+
+const LESSON_TYPE_OPTIONS: { value: LessonType; label: string }[] = [
+  { value: 'regular', label: 'Theo lich' },
+  { value: 'extra', label: 'Them buoi' },
+  { value: 'makeup', label: 'Hoc bu' },
+  { value: 'review', label: 'On tap' },
+];
+
+function normalizeLessonType(raw: any): LessonType {
+  const s = String(raw || '').trim().toLowerCase();
+  if (s === 'makeup' || s === 'hoc_bu' || s === 'hoc bu') return 'makeup';
+  if (s === 'review' || s === 'on_tap' || s === 'on tap') return 'review';
+  if (s === 'extra' || s === 'them_buoi' || s === 'them buoi') return 'extra';
+  return 'regular';
+}
+
+function attendanceStatusFromLabel(raw: any): 'present' | 'absent' | 'excused' {
+  const label = normalizeAttendanceLabel(String(raw || ''));
+  if (label === normalizeAttendanceLabel('absent')) return 'absent';
+  if (label === normalizeAttendanceLabel('excused')) return 'excused';
+  return 'present';
+}
+
+function attendanceLabelFromStatus(status: any) {
+  if (status === 'absent') return normalizeAttendanceLabel('absent');
+  if (status === 'excused') return normalizeAttendanceLabel('excused');
+  return normalizeAttendanceLabel('present');
+}
+
 function readClassField(c: any, keys: string[]): string {
   for (const key of keys) {
     const value = String(c?.[key] || '').trim();
@@ -56,8 +91,11 @@ export function DiaryModal({
   const [hw,setHw]=useState('');
   const [teacherNote,setTeacherNote]=useState('');
   const [caDay,setCaDay]=useState('');
+  const [lessonType,setLessonType]=useState<LessonType>('regular');
   const [manualCaDay,setManualCaDay]=useState(false);
   const [att,setAtt]=useState<Record<string,{trangThai:string;ghiChu:string}>>({});
+  const [extraIds,setExtraIds]=useState<string[]>([]);
+  const [extraPick,setExtraPick]=useState('');
 
   // Chỉ reset form khi modal vừa mở (false→true).
   // Bỏ uniqueClasses khỏi deps: silent-reload tạo array reference mới nhưng
@@ -72,8 +110,10 @@ export function DiaryModal({
       setContent(editingLog.content||''); setHw(editingLog.homework==='---'?'':editingLog.homework||'');
       setTeacherNote(isLessonOffLog(editingLog) ? getLessonOffReason(editingLog) : (editingLog.teacherNote||editingLog['Ghi chú GV']||''));
       setCaDay(normalizeCaDayLabel(editingLog.caDay||''));
+      setLessonType(normalizeLessonType(editingLog.lessonType || editingLog.LoaiBuoiHoc || editingLog.loaiBuoiHoc));
       setManualCaDay(true);
       const attInit:Record<string,{trangThai:string;ghiChu:string}>={};
+      const extraInit:string[]=[];
       (editingLog.attendanceList||[]).forEach((a:any)=>{
         const id = a.maHS||a['Mã HS']||'';
         if(!id) return;
@@ -81,17 +121,23 @@ export function DiaryModal({
           trangThai: normalizeAttendanceLabel(a.trangThai||a['Trạng thái']||a.TrangThai||'Có mặt'),
           ghiChu:    a.ghiChu||a['Ghi chú']||'',
         };
+        if (normalizeAttendanceType(a.LoaiDiemDanh || a.loaiDiemDanh || a.attendanceType || a.type) === 'extra') extraInit.push(id);
       });
       setAtt(attInit);
+      setExtraIds([...new Set(extraInit)]);
+      setExtraPick('');
     } else {
       setClassId(preselectedClassId||'');
       setDate(preselectedDate||localDateStr());
       setCaDay(normalizeCaDayLabel(preselectedCaDay||''));
+      setLessonType(preselectedClassId && preselectedDate && preselectedCaDay ? 'regular' : 'extra');
       setManualCaDay(!!preselectedCaDay);
       setContent('');
       setHw('');
       setTeacherNote('');
       setAtt({});
+      setExtraIds([]);
+      setExtraPick('');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[open,editingLog,preselectedClassId,preselectedDate,preselectedCaDay]);
@@ -102,6 +148,36 @@ export function DiaryModal({
     s.status!=='inactive' &&
     (!s.endDate || s.endDate==='---' || s.endDate==='')
   ), [classId, students]);
+  const extraStudents = useMemo(() => students.filter(s => extraIds.includes(s.id)), [extraIds, students]);
+  const extraStudentOptions = useMemo(() => students
+    .filter(s =>
+      s.id &&
+      s.classId !== classId &&
+      s.status !== 'inactive' &&
+      (!s.endDate || s.endDate === '---' || s.endDate === '') &&
+      !extraIds.includes(s.id)
+    )
+    .sort((a, b) => a.name.localeCompare(b.name, 'vi'))
+    .map(s => ({ value: s.id, label: `${s.name} · ${s.classId || 'Chưa lớp'} · ${s.id}` })),
+  [classId, extraIds, students]);
+  const handleAddExtraStudent = () => {
+    const picked = students.find(s => s.id === extraPick);
+    if (!picked) return;
+    setExtraIds(prev => prev.includes(picked.id) ? prev : [...prev, picked.id]);
+    setAtt(prev => ({
+      ...prev,
+      [picked.id]: prev[picked.id] || { trangThai: normalizeAttendanceLabel(''), ghiChu: 'Hoc ngoai lop' },
+    }));
+    setExtraPick('');
+  };
+  const removeExtraStudent = (id: string) => {
+    setExtraIds(prev => prev.filter(item => item !== id));
+    setAtt(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
   // BUG3 FIX: lấy tên GV từ class record thay vì student đầu tiên
   // tránh trường hợp lớp trống (chưa có HS) → teacherName = ''
   const clsRecord = uniqueClasses.find(c => classCode(c) === classId);
@@ -120,6 +196,8 @@ export function DiaryModal({
     const nextCa = nextClass ? extractScheduleTimes(nextClass)[0] || '' : '';
     setClassId(nextClassId);
     setAtt({});
+    setExtraIds([]);
+    setExtraPick('');
     setManualCaDay(false);
     if (nextCa) setCaDay(nextCa);
   };
@@ -150,22 +228,37 @@ export function DiaryModal({
   // Attendance
   const attStudents: AttendanceStudent[] = cls.map(s=>({
     id:s.id, name:s.name,
-    status:(att[s.id]?.trangThai==='Vắng'?'absent':att[s.id]?.trangThai==='Có phép'?'excused':'present') as any,
+    status:attendanceStatusFromLabel(att[s.id]?.trangThai),
     note:att[s.id]?.ghiChu||'',
   }));
+  const extraAttStudents: AttendanceStudent[] = extraStudents.map(s=>({
+    id:s.id, name:s.name, classId:s.classId, attendanceType:'extra',
+    status:attendanceStatusFromLabel(att[s.id]?.trangThai),
+    note:att[s.id]?.ghiChu||'',
+    onRemove:()=>removeExtraStudent(s.id),
+  }));
+  const allAttStudents: AttendanceStudent[] = [
+    ...attStudents.map(s => ({ ...s, classId: cls.find(item => item.id === s.id)?.classId, attendanceType: 'regular' as const })),
+    ...extraAttStudents,
+  ];
   const handleAttChange=(updated:AttendanceStudent[])=>{
     const next:Record<string,{trangThai:string;ghiChu:string}>={};
-    updated.forEach(a=>{ next[a.id]={trangThai:a.status==='absent'?'Vắng':a.status==='excused'?'Có phép':'Có mặt',ghiChu:a.note||''}; });
+    updated.forEach(a=>{ next[a.id]={trangThai:attendanceLabelFromStatus(a.status),ghiChu:a.note||''}; });
     setAtt(next);
   };
+
+  const saveAttendance = [
+    ...cls.map(s=>({maHS:s.id,tenHS:s.name,trangThai:att[s.id]?.trangThai||normalizeAttendanceLabel('present'),ghiChu:att[s.id]?.ghiChu||'',loaiDiemDanh:'regular'})),
+    ...extraStudents.map(s=>({maHS:s.id,tenHS:s.name,trangThai:att[s.id]?.trangThai||normalizeAttendanceLabel('present'),ghiChu:att[s.id]?.ghiChu||'Hoc ngoai lop',loaiDiemDanh:'extra'})),
+  ];
 
   const doSave=()=>{
     if(!classId){toast.error('⚠️ Vui lòng chọn lớp học!');return;}
     if(!caDay){toast.error('⚠️ Vui lòng chọn ca dạy!');return;}
     if(!content.trim()){toast.error('⚠️ Vui lòng nhập nội dung bài dạy!');return;}
-    onSave({ date,classId,caDay: normalizeCaDayLabel(caDay),content,homework:hw||'---',teacherNote:teacherNote.trim(),teacherName,
-      ...(editingLog&&{originalDate:editingLog.originalDate||editingLog.rawDate,originalClassId:editingLog.originalClassId||editingLog.classId,originalCaDay:editingLog.originalCaDay||editingLog.caDay||''}),
-      attendance:cls.map(s=>({maHS:s.id,tenHS:s.name,trangThai:att[s.id]?.trangThai||'Có mặt',ghiChu:att[s.id]?.ghiChu||''})),
+    onSave({ date,classId,caDay: normalizeCaDayLabel(caDay),lessonType,content,homework:hw||'---',teacherNote:teacherNote.trim(),teacherName,
+      ...(editingLog&&{originalId:editingLog.maBuoi||editingLog.id,originalDate:editingLog.originalDate||editingLog.rawDate,originalClassId:editingLog.originalClassId||editingLog.classId,originalCaDay:editingLog.originalCaDay||editingLog.caDay||''}),
+      attendance:saveAttendance,
     });
   };
 
@@ -203,6 +296,12 @@ export function DiaryModal({
                     {caOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                 </div>
+                <div className="ltn-quick-field">
+                  <label>Loai buoi</label>
+                  <select value={lessonType} onChange={e=>setLessonType(normalizeLessonType(e.target.value))}>
+                    {LESSON_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
               </div>
           </section>
 
@@ -232,8 +331,17 @@ export function DiaryModal({
                 {approvedLeaves.length} đơn nghỉ phép đã duyệt được tự đánh dấu Có phép.
               </div>
             )}
-            {cls.length > 0 ? (
-              <AttendancePicker students={attStudents} onChange={handleAttChange}/>
+            {classId && (
+              <div style={{ marginBottom: 10, display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 8, alignItems: 'center' }}>
+                <select value={extraPick} onChange={e=>setExtraPick(e.target.value)} style={{ minHeight: 36, border: '1px solid #e2e8f0', borderRadius: 10, padding: '0 10px', fontSize: 12, fontWeight: 800, color: '#334155', background: 'white', minWidth: 0 }}>
+                  <option value="">+ Them hoc sinh ngoai lop</option>
+                  {extraStudentOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+                <Button intent="primary" variant="outline" size="sm" onClick={handleAddExtraStudent} disabled={!extraPick}>Them</Button>
+              </div>
+            )}
+            {allAttStudents.length > 0 ? (
+              <AttendancePicker students={allAttStudents} onChange={handleAttChange}/>
             ) : (
               <div style={{ minHeight:100, display:'flex', alignItems:'center', justifyContent:'center', color:'#94a3b8', fontSize:13, fontStyle:'italic' }}>
                 {classId ? 'Lớp này chưa có học sinh đang học' : 'Chọn lớp để điểm danh'}

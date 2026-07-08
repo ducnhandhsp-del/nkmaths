@@ -73,12 +73,12 @@ HEADERS[SHEETS.DANGKYLOP] = [
 
 HEADERS[SHEETS.BUOIHOC] = [
   'MaBuoi', 'Ngay', 'MaLop', 'CaDay', 'MaGV',
-  'TrangThai', 'NoiDung', 'BaiTapVeNha', 'GhiChuGV',
+  'TrangThai', 'LoaiBuoiHoc', 'NoiDung', 'BaiTapVeNha', 'GhiChuGV',
   'CreatedAt', 'UpdatedAt'
 ];
 
 HEADERS[SHEETS.DIEMDANH] = [
-  'MaDiemDanh', 'MaBuoi', 'MaHS', 'TrangThai', 'GhiChu', 'UpdatedAt'
+  'MaDiemDanh', 'MaBuoi', 'MaHS', 'TrangThai', 'LoaiDiemDanh', 'GhiChu', 'UpdatedAt'
 ];
 
 HEADERS[SHEETS.HOCPHI] = [
@@ -489,7 +489,9 @@ function getData() {
             'Trạng thái': stVi,
             ghiChu: str(a.GhiChu),
             GhiChu: str(a.GhiChu),
-            'Ghi chú': str(a.GhiChu)
+            'Ghi chú': str(a.GhiChu),
+            loaiDiemDanh: str(a.LoaiDiemDanh || 'regular') === 'extra' ? 'extra' : 'regular',
+            LoaiDiemDanh: str(a.LoaiDiemDanh || 'regular') === 'extra' ? 'extra' : 'regular'
           };
         });
 
@@ -515,6 +517,8 @@ function getData() {
           maGV: maGV,
           MaGV: maGV,
           teacherName: t ? teacherNameOf(t) : str(l.GiaoVien || l.teacherName || l.MaGV),
+          lessonType: normalizeLessonType(l.LoaiBuoiHoc),
+          LoaiBuoiHoc: normalizeLessonType(l.LoaiBuoiHoc),
           content: str(l.NoiDung) || '---',
           homework: str(l.BaiTapVeNha) || '---',
           teacherNote: str(l.GhiChuGV),
@@ -972,7 +976,11 @@ function saveDiary(d) {
     setupSheetsIfMissingOnly();
 
     var lesson = normalizeLessonInput(d, false);
-    if (!lesson.MaBuoi) lesson.MaBuoi = makeLessonId(lesson.Ngay, lesson.MaLop, lesson.CaDay);
+    if (!lesson.MaBuoi) {
+      lesson.MaBuoi = lesson.LoaiBuoiHoc === 'regular'
+        ? makeLessonId(lesson.Ngay, lesson.MaLop, lesson.CaDay)
+        : makeAdhocLessonId(lesson.Ngay, lesson.MaLop, lesson.CaDay, lesson.LoaiBuoiHoc);
+    }
 
     lesson.CreatedAt = lesson.CreatedAt || nowStr();
     lesson.UpdatedAt = nowStr();
@@ -994,7 +1002,7 @@ function updateDiary(d) {
   try {
     setupSheetsIfMissingOnly();
 
-    var oldMaBuoi = str(d.MaBuoi || d.maBuoi || d.id);
+    var oldMaBuoi = str(d.originalId || d.MaBuoi || d.maBuoi || d.id);
     if (!oldMaBuoi) {
       var oldDate = formatDate(d.originalDate || d.date);
       var oldClass = str(d.originalClassId || d.classId);
@@ -1049,6 +1057,14 @@ function deleteDiary(d) {
   }
 }
 
+function normalizeLessonType(raw) {
+  var s = str(raw).toLowerCase();
+  if (s === 'makeup' || s === 'hoc_bu' || s === 'hoc bu') return 'makeup';
+  if (s === 'review' || s === 'on_tap' || s === 'on tap') return 'review';
+  if (s === 'extra' || s === 'them_buoi' || s === 'them buoi') return 'extra';
+  return 'regular';
+}
+
 function normalizeLessonInput(d, isUpdate) {
   var date = formatDate(d.Ngay || d.date || d.rawDate) || todayStr();
   var classId = str(d.MaLop || d.classId || d['Mã Lớp']);
@@ -1076,6 +1092,7 @@ function normalizeLessonInput(d, isUpdate) {
     GiaoVien: teacherName,
     teacherName: teacherName,
     TrangThai: str(d.TrangThai || d.status || 'completed'),
+    LoaiBuoiHoc: normalizeLessonType(d.LoaiBuoiHoc || d.lessonType || d.loaiBuoiHoc),
     NoiDung: str(d.NoiDung || d.content) || '---',
     BaiTapVeNha: str(d.BaiTapVeNha || d.homework) || '---',
     GhiChuGV: str(d.GhiChuGV || d.teacherNote)
@@ -1099,6 +1116,7 @@ function replaceAttendanceForLesson(maBuoi, attendanceList) {
       MaBuoi: maBuoi,
       MaHS: maHS,
       TrangThai: statusCode || 'present',
+      LoaiDiemDanh: str(a.LoaiDiemDanh || a.loaiDiemDanh || a.attendanceType || 'regular') === 'extra' ? 'extra' : 'regular',
       GhiChu: str(a.GhiChu || a.ghiChu || a['Ghi chú']),
       UpdatedAt: nowStr()
     };
@@ -1791,6 +1809,11 @@ function safeIdPart(v) {
 
 function makeLessonId(date, classId, caDay) {
   return 'BH-' + ymdFromDMY(date) + '-' + safeIdPart(classId) + '-' + safeIdPart(caDay);
+}
+
+function makeAdhocLessonId(date, classId, caDay, lessonType) {
+  var suffix = Utilities.getUuid().replace(/-/g, '').substring(0, 6).toUpperCase();
+  return makeLessonId(date, classId, caDay) + '-' + safeIdPart(lessonType || 'extra') + '-' + Utilities.formatDate(new Date(), TZ, 'HHmmss') + '-' + suffix;
 }
 
 function makeAttendanceId(maBuoi, maHS) {

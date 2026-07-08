@@ -268,6 +268,7 @@ export function AttendancePicker({students,onChange,readOnly=false}:AttendancePi
       <div style={{background:'white',borderRadius:radius.lg,border:`1px solid ${colors.neutral[200]}`,overflow:'hidden'}}>
         {students.map((s,idx)=>{
           const activeStatus=ST_CFG[s.status] || ST_CFG.present;
+          const isExtra = s.attendanceType === 'extra';
           return(
             <div key={s.id} className="attendance-row" style={{padding:'8px 12px',borderBottom:idx<students.length-1?`1px solid ${colors.neutral[100]}`:'none',background:idx%2===0?'white':colors.neutral[50]}}>
               {readOnly ? (
@@ -275,7 +276,7 @@ export function AttendancePicker({students,onChange,readOnly=false}:AttendancePi
                   <span style={{fontSize:11,fontWeight:700,color:colors.neutral[300],width:18,flexShrink:0,textAlign:'center'}}>{idx+1}</span>
                   <div style={{flex:1,minWidth:0}}>
                     <p style={{fontSize:13,fontWeight:700,color:colors.neutral[900],margin:0,lineHeight:1.35,wordBreak:'break-word'}}>{s.name}</p>
-                    <p style={{fontSize:11,color:colors.neutral[400],margin:'1px 0 0'}}>{s.id}</p>
+                    <p style={{fontSize:11,color:colors.neutral[400],margin:'1px 0 0'}}>{s.id}{isExtra ? ' · Ngoài lớp' : ''}</p>
                   </div>
                   <span style={{padding:'3px 9px',borderRadius:999,background:activeStatus.bg,border:`1px solid ${activeStatus.border}`,fontSize:11,fontWeight:700,color:activeStatus.color,flexShrink:0,whiteSpace:'nowrap'}}>
                     {activeStatus.label}
@@ -287,8 +288,16 @@ export function AttendancePicker({students,onChange,readOnly=false}:AttendancePi
                     <span style={{fontSize:11,fontWeight:700,color:colors.neutral[300],width:18,flexShrink:0,textAlign:'center'}}>{idx+1}</span>
                     <div style={{flex:1,minWidth:0}}>
                       <p style={{fontSize:13,fontWeight:800,color:colors.neutral[900],margin:0,lineHeight:1.3,wordBreak:'break-word'}}>{s.name}</p>
-                      <p style={{fontSize:11,color:colors.neutral[400],margin:'1px 0 0'}}>{s.id}</p>
+                      <p style={{fontSize:11,color:colors.neutral[400],margin:'1px 0 0',display:'flex',alignItems:'center',gap:5,flexWrap:'wrap'}}>
+                        <span>{s.id}</span>
+                        {isExtra && <span style={{padding:'1px 6px',borderRadius:999,background:'#eef2ff',border:'1px solid #c7d2fe',color:'#4f46e5',fontSize:10,fontWeight:900}}>Ngoài lớp</span>}
+                      </p>
                     </div>
+                    {isExtra && s.onRemove && (
+                      <button type="button" title="Xóa khỏi buổi học" onClick={s.onRemove} style={{width:26,height:26,borderRadius:999,border:'1px solid #fecaca',background:'#fff1f2',color:'#e11d48',fontWeight:900,cursor:'pointer',flexShrink:0}}>
+                        ×
+                      </button>
+                    )}
                   </div>
                   <div className="attendance-status-grid" style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:5}}>
                     {ATTENDANCE_STATUSES.map(st=>{

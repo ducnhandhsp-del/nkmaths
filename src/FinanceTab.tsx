@@ -16,10 +16,12 @@ import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react'
 import { Plus, Check, TrendingDown, TrendingUp, Wallet, AlertTriangle, MessageCircle, ReceiptText } from 'lucide-react';
 import { fmtVND, capitalizeName, isStudentActive, normalizePaymentMethod, resolveTeacher, buildSchoolYearMonths } from './helpers';
 import {
+  attendanceStudentId,
   classIdOf,
   getPaymentTuitionPeriod,
   getTuitionCycleState,
   isStudentBillableInMonth,
+  normalizeAttendanceStatus,
   parsePeriod,
 } from './measures';
 import { Badge, Button, Pager, Select } from './dsComponents';
@@ -63,6 +65,15 @@ interface DebtTableRow {
   isProblem: boolean;
   isWarning: boolean;
   status: DebtStatus;
+}
+
+interface TempTuitionRow {
+  id: string;
+  student: Student;
+  regularSessions: number;
+  extraSessions: number;
+  totalSessions: number;
+  estimatedAmount: number;
 }
 
 const IPP = 25;
@@ -373,6 +384,41 @@ export default function FinanceTab({
   const collectedAmount = selectedMonthPayments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
   const remainingAmount = Math.max(totalDueAmount - collectedAmount, 0);
   const spentAmount = selectedMonthExpenses.reduce((sum, expense) => sum + (expense.amount || 0), 0);
+  const tempSessionUnit = Math.max(0, Math.floor((Number(baseTuition) || 0) / 8));
+  const tempTuitionRows = useMemo<TempTuitionRow[]>(() => {
+    const map = new Map<string, TempTuitionRow>();
+    activeStudents.forEach(student => {
+      if (fFC && student.classId !== fFC) return;
+      map.set(student.id, {
+        id: student.id,
+        student,
+        regularSessions: 0,
+        extraSessions: 0,
+        totalSessions: 0,
+        estimatedAmount: 0,
+      });
+    });
+
+    tlogs.forEach(log => {
+      const period = parsePeriod(log.rawDate || log.date || '');
+      if (period?.m !== selectedDebtMonth.m || period?.y !== selectedDebtMonth.y) return;
+      (log.attendanceList || []).forEach((entry: any) => {
+        if (normalizeAttendanceStatus(entry.trangThai || entry['Trạng thái'] || entry.TrangThai || '') !== 'present') return;
+        const studentId = attendanceStudentId(entry);
+        const row = map.get(studentId);
+        if (!row) return;
+        const type = String(entry.loaiDiemDanh || entry.LoaiDiemDanh || entry.attendanceType || 'regular') === 'extra' ? 'extra' : 'regular';
+        if (type === 'extra') row.extraSessions++;
+        else row.regularSessions++;
+        row.totalSessions++;
+      });
+    });
+
+    return [...map.values()]
+      .filter(row => row.totalSessions > 0)
+      .map(row => ({ ...row, estimatedAmount: row.totalSessions * tempSessionUnit }))
+      .sort((a, b) => b.totalSessions - a.totalSessions || a.student.name.localeCompare(b.student.name, 'vi'));
+  }, [activeStudents, fFC, selectedDebtMonth, tempSessionUnit, tlogs]);
 
   const debtColumns = useMemo(() => [
     {
@@ -505,6 +551,55 @@ export default function FinanceTab({
       },
     },
   ], [baseTuition, copiedId, copyMsg, debtDueLabel, getDebtPeriodAmount, getDebtPeriodPayment, getDebtPeriodStatus, getDebtSessionProgress, makePaymentDraft, makeZaloMsg, onShowFAB, onViewInvoice]);
+
+  const tempTuitionColumns = useMemo(() => [
+    {
+      key: 'student',
+      label: 'Học sinh',
+      width: '28%',
+      render: (_: unknown, row: TempTuitionRow) => (
+        <div style={{ minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 900, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{capitalizeName(row.student.name)}</p>
+          <p style={{ margin: '2px 0 0', fontSize: 11, fontWeight: 800, color: '#64748b' }}>{row.student.id}</p>
+        </div>
+      ),
+    },
+    {
+      key: 'class',
+      label: 'Lớp',
+      align: 'center' as const,
+      width: '10%',
+      render: (_: unknown, row: TempTuitionRow) => row.student.classId ? <Badge color="indigo">{row.student.classId}</Badge> : <span style={{ color: '#94a3b8', fontWeight: 800 }}>—</span>,
+    },
+    {
+      key: 'regularSessions',
+      label: 'Lớp chính',
+      align: 'center' as const,
+      width: '12%',
+      render: (_: unknown, row: TempTuitionRow) => <span style={{ fontWeight: 950, color: '#334155' }}>{row.regularSessions}</span>,
+    },
+    {
+      key: 'extraSessions',
+      label: 'Ngoài lớp',
+      align: 'center' as const,
+      width: '12%',
+      render: (_: unknown, row: TempTuitionRow) => <span style={{ fontWeight: 950, color: row.extraSessions ? '#4f46e5' : '#94a3b8' }}>{row.extraSessions}</span>,
+    },
+    {
+      key: 'totalSessions',
+      label: 'Tổng buổi',
+      align: 'center' as const,
+      width: '12%',
+      render: (_: unknown, row: TempTuitionRow) => <span style={{ fontWeight: 950, color: '#0f172a' }}>{row.totalSessions}</span>,
+    },
+    {
+      key: 'estimatedAmount',
+      label: 'Tạm tính',
+      align: 'right' as const,
+      width: '16%',
+      render: (_: unknown, row: TempTuitionRow) => <MoneyText value={row.estimatedAmount} compact tone="success" />,
+    },
+  ], []);
 
   const ledgerColumns = useMemo(() => [
     {
@@ -866,6 +961,27 @@ export default function FinanceTab({
             })}
             <Pager page={pgF} total={debtTableRows.length} perPage={IPP} setPage={setPgF} showTotal />
           </div>
+          </section>
+          <section style={{ display: 'grid', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 950, color: '#0f172a' }}>Học phí tạm theo buổi có mặt</h3>
+                <p style={{ margin: '3px 0 0', fontSize: 12, fontWeight: 800, color: '#64748b' }}>
+                  T{selectedDebtMonth.m}/{selectedDebtMonth.y} · đơn giá tạm <MoneyText value={tempSessionUnit} compact />/buổi · không tự cập nhật công nợ
+                </p>
+              </div>
+              <Badge color="emerald">{tempTuitionRows.length} học sinh có mặt</Badge>
+            </div>
+            <DataTable
+              columns={tempTuitionColumns}
+              data={tempTuitionRows}
+              rowKey="id"
+              emptyText="Chưa có dữ liệu có mặt trong tháng"
+              emptySub="Báo cáo này lấy từ điểm danh, gồm cả học sinh ngoài lớp."
+              onRowClick={row => onViewFinance(row.student)}
+              scrollX={false}
+              density="compact"
+            />
           </section>
         </div>
       )}

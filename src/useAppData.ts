@@ -138,10 +138,14 @@ function txLogs(raw: any[], tl: string[]): any[] {
         trangThai:    status,
         'Trạng thái': status,
         'Ghi chú':    String(a.ghiChu || a.GhiChu || a['Ghi chú'] || ''),
+        loaiDiemDanh: String(a.loaiDiemDanh || a.LoaiDiemDanh || a.attendanceType || 'regular') === 'extra' ? 'extra' : 'regular',
+        LoaiDiemDanh: String(a.loaiDiemDanh || a.LoaiDiemDanh || a.attendanceType || 'regular') === 'extra' ? 'extra' : 'regular',
       };
     });
 
     return {
+      id:              String(l.id || l.maBuoi || l.MaBuoi || ''),
+      maBuoi:         String(l.maBuoi || l.MaBuoi || l.id || ''),
       rawDate:         String(l.rawDate || dt),
       date:            String(dt),
       originalDate:    String(l.originalDate    || dt),
@@ -154,6 +158,8 @@ function txLogs(raw: any[], tl: string[]): any[] {
       teacherName:     resolveTeacher(l['Giáo viên'] || l.teacherName || '---', tl),
       maGV:            String(l.maGV || l.MaGV || l.teacherId || ''),
       caDay:           caVal,
+      lessonType:      String(l.lessonType || l.LoaiBuoiHoc || l.loaiBuoiHoc || 'regular'),
+      LoaiBuoiHoc:     String(l.lessonType || l.LoaiBuoiHoc || l.loaiBuoiHoc || 'regular'),
       // Cả 'Trạng thái' lẫn trangThai đều đã normalize → dùng trực tiếp không cần fallback thêm
       present: atts.filter((a: any) => a['Trạng thái'] === 'Có mặt').length,
       absent:  atts.filter((a: any) => a['Trạng thái'] === 'Vắng').length,
