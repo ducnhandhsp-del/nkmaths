@@ -176,12 +176,13 @@ export default function ParentPortal({ scriptUrl, centerName, baseTuition, phone
         .portal-line:last-child{border-bottom:0;padding-bottom:0}
         .portal-line span{color:#64748b;font-weight:750}.portal-line strong{color:#0f172a;font-weight:950;text-align:right}
         .portal-table{display:grid;gap:7px}
-        .portal-row{display:grid;grid-template-columns:92px minmax(0,1fr) auto;gap:10px;align-items:center;border:1px solid #e2e8f0;border-radius:8px;padding:9px 10px;background:#fff}
+        .portal-row{display:grid;grid-template-columns:110px minmax(0,1fr) auto;gap:10px;align-items:center;border:1px solid #e2e8f0;border-radius:8px;padding:9px 10px;background:#fff}
+        .portal-row-date{font-size:14px;line-height:1.2;font-weight:950;color:#0f172a;white-space:nowrap}
         .portal-row-main{min-width:0}.portal-row-title{margin:0;font-size:13px;font-weight:950;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.portal-row-sub{margin:2px 0 0;font-size:11px;font-weight:750;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
         .portal-badge{border-radius:999px;padding:4px 8px;font-size:11px;font-weight:950;white-space:nowrap;background:#f1f5f9;color:#475569}
         .portal-badge.good{background:#dcfce7;color:#047857}.portal-badge.warn{background:#fef3c7;color:#b45309}.portal-badge.bad{background:#fee2e2;color:#be123c}
         .portal-empty{border:1px dashed #cbd5e1;border-radius:10px;padding:18px;text-align:center;color:#64748b;font-size:13px;font-weight:800;background:#f8fafc}
-        @media(max-width:820px){.portal-page{padding:14px}.portal-title{font-size:22px}.portal-form{grid-template-columns:1fr}.portal-button{width:100%}.portal-grid{grid-template-columns:1fr}.portal-kpis{grid-template-columns:1fr 1fr}.portal-row{grid-template-columns:78px minmax(0,1fr);}.portal-row .portal-badge{grid-column:2;justify-self:start}}
+        @media(max-width:820px){.portal-page{padding:14px}.portal-title{font-size:22px}.portal-form{grid-template-columns:1fr}.portal-button{width:100%}.portal-grid{grid-template-columns:1fr}.portal-kpis{grid-template-columns:1fr 1fr}.portal-row{grid-template-columns:minmax(0,1fr) auto;gap:5px 10px;align-items:start}.portal-row-date{grid-column:1;grid-row:1;font-size:13px}.portal-row-main{grid-column:1;grid-row:2}.portal-row .portal-badge{grid-column:2;grid-row:1 / span 2;justify-self:end;align-self:center}}
       `}</style>
 
       <div className="portal-shell">
@@ -278,7 +279,7 @@ export default function ParentPortal({ scriptUrl, centerName, baseTuition, phone
                     const p = paymentPeriodOf(payment, period.y);
                     return (
                       <div className="portal-row" key={payment.id || payment.docNum}>
-                        <strong>{payment.date || '---'}</strong>
+                        <strong className="portal-row-date">{payment.date || '---'}</strong>
                         <div className="portal-row-main">
                           <p className="portal-row-title">{p ? `Học phí T${p.m}/${p.y}` : 'Phiếu thu học phí'}</p>
                           <p className="portal-row-sub">{payment.method || '---'}{payment.note ? ` · ${payment.note}` : ''}</p>
@@ -301,7 +302,7 @@ export default function ParentPortal({ scriptUrl, centerName, baseTuition, phone
                 <div className="portal-table">
                   {attendance.recent.map(row => (
                     <div className="portal-row" key={`${row.lessonId}-${row.date}-${row.classId}`}>
-                      <strong>{row.date || '---'}</strong>
+                      <strong className="portal-row-date">{row.date || '---'}</strong>
                       <div className="portal-row-main">
                         <p className="portal-row-title">{row.classId || result.student.classId || '---'} · {row.caDay || '---'}</p>
                         <p className="portal-row-sub">{norm(row.note) || norm(row.content) || 'Đã ghi điểm danh'}</p>
