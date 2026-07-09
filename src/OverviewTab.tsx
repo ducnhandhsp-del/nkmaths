@@ -285,7 +285,6 @@ export default function OverviewTab({
     () => uClasses.filter(c => !['inactive', 'nghi', 'da nghi', 'dong'].includes(norm(c.status || c.TrangThai))),
     [uClasses],
   );
-  const classesWithSchedule = useMemo(() => activeClasses.filter(c => getClassSlots(c).length > 0), [activeClasses]);
   const monthPayments = useMemo(() => payments.filter(p => paymentInReceiptMonth(p, curMo, curYr)), [payments, curMo, curYr]);
   const monthRevenue = useMemo(() => monthPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0), [monthPayments]);
 
@@ -344,6 +343,8 @@ export default function OverviewTab({
     });
   }, [todaySlots]);
 
+  const recordedToday = useMemo(() => todaySlots.filter(slot => slot.logged).length, [todaySlots]);
+
   const newStudentsThisMonth = useMemo(
     () => students.filter(s => studentStartedInMonth(s, curMo, curYr)),
     [students, curMo, curYr],
@@ -368,14 +369,14 @@ export default function OverviewTab({
     const missingSchedule = activeClasses.filter(c => getClassSlots(c).length === 0).length;
 
     return [
-      dueUnrecordedToday.length > 0 && { id: 'attendance', tone: '#6366f1', title: `${dueUnrecordedToday.length} buổi chưa điểm danh`, sub: 'Mở Chuyên cần để kiểm tra', onClick: () => goOperations('attendance') },
-      unpaidStudents.length > 0 && { id: 'debt', tone: '#e11d48', title: `${unpaidStudents.length} học sinh nợ phí T${curMo}`, sub: <><MoneyText value={debtAmount} tone="danger" /> cần thu</>, onClick: () => goFinance('debt') },
+      dueUnrecordedToday.length > 0 && { id: 'attendance', tone: '#6366f1', title: `${dueUnrecordedToday.length} buổi đã tới giờ chưa ghi`, sub: 'Mở điểm danh để ghi ngay', onClick: () => goOperations('attendance') },
+      unpaidStudents.length > 0 && { id: 'debt', tone: '#e11d48', title: `${unpaidStudents.length} học sinh có học phí tới hạn`, sub: <><MoneyText value={debtAmount} tone="danger" /> cần thu theo chu kỳ</>, onClick: () => goFinance('debt') },
       unassigned > 0 && { id: 'unassigned', tone: '#f59e0b', title: `${unassigned} học sinh chờ xếp lớp`, sub: 'Cần gán lớp học', onClick: () => goTraining('students') },
-      newStudentsThisMonth.length > 0 && { id: 'new-students', tone: '#10b981', title: `${newStudentsThisMonth.length} học sinh mới đăng ký`, sub: `Trong T${curMo}/${curYr}`, onClick: () => goTraining('students') },
-      frequentAbsentees.length > 0 && { id: 'absence', tone: '#f97316', title: `${frequentAbsentees.length} học sinh nghỉ nhiều`, sub: 'Vắng nhiều hoặc vắng liên tiếp trong tháng', onClick: () => goOperations('attendance') },
-      soonSlots.length > 0 && { id: 'soon', tone: '#0ea5e9', title: `${soonSlots.length} lớp sắp bắt đầu`, sub: 'Trong 90 phút tới', onClick: () => goOperations('schedule') },
       missingTeacher > 0 && { id: 'teacher', tone: '#ef4444', title: `${missingTeacher} lớp thiếu giáo viên`, sub: 'Cần phân công giáo viên', onClick: () => goTraining('classes') },
       missingSchedule > 0 && { id: 'schedule', tone: '#f97316', title: `${missingSchedule} lớp thiếu lịch học`, sub: 'Cần bổ sung Buổi 1/2/3', onClick: () => goTraining('classes') },
+      frequentAbsentees.length > 0 && { id: 'absence', tone: '#f97316', title: `${frequentAbsentees.length} học sinh nghỉ nhiều`, sub: 'Vắng nhiều hoặc vắng liên tiếp trong tháng', onClick: () => goOperations('attendance') },
+      newStudentsThisMonth.length > 0 && { id: 'new-students', tone: '#10b981', title: `${newStudentsThisMonth.length} học sinh mới đăng ký`, sub: `Trong T${curMo}/${curYr}`, onClick: () => goTraining('students') },
+      soonSlots.length > 0 && { id: 'soon', tone: '#0ea5e9', title: `${soonSlots.length} buổi sắp bắt đầu`, sub: 'Trong 90 phút tới', onClick: () => goOperations('schedule') },
     ].filter(Boolean) as { id: string; tone: string; title: string; sub: React.ReactNode; onClick: () => void }[];
   }, [activeClasses, activeStudents, curMo, curYr, debtAmount, dueUnrecordedToday.length, frequentAbsentees.length, goTraining, goOperations, goFinance, newStudentsThisMonth.length, soonSlots.length, unpaidStudents.length]);
 
@@ -401,10 +402,10 @@ export default function OverviewTab({
         actions={(
           <>
             <span style={{ border: '1px solid #dbeafe', background: '#eff6ff', color: '#1d4ed8', borderRadius: 999, padding: '7px 10px', fontSize: 12, fontWeight: 900 }}>
-              {todaySlots.length} lớp hôm nay
+              {todaySlots.length} buổi hôm nay
             </span>
             <span style={{ border: '1px solid #fee2e2', background: dueUnrecordedToday.length ? '#fff1f2' : '#f0fdf4', color: dueUnrecordedToday.length ? '#be123c' : '#047857', borderRadius: 999, padding: '7px 10px', fontSize: 12, fontWeight: 900 }}>
-              {dueUnrecordedToday.length} chưa điểm danh
+              {dueUnrecordedToday.length} cần ghi
             </span>
           </>
         )}
@@ -424,8 +425,8 @@ export default function OverviewTab({
           <ActionableKpi
             icon={School}
             value={todaySlots.length}
-            label="Lớp hôm nay"
-            sub={`${classesWithSchedule.length}/${activeClasses.length} lớp có lịch`}
+            label="Buổi hôm nay"
+            sub={`${recordedToday} đã ghi · ${dueUnrecordedToday.length} cần ghi`}
             tone="info"
             onClick={() => goOperations('schedule')}
             actionLabel="Xem"
@@ -433,8 +434,8 @@ export default function OverviewTab({
           <ActionableKpi
             icon={TrendingUp}
             value={<MoneyText value={monthRevenue} compact tone="success" />}
-            label="Doanh thu tháng này"
-            sub="Từ phiếu thu tháng này"
+            label="Đã thu trong tháng"
+            sub="Theo ngày phiếu thu"
             tone="success"
             onClick={() => goFinance('ledger')}
             actionLabel="Xem"
@@ -442,7 +443,7 @@ export default function OverviewTab({
           <ActionableKpi
             icon={AlertTriangle}
             value={<MoneyText value={debtAmount} compact tone={debtAmount > 0 ? 'danger' : 'success'} />}
-            label="Công nợ"
+            label="Học phí tới hạn"
             sub={`${unpaidStudents.length}/${billableStudents.length} học sinh cần thu`}
             tone={debtAmount > 0 ? 'danger' : 'success'}
             onClick={() => goFinance('debt')}
@@ -475,7 +476,7 @@ export default function OverviewTab({
         <Panel className="overview-panel" style={{ minHeight: 210 }}>
           <SectionTitle title="Lịch dạy hôm nay" action="Vận hành →" onAction={() => goOperations('schedule')} />
           {todaySlots.length === 0 ? (
-            <EmptyState icon={CalendarCheck} text="Không có lớp hôm nay" sub="Bạn có thể kiểm tra lịch dạy trong tab Vận hành." compact />
+            <EmptyState icon={CalendarCheck} text="Không có buổi học hôm nay" sub="Bạn có thể kiểm tra lịch dạy trong tab Vận hành." compact />
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {todaySlots.slice(0, 5).map(slot => {
@@ -483,7 +484,7 @@ export default function OverviewTab({
                 const minutes = slotMinute(slot.caDay);
                 startsAt.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
                 const isFuture = startsAt > new Date();
-                const statusLabel = slot.logged ? 'Đã ghi' : isFuture ? 'Sắp tới' : 'Chưa ghi';
+                const statusLabel = slot.logged ? 'Đã ghi' : isFuture ? 'Sắp tới' : 'Cần ghi';
                 const statusBg = slot.logged ? '#ecfdf5' : isFuture ? '#eef2ff' : '#fffbeb';
                 const statusColor = slot.logged ? '#047857' : isFuture ? '#4f46e5' : '#b45309';
                 return (
