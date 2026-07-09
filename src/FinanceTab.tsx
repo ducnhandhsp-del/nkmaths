@@ -544,48 +544,6 @@ export default function FinanceTab({
     },
   ], [attendanceAuditByStudent, baseTuition, copiedId, copyMsg, debtDueLabel, getDebtPeriodAmount, getDebtPeriodPayment, getDebtPeriodStatus, makePaymentDraft, makeZaloMsg, onShowFAB, onViewInvoice]);
 
-  const tempTuitionColumns = useMemo(() => [
-    {
-      key: 'student',
-      label: 'Học sinh',
-      width: '28%',
-      render: (_: unknown, row: TempTuitionRow) => (
-        <div style={{ minWidth: 0 }}>
-          <p style={{ margin: 0, fontSize: 13, fontWeight: 900, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{capitalizeName(row.student.name)}</p>
-          <p style={{ margin: '2px 0 0', fontSize: 11, fontWeight: 800, color: '#64748b' }}>{row.student.id}</p>
-        </div>
-      ),
-    },
-    {
-      key: 'class',
-      label: 'Lớp',
-      align: 'center' as const,
-      width: '10%',
-      render: (_: unknown, row: TempTuitionRow) => row.student.classId ? <Badge color="indigo">{row.student.classId}</Badge> : <span style={{ color: '#94a3b8', fontWeight: 800 }}>—</span>,
-    },
-    {
-      key: 'regularSessions',
-      label: 'Lớp chính',
-      align: 'center' as const,
-      width: '12%',
-      render: (_: unknown, row: TempTuitionRow) => <span style={{ fontWeight: 950, color: '#334155' }}>{row.regularSessions}</span>,
-    },
-    {
-      key: 'extraSessions',
-      label: 'Ngoài lớp',
-      align: 'center' as const,
-      width: '12%',
-      render: (_: unknown, row: TempTuitionRow) => <span style={{ fontWeight: 950, color: row.extraSessions ? '#4f46e5' : '#94a3b8' }}>{row.extraSessions}</span>,
-    },
-    {
-      key: 'totalSessions',
-      label: 'Tổng buổi',
-      align: 'center' as const,
-      width: '12%',
-      render: (_: unknown, row: TempTuitionRow) => <span style={{ fontWeight: 950, color: '#0f172a' }}>{row.totalSessions}</span>,
-    },
-  ], []);
-
   const ledgerColumns = useMemo(() => [
     {
       key: 'date',
@@ -939,27 +897,6 @@ export default function FinanceTab({
             })}
             <Pager page={pgF} total={debtTableRows.length} perPage={IPP} setPage={setPgF} showTotal />
           </div>
-          </section>
-          <section style={{ display: 'grid', gap: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 950, color: '#0f172a' }}>Đối soát số buổi</h3>
-                <p style={{ margin: '3px 0 0', fontSize: 12, fontWeight: 800, color: '#64748b' }}>
-                  T{selectedDebtMonth.m}/{selectedDebtMonth.y} · thống kê buổi có mặt để kiểm tra học bù/ngoài lớp
-                </p>
-              </div>
-              <Badge color="emerald">{tempTuitionRows.length} học sinh có mặt</Badge>
-            </div>
-            <DataTable
-              columns={tempTuitionColumns}
-              data={tempTuitionRows}
-              rowKey="id"
-              emptyText="Chưa có dữ liệu có mặt trong tháng"
-              emptySub="Báo cáo này lấy từ điểm danh, gồm cả học sinh ngoài lớp."
-              onRowClick={row => onViewFinance(row.student)}
-              scrollX={false}
-              density="compact"
-            />
           </section>
         </div>
       )}

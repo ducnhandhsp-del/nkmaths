@@ -210,7 +210,7 @@ Trong do:
 
 - `Hoc sinh`: ten + ma hoc sinh.
 - `Lop`: lop dang ky/chinh.
-- `So buoi`: hien compact, vi du `6 buoi`, `6 buoi · 1 hoc bu`.
+- `So buoi`: hien compact, vi du `6 buoi`, `6 buoi · 1 ngoai lop`.
 - `Thanh tien`:
   - `paid` -> so tien tren phieu da thu;
   - `unpaid/overdue` -> so tien goi y thu, mac dinh `baseTuition`;
@@ -221,26 +221,7 @@ Trong do:
   - `unpaid/overdue` -> nut `Thu phi` phai hien;
   - `not_billable/inactive` -> khong co thao tac thu.
 
-Khong bat buoc hien chi tiet chu ky 4/8/12 trong bang cong no chinh. Neu can, dua vao tooltip, modal chi tiet, hoac section doi soat rieng.
-
-### Section doi soat so buoi
-
-Neu van can xem so buoi ky nay, dat thanh section phu:
-
-```text
-Doi soat so buoi
-```
-
-No co the hien:
-
-- hoc sinh;
-- lop;
-- so buoi co mat trong ky;
-- so buoi hoc bu/ngoai lop;
-- so vang/co phep;
-- ghi chu bat thuong.
-
-Section nay khong tao cong no va khong doi trang thai thu tien.
+Khong hien bang doi soat so buoi rieng trong man cong no chinh, vi se lam man hinh cong kenh va de gay cam giac co hai cach tinh tien. Neu sau nay can chi tiet hon, dua vao tooltip/modal chi tiet cua row hoc sinh.
 
 ### Form Thu phi
 
