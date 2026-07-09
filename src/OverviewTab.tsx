@@ -188,12 +188,14 @@ function QuickAction({
   icon,
   tone = 'primary',
   primary,
+  compact,
   onClick,
 }: {
   label: string;
   icon: React.ReactNode;
   tone?: 'primary' | 'success' | 'neutral' | 'zalo';
   primary?: boolean;
+  compact?: boolean;
   onClick: () => void;
 }) {
   const cfg = {
@@ -207,20 +209,20 @@ function QuickAction({
       type="button"
       onClick={onClick}
       style={{
-        minHeight: primary ? 44 : 40,
+        minHeight: compact ? 32 : primary ? 44 : 40,
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
         gap: 7,
-        padding: primary ? '10px 15px' : '9px 13px',
-        borderRadius: 12,
+        padding: compact ? '7px 10px' : primary ? '10px 15px' : '9px 13px',
+        borderRadius: compact ? 10 : 12,
         border: `1px solid ${cfg.border}`,
         background: cfg.bg,
         color: cfg.color,
-        fontSize: 13,
+        fontSize: compact ? 12 : 13,
         fontWeight: 800,
         cursor: 'pointer',
-        boxShadow: primary ? '0 8px 22px rgba(79,70,229,0.24)' : 'none',
+        boxShadow: primary && !compact ? '0 8px 22px rgba(79,70,229,0.24)' : 'none',
         whiteSpace: 'nowrap',
       }}
     >
@@ -452,7 +454,12 @@ export default function OverviewTab({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <style>{`
+        .overview-toolbar-desktop-actions{display:flex;align-items:center;gap:8}
+        @media(min-width:768px){
+          .overview-quick-panel{display:none!important}
+        }
         @media(max-width:767px){
+          .overview-toolbar-desktop-actions{display:none!important}
           .overview-quick-actions{display:grid!important;grid-template-columns:1fr 1fr!important;width:100%!important}
           .overview-quick-actions button{width:100%!important}
           .overview-kpi-grid > div{grid-template-columns:repeat(2,minmax(0,1fr))!important}
@@ -477,6 +484,11 @@ export default function OverviewTab({
             <span style={{ border: '1px solid #fee2e2', background: dueUnrecordedToday.length ? '#fff1f2' : '#f0fdf4', color: dueUnrecordedToday.length ? '#be123c' : '#047857', borderRadius: 999, padding: '7px 10px', fontSize: 12, fontWeight: 900 }}>
               {dueUnrecordedToday.length} cần ghi
             </span>
+            <div className="overview-toolbar-desktop-actions">
+              <QuickAction label="Điểm danh" primary compact tone="primary" icon={<CalendarCheck size={14} />} onClick={() => onAddDiary()} />
+              <QuickAction label="Thu học phí" compact tone="success" icon={<ReceiptText size={14} />} onClick={onAddIncome} />
+              <QuickAction label="Thêm học sinh" compact tone="neutral" icon={<Plus size={14} />} onClick={onAddStudent} />
+            </div>
           </>
         )}
       />
