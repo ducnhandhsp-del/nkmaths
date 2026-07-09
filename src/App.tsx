@@ -39,8 +39,26 @@ import LearningTab    from './LearningTab';
 import FinanceTab     from './FinanceTab';
 import ReportsTab     from './ReportsTab';
 import SettingsTab    from './SettingsTab';
+import ParentPortal   from './ParentPortal';
 
 export default function App() {
+  const isParentPortal = typeof window !== 'undefined' && window.location.pathname.replace(/\/+$/, '') === '/tra-cuu';
+  return isParentPortal ? <ParentPortalShell /> : <AdminApp />;
+}
+
+function ParentPortalShell() {
+  const saved = loadSettings();
+  return (
+    <ParentPortal
+      scriptUrl={saved?.scriptUrl ?? SCRIPT_URL_DEFAULT}
+      centerName={saved?.centerName ?? 'LỚP TOÁN NK'}
+      baseTuition={saved?.baseTuition ?? FEE_DEFAULT}
+      phone={saved?.phone ?? '0383634949'}
+    />
+  );
+}
+
+function AdminApp() {
 
   /* ── Routing ── */
   const [screen, setScreen] = useState<Screen>('overview');

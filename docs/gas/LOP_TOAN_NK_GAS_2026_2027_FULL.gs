@@ -152,6 +152,7 @@ function doPost(e) {
     var action = data.action;
     var map = {
       getData: getData,
+      lookupStudentPortal: lookupStudentPortal,
 
       saveHS: saveHS,
       updateHS: updateHS,
@@ -603,6 +604,133 @@ function getData() {
     };
   } catch (err) {
     return { ok: false, error: 'getData: ' + (err && err.stack ? err.stack : String(err)) };
+  }
+}
+
+function lookupStudentPortal(d) {
+  try {
+    var maHS = str(d.studentId || d.maHS || d.id).toUpperCase();
+    var lookupPhone = normalizeLookupPhone(d.parentPhone || d.phone || d.sdt);
+    if (!maHS || lookupPhone.length < 10) {
+      return { ok: false, error: 'Không tìm thấy thông tin phù hợp.' };
+    }
+
+    var readRows = createSnapshotReader();
+    var studentsRaw = readRows(SHEETS.HOCSINH);
+    var classesRaw = readRows(SHEETS.LOPHOC);
+    var regsRaw = readRows(SHEETS.DANGKYLOP);
+    var teachersRaw = readRows(SHEETS.GIAOVIEN);
+    var lessonsRaw = readRows(SHEETS.BUOIHOC);
+    var attRaw = readRows(SHEETS.DIEMDANH);
+    var paymentsRaw = readRows(SHEETS.HOCPHI);
+
+    var student = null;
+    for (var i = 0; i < studentsRaw.length; i++) {
+      if (studentIdOf(studentsRaw[i]).toUpperCase() === maHS) {
+        student = studentsRaw[i];
+        break;
+      }
+    }
+    if (!student) return { ok: false, error: 'Không tìm thấy thông tin phù hợp.' };
+
+    var storedPhone = str(student.SDTPhuHuynh || student.SDT || student.parentPhone || student['Số điện thoại phụ huynh (Zalo)']);
+    if (!lookupPhoneMatches(storedPhone, lookupPhone)) {
+      return { ok: false, error: 'Không tìm thấy thông tin phù hợp.' };
+    }
+
+    var teacherMap = buildTeacherMap(teachersRaw);
+    var teacherNameToId = buildTeacherNameToId(teachersRaw);
+    var classMap = buildClassMap(classesRaw);
+    var activeRegByStudent = buildActiveRegistrationMap(regsRaw);
+    var reg = activeRegByStudent[maHS] || null;
+    var classId = reg ? registrationClassIdOf(reg) : '';
+    var cls = classId ? classMap[classId] : null;
+    var teacherId = cls ? classTeacherIdOf(cls, teacherNameToId) : '';
+    var teacher = teacherId ? teacherMap[teacherId] : null;
+    var studentName = str(student.HoTen || student.name || student['Họ và tên học sinh']) || maHS;
+    var tuitionAmount = cls ? num(cls.HocPhiMacDinh) : 0;
+    if (!tuitionAmount) tuitionAmount = num(getConfig('baseTuition'));
+
+    var payments = paymentsRaw
+      .filter(function(p) {
+        return str(p.MaHS || p.maHS || p.studentId || p['Mã HS']).toUpperCase() === maHS;
+      })
+      .map(function(p) {
+        var th = num(p.ThangHP || p.Thang);
+        var yr = num(p.NamHP || p.Nam);
+        return {
+          id: str(p.MaPhieuThu),
+          docNum: str(p.MaPhieuThu),
+          date: formatDate(p.NgayThu),
+          amount: num(p.SoTien),
+          method: str(p.HinhThuc),
+          note: str(p.GhiChu),
+          thangHP: th,
+          namHP: yr,
+          maLop: str(p.MaLop || p.classId || p['Mã Lớp']),
+          status: str(p.TrangThai || p.DaDong || p.status) || 'paid'
+        };
+      })
+      .sort(function(a, b) {
+        return parseDMY(b.date) - parseDMY(a.date);
+      });
+
+    var lessonMap = {};
+    lessonsRaw.forEach(function(l) {
+      var lessonId = str(l.MaBuoi);
+      if (lessonId) lessonMap[lessonId] = l;
+    });
+
+    var attendance = attRaw
+      .filter(function(a) {
+        return studentIdOf(a).toUpperCase() === maHS;
+      })
+      .map(function(a) {
+        var lessonId = str(a.MaBuoi);
+        var lesson = lessonMap[lessonId] || {};
+        var lessonClassId = str(lesson.MaLop || lesson.classId || lesson['Mã Lớp']);
+        return {
+          lessonId: lessonId,
+          date: formatDate(lesson.Ngay),
+          classId: lessonClassId,
+          caDay: str(lesson.CaDay),
+          status: statusCodeToVi(normalizeAttendanceStatus(a.TrangThai)),
+          note: str(a.GhiChu),
+          type: str(a.LoaiDiemDanh || 'regular') === 'extra' ? 'extra' : 'regular',
+          content: str(lesson.NoiDung)
+        };
+      })
+      .filter(function(a) {
+        return !!a.lessonId && !!a.date;
+      })
+      .sort(function(a, b) {
+        return parseDMY(b.date) - parseDMY(a.date);
+      });
+
+    return {
+      ok: true,
+      student: {
+        id: maHS,
+        name: studentName,
+        classId: classId,
+        grade: str(student.Khoi),
+        school: str(student.Truong),
+        teacher: teacher ? teacherNameOf(teacher) : '',
+        parentName: str(student.TenPhuHuynh || student.PhuHuynh || student.parentName || student['Họ và tên phụ huynh']),
+        status: normalizeGeneralStatus(student.TrangThai || student.status) || 'active',
+        startDate: formatDate(student.NgayBatDau),
+        endDate: formatDate(student.NgayKetThuc)
+      },
+      tuitionAmount: tuitionAmount,
+      payments: payments,
+      attendance: attendance,
+      generatedAt: nowStr()
+    };
+  } catch (err) {
+    try {
+      logSystem('lookupStudentPortal', SHEETS.HOCSINH, str(d.studentId || d.maHS || d.id), String(err), 'error');
+    } catch (logErr) {}
+    return { ok: false, error: 'Không tìm thấy thông tin phù hợp.' };
   }
 }
 
@@ -1719,6 +1847,21 @@ function deleteRowsByAnyValue(sheetName, headerNames, value) {
 function str(v) {
   if (v == null) return '';
   return String(v).trim();
+}
+
+function normalizeLookupPhone(v) {
+  var digits = str(v).replace(/\D/g, '');
+  if (digits.indexOf('84') === 0 && digits.length >= 11) {
+    digits = '0' + digits.substring(2);
+  }
+  return digits;
+}
+
+function lookupPhoneMatches(stored, input) {
+  var a = normalizeLookupPhone(stored);
+  var b = normalizeLookupPhone(input);
+  if (!a || !b || b.length < 10) return false;
+  return a === b;
 }
 
 function num(v) {
