@@ -40,62 +40,122 @@ import FinanceTab     from './FinanceTab';
 import ReportsTab     from './ReportsTab';
 import SettingsTab    from './SettingsTab';
 
+const ADMIN_SESSION_TOKEN_KEY = 'ltn-admin-token';
+
+function readAdminSessionToken(): string {
+  try { return sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY) || ''; }
+  catch { return ''; }
+}
+
+function writeAdminSessionToken(token: string) {
+  try { sessionStorage.setItem(ADMIN_SESSION_TOKEN_KEY, token); } catch {}
+}
+
+function clearAdminSessionToken() {
+  try { sessionStorage.removeItem(ADMIN_SESSION_TOKEN_KEY); } catch {}
+}
+
+function stripLegacyAdminToken(settings: any) {
+  if (!settings || typeof settings !== 'object') return settings || {};
+  const { adminToken: _legacyAdminToken, ...rest } = settings;
+  return rest;
+}
+
 export default function App() {
   return <AdminGate />;
 }
 
 function AdminGate() {
-  const saved = loadSettings();
-  const [adminTokenInput, setAdminTokenInput] = useState<string>(saved?.adminToken ?? '');
-  const [ready, setReady] = useState(() => Boolean(String(saved?.scriptUrl ?? SCRIPT_URL_DEFAULT).trim() && String(saved?.adminToken ?? '').trim()));
+  const [saved] = useState(() => loadSettings());
+  const [adminTokenInput, setAdminTokenInput] = useState('');
+  const [adminToken, setAdminToken] = useState(readAdminSessionToken);
+  const scriptUrl = String(saved?.scriptUrl ?? SCRIPT_URL_DEFAULT).trim();
+  const ready = Boolean(scriptUrl && adminToken.trim());
 
   const handleEnter = useCallback(() => {
-    const scriptUrl = String(loadSettings()?.scriptUrl ?? saved?.scriptUrl ?? SCRIPT_URL_DEFAULT).trim();
-    const adminToken = adminTokenInput.trim();
-    if (!scriptUrl || !adminToken) return;
-    const current = loadSettings() || {};
-    saveSettings({ ...current, scriptUrl, adminToken });
-    setReady(true);
-  }, [adminTokenInput, saved?.scriptUrl]);
+    const nextToken = adminTokenInput.trim();
+    if (!scriptUrl || !nextToken) return;
+    const current = stripLegacyAdminToken(loadSettings() || {});
+    saveSettings({ ...current, scriptUrl });
+    writeAdminSessionToken(nextToken);
+    setAdminToken(nextToken);
+    setAdminTokenInput('');
+  }, [adminTokenInput, scriptUrl]);
 
-  if (ready) return <AdminApp onChangeAdminAccess={() => setReady(false)} />;
+  const handleChangeAdminAccess = useCallback(() => {
+    clearAdminSessionToken();
+    setAdminToken('');
+    setAdminTokenInput('');
+  }, []);
+
+  if (ready) return <AdminApp adminToken={adminToken.trim()} onChangeAdminAccess={handleChangeAdminAccess} />;
 
   return (
-    <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', padding: 20, background: '#F0F2F8' }}>
+    <div
+      style={{
+        minHeight: '100dvh',
+        display: 'grid',
+        placeItems: 'center',
+        padding: 20,
+        background: 'linear-gradient(180deg, #f7fafc 0%, #eef4f8 100%)',
+        color: '#0f172a',
+      }}
+    >
       <form
         onSubmit={e => { e.preventDefault(); handleEnter(); }}
         style={{
-          width: 'min(100%, 460px)',
+          width: 'min(100%, 430px)',
           display: 'grid',
-          gap: 16,
-          padding: 22,
-          borderRadius: 12,
+          gap: 18,
+          padding: 24,
+          borderRadius: 16,
           background: '#fff',
-          border: '1px solid #dbe4f0',
-          boxShadow: '0 18px 50px rgba(15,23,42,0.08)',
+          border: '1px solid #d9e4ef',
+          boxShadow: '0 22px 60px rgba(15,23,42,0.10)',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 42, height: 42, borderRadius: 10, display: 'grid', placeItems: 'center', background: '#ecfdf5', color: '#047857' }}>
-            <LockKeyhole size={21} />
+        <div style={{ display: 'grid', gap: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 950, color: '#047857', letterSpacing: '0.12em' }}>LOP TOAN NK</div>
+              <div style={{ marginTop: 4, fontSize: 13, fontWeight: 800, color: '#64748b' }}>Quản trị trung tâm</div>
+            </div>
+            <div style={{ width: 44, height: 44, borderRadius: 12, display: 'grid', placeItems: 'center', background: '#ecfdf5', color: '#047857', border: '1px solid #bbf7d0' }}>
+              <LockKeyhole size={22} />
+            </div>
           </div>
+
           <div>
-            <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>Mở khóa trang quản trị</div>
-            <div style={{ marginTop: 3, fontSize: 13, fontWeight: 700, color: '#64748b', lineHeight: 1.45 }}>
-              Nhập mã admin để vào hệ thống quản trị.
+            <h1 style={{ margin: 0, fontSize: 24, lineHeight: 1.18, fontWeight: 950, color: '#0f172a', letterSpacing: 0 }}>
+              Mở khóa quản trị
+            </h1>
+            <div style={{ marginTop: 7, fontSize: 14, fontWeight: 700, color: '#64748b', lineHeight: 1.5 }}>
+              Nhập mã admin để tiếp tục.
             </div>
           </div>
         </div>
 
         <label style={{ display: 'grid', gap: 6 }}>
-          <span style={{ fontSize: 12, fontWeight: 800, color: '#334155' }}>Admin token</span>
+          <span style={{ fontSize: 12, fontWeight: 850, color: '#334155' }}>Admin token</span>
           <input
             type="password"
             value={adminTokenInput}
             onChange={e => setAdminTokenInput(e.target.value)}
-            placeholder="Token bí mật của trang quản trị"
+            placeholder="Nhập mã admin"
             autoComplete="current-password"
-            style={{ minHeight: 42, borderRadius: 8, border: '1px solid #cbd5e1', padding: '0 12px', fontSize: 14, fontWeight: 700, outline: 'none' }}
+            autoFocus
+            style={{
+              minHeight: 46,
+              borderRadius: 10,
+              border: '1px solid #cbd5e1',
+              background: '#f8fafc',
+              padding: '0 13px',
+              fontSize: 15,
+              fontWeight: 800,
+              color: '#0f172a',
+              outline: 'none',
+              boxShadow: 'inset 0 1px 2px rgba(15,23,42,0.04)',
+            }}
           />
         </label>
 
@@ -105,22 +165,28 @@ function AdminGate() {
           style={{
             minHeight: 42,
             border: 0,
-            borderRadius: 8,
+            borderRadius: 10,
             background: !adminTokenInput.trim() ? '#cbd5e1' : '#047857',
             color: '#fff',
             fontSize: 14,
             fontWeight: 900,
             cursor: !adminTokenInput.trim() ? 'not-allowed' : 'pointer',
+            boxShadow: !adminTokenInput.trim() ? 'none' : '0 10px 24px rgba(4,120,87,0.24)',
           }}
         >
-          Vào trang quản trị
+          Vào hệ thống
         </button>
+
+        <div style={{ borderTop: '1px solid #edf2f7', paddingTop: 13, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, fontWeight: 800, color: '#64748b' }}>Dữ liệu quản trị được bảo vệ</span>
+          <span style={{ fontSize: 11, fontWeight: 900, color: '#94a3b8', letterSpacing: '0.08em' }}>ADMIN</span>
+        </div>
       </form>
     </div>
   );
 }
 
-function AdminApp({ onChangeAdminAccess }: { onChangeAdminAccess: () => void }) {
+function AdminApp({ adminToken, onChangeAdminAccess }: { adminToken: string; onChangeAdminAccess: () => void }) {
 
   /* ── Routing ── */
   const [screen, setScreen] = useState<Screen>('overview');
@@ -153,7 +219,6 @@ function AdminApp({ onChangeAdminAccess }: { onChangeAdminAccess: () => void }) 
   const [tuitionDueDay, setTuitionDueDay] = useState<number>(_saved.current?.tuitionDueDay ?? 15);
   const [, setZaloTpl] = useState<string>(_saved.current?.zaloTpl ?? 'Chào phụ huynh em [Ten], LỚP TOÁN NK thông báo học phí tháng [Thang]/[Nam] của em hiện còn [SoTien]. Phụ huynh vui lòng kiểm tra và thanh toán giúp lớp. Em cảm ơn ạ.');
   const [scriptUrl]    = useState<string>(_saved.current?.scriptUrl    ?? SCRIPT_URL_DEFAULT);
-  const [adminToken]   = useState<string>(_saved.current?.adminToken   ?? '');
   const [centerName,   setCenterName]   = useState<string>(_saved.current?.centerName   ?? 'LỚP TOÁN NK');
   const [teacher,      setTeacher]      = useState<string>(_saved.current?.teacher      ?? 'LÊ ĐỨC NHÂN');
   const [addr1,        setAddr1]        = useState<string>(_saved.current?.addr1        ?? '15/80 Đào Tấn');

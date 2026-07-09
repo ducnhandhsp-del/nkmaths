@@ -304,7 +304,7 @@ export default function SettingsTab({
   useEffect(() => { const t = templates.find(t => t.id === activeTplId); if (t) setTplContent(t.content); }, [activeTplId, templates]);
 
   const currentSettingsKey = JSON.stringify({
-    bankId, accountNo, accountName, scriptUrl, adminToken, baseTuition, schoolYear, tuitionDueDay,
+    bankId, accountNo, accountName, scriptUrl, baseTuition, schoolYear, tuitionDueDay,
     teacher1, teacher2, addr1, addr2, phone1, phone2,
     templates, tplContent, sheetsUrl, docUrl,
   });
@@ -325,7 +325,7 @@ export default function SettingsTab({
   /* ── Handlers ─────────────────────────────────────────────────── */
   const handleLoadData = () => {
     if (!scriptUrl.trim().startsWith('https://script.google.com/macros/s/')) { toast.error('Script URL không hợp lệ'); return; }
-    if (!adminToken.trim()) { toast.error('Admin token không được để trống'); return; }
+    if (!adminToken.trim()) { toast.error('Khóa quản trị không hợp lệ'); return; }
     loadData();
   };
   const handleClearCache = async () => {
@@ -345,7 +345,7 @@ export default function SettingsTab({
   // FIX: xoá silentLoadData — dead code (useCallback bao bọc loadData nhưng không dùng ở đâu)
 
   const handleSaveAll = () => {
-    if (!adminToken.trim()) { toast.error('Admin token không được để trống'); return; }
+    if (!adminToken.trim()) { toast.error('Khóa quản trị không hợp lệ'); return; }
     if (!scriptUrl.trim()) { toast.error('Script URL không được để trống'); return; }
     if (baseTuition <= 0)  { toast.error('Học phí phải lớn hơn 0'); return; }
     if (tuitionDueDay < 1 || tuitionDueDay > 31) { toast.error('Hạn đóng phải từ ngày 1 đến 31'); return; }
@@ -357,7 +357,7 @@ export default function SettingsTab({
     const newTeacherList = [teacher1, teacher2].filter(Boolean);
     setCenterName(defaultCenterName);
     setTeacherList(newTeacherList); setTeacher(teacher1); setPhone(phone1); setZaloTpl(tplContent);
-    saveSettings({ baseTuition, schoolYear, tuitionDueDay, zaloTpl: tplContent, bankId, accountNo, accountName, scriptUrl, adminToken: adminToken.trim(), centerName: defaultCenterName, teacher: teacher1, addr1, addr2, phone: phone1, manager2Phone: phone2, hideInactive, caDayOptions, teacherList: newTeacherList });
+    saveSettings({ baseTuition, schoolYear, tuitionDueDay, zaloTpl: tplContent, bankId, accountNo, accountName, scriptUrl, centerName: defaultCenterName, teacher: teacher1, addr1, addr2, phone: phone1, manager2Phone: phone2, hideInactive, caDayOptions, teacherList: newTeacherList });
     saveTemplates(templates);
     try { localStorage.setItem('ltn-sheetsUrl', sheetsUrl); } catch {}
     try { localStorage.setItem('ltn-docUrl', docUrl); } catch {}
