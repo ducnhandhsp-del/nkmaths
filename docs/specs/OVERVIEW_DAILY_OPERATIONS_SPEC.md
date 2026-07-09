@@ -87,6 +87,31 @@ Copy `Hoc phi toi han`:
 - Neu `debtAmount === 0`: phu de nen la `Khong co hoc sinh toi han` de tranh
   cam giac day la cong no thang bang 0.
 
+## Vong 2.1 - Action cho thong tin noi bat
+
+Vong 2.1 khong doi cong thuc tinh so lieu. Moi item trong `Thong tin noi bat`
+duoc bien thanh action nho de nguoi dung di toi man kiem tra chi tiet.
+
+Dieu huong:
+
+- `Hoc sinh moi` -> Dao tao / Hoc sinh.
+- `Phieu thu` -> Hoc phi / So thu.
+- `Buoi da ghi` -> Van hanh / Nhat ky buoi hoc.
+- `Chuyen can` -> Van hanh / Diem danh.
+
+Copy phu de can noi ngan gon cong thuc:
+
+- Hoc sinh moi: `Theo ngay bat dau`.
+- Phieu thu: `Theo ngay thu`.
+- Buoi da ghi: `Bo qua buoi nghi`.
+- Chuyen can: `Co mat / tong luot`.
+
+UI:
+
+- Item co hover/cursor nhu nut, nhung van gon nhu insight card nho.
+- Khong mo modal moi.
+- Khong them filter hay date picker trong vong nay.
+
 ## Lich day hom nay
 
 - Sap xep theo gio bat dau, sau do theo ma lop.

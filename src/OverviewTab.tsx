@@ -236,15 +236,33 @@ function InsightItem({
   value,
   sub,
   tone,
+  onClick,
 }: {
   icon: React.ReactNode;
   label: string;
   value: React.ReactNode;
   sub: string;
   tone: string;
+  onClick: () => void;
 }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        minWidth: 0,
+        width: '100%',
+        border: '1px solid #eef2f7',
+        borderRadius: 12,
+        background: '#fff',
+        padding: '10px 11px',
+        textAlign: 'left',
+        cursor: 'pointer',
+      }}
+    >
       <div style={{ width: 34, height: 34, borderRadius: 10, background: `${tone}14`, color: tone, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
         {icon}
       </div>
@@ -253,7 +271,7 @@ function InsightItem({
         <p style={{ margin: '2px 0 0', fontSize: 18, fontWeight: 900, color: '#0f172a', lineHeight: 1.1 }}>{value}</p>
         <p style={{ margin: '2px 0 0', fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</p>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -576,29 +594,33 @@ export default function OverviewTab({
             icon={<Users size={17} />}
             label="Học sinh mới"
             value={newStudentsThisMonth.length}
-            sub={`Trong T${curMo}/${curYr}`}
+            sub={`Theo ngày bắt đầu T${curMo}/${curYr}`}
             tone="#10b981"
+            onClick={() => goTraining('students')}
           />
           <InsightItem
             icon={<ReceiptText size={17} />}
             label="Phiếu thu"
             value={monthPayments.length}
-            sub="Đã ghi trong tháng"
+            sub="Theo ngày thu trong tháng"
             tone="#0ea5e9"
+            onClick={() => goFinance('ledger')}
           />
           <InsightItem
             icon={<CalendarCheck size={17} />}
             label="Buổi đã ghi"
             value={monthLoggedLessons}
-            sub={`Trong T${curMo}/${curYr}`}
+            sub="Bỏ qua buổi nghỉ"
             tone="#6366f1"
+            onClick={() => goOperations('lessons')}
           />
           <InsightItem
             icon={<CheckCircle2 size={17} />}
             label="Chuyên cần"
             value={monthlyAttendancePct == null ? '---' : `${monthlyAttendancePct}%`}
-            sub="Theo điểm danh tháng này"
+            sub="Có mặt / tổng lượt"
             tone="#f97316"
+            onClick={() => goOperations('attendance')}
           />
         </div>
       </Panel>
