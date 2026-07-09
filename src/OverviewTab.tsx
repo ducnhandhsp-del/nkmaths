@@ -14,13 +14,14 @@ import {
   TrendingUp,
   Users,
 } from 'lucide-react';
-import { fixVietnameseText, normalizeCaDayLabel, parseDMY, isStudentActive } from './helpers';
+import { fixVietnameseText, normalizeCaDayLabel, parseDMY, isStudentActive, isLessonOffLog } from './helpers';
 import {
   calcStudentAbsenceStreak,
   calcStudentAttendance,
   getAttendanceRisk,
   getPaymentReceiptPeriod,
   getTuitionCycleState,
+  normalizeAttendanceStatus,
 } from './measures';
 import { ActionableKpi, ActionableKpiGrid, EmptyState, MoneyText, PageToolbar } from './uiSystem';
 import type { Student, Payment, TeachingLog, TrainingSub, OperationsSub, FinanceSub } from './types';
@@ -117,6 +118,11 @@ function studentStartedInMonth(s: Student, mo: number, yr: number) {
   if (!ts) return false;
   const d = new Date(ts);
   return d.getMonth() + 1 === mo && d.getFullYear() === yr;
+}
+
+function dateInMonth(raw: unknown, mo: number, yr: number) {
+  const d = parseDateValue(raw);
+  return !!d && d.getMonth() + 1 === mo && d.getFullYear() === yr;
 }
 
 interface TodaySlot {
@@ -221,6 +227,33 @@ function QuickAction({
       {icon}
       {label}
     </button>
+  );
+}
+
+function InsightItem({
+  icon,
+  label,
+  value,
+  sub,
+  tone,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: React.ReactNode;
+  sub: string;
+  tone: string;
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+      <div style={{ width: 34, height: 34, borderRadius: 10, background: `${tone}14`, color: tone, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        {icon}
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <p style={{ margin: 0, fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</p>
+        <p style={{ margin: '2px 0 0', fontSize: 18, fontWeight: 900, color: '#0f172a', lineHeight: 1.1 }}>{value}</p>
+        <p style={{ margin: '2px 0 0', fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</p>
+      </div>
+    </div>
   );
 }
 
@@ -350,6 +383,25 @@ export default function OverviewTab({
     [students, curMo, curYr],
   );
 
+  const monthLoggedLessons = useMemo(
+    () => tlogs.filter(log => !isLessonOffLog(log) && dateInMonth(log.rawDate || log.date, curMo, curYr)).length,
+    [tlogs, curMo, curYr],
+  );
+
+  const monthlyAttendancePct = useMemo(() => {
+    let present = 0;
+    let total = 0;
+    tlogs.forEach(log => {
+      if (isLessonOffLog(log) || !dateInMonth(log.rawDate || log.date, curMo, curYr)) return;
+      (log.attendanceList || []).forEach((entry: any) => {
+        const status = normalizeAttendanceStatus(entry.trangThai || entry['Trạng thái'] || entry.TrangThai || '');
+        total++;
+        if (status === 'present') present++;
+      });
+    });
+    return total > 0 ? Math.round((present / total) * 100) : null;
+  }, [tlogs, curMo, curYr]);
+
   const frequentAbsentees = useMemo(() => {
     const period = { m: curMo, y: curYr };
     return activeStudents
@@ -375,10 +427,9 @@ export default function OverviewTab({
       missingTeacher > 0 && { id: 'teacher', tone: '#ef4444', title: `${missingTeacher} lớp thiếu giáo viên`, sub: 'Cần phân công giáo viên', onClick: () => goTraining('classes') },
       missingSchedule > 0 && { id: 'schedule', tone: '#f97316', title: `${missingSchedule} lớp thiếu lịch học`, sub: 'Cần bổ sung Buổi 1/2/3', onClick: () => goTraining('classes') },
       frequentAbsentees.length > 0 && { id: 'absence', tone: '#f97316', title: `${frequentAbsentees.length} học sinh nghỉ nhiều`, sub: 'Vắng nhiều hoặc vắng liên tiếp trong tháng', onClick: () => goOperations('attendance') },
-      newStudentsThisMonth.length > 0 && { id: 'new-students', tone: '#10b981', title: `${newStudentsThisMonth.length} học sinh mới đăng ký`, sub: `Trong T${curMo}/${curYr}`, onClick: () => goTraining('students') },
       soonSlots.length > 0 && { id: 'soon', tone: '#0ea5e9', title: `${soonSlots.length} buổi sắp bắt đầu`, sub: 'Trong 90 phút tới', onClick: () => goOperations('schedule') },
     ].filter(Boolean) as { id: string; tone: string; title: string; sub: React.ReactNode; onClick: () => void }[];
-  }, [activeClasses, activeStudents, curMo, curYr, debtAmount, dueUnrecordedToday.length, frequentAbsentees.length, goTraining, goOperations, goFinance, newStudentsThisMonth.length, soonSlots.length, unpaidStudents.length]);
+  }, [activeClasses, activeStudents, curMo, debtAmount, dueUnrecordedToday.length, frequentAbsentees.length, goTraining, goOperations, goFinance, soonSlots.length, unpaidStudents.length]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -387,6 +438,7 @@ export default function OverviewTab({
           .overview-quick-actions{display:grid!important;grid-template-columns:1fr 1fr!important;width:100%!important}
           .overview-quick-actions button{width:100%!important}
           .overview-kpi-grid > div{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+          .overview-insights{grid-template-columns:1fr 1fr!important}
           .overview-panel{min-height:0!important;padding:12px!important}
           .overview-panel .ltn-empty-state{min-height:70px!important}
         }
@@ -444,7 +496,7 @@ export default function OverviewTab({
             icon={AlertTriangle}
             value={<MoneyText value={debtAmount} compact tone={debtAmount > 0 ? 'danger' : 'success'} />}
             label="Học phí tới hạn"
-            sub={`${unpaidStudents.length}/${billableStudents.length} học sinh cần thu`}
+            sub={debtAmount > 0 ? `${unpaidStudents.length}/${billableStudents.length} học sinh cần thu` : 'Không có học sinh tới hạn'}
             tone={debtAmount > 0 ? 'danger' : 'success'}
             onClick={() => goFinance('debt')}
             actionLabel="Xem"
@@ -516,6 +568,40 @@ export default function OverviewTab({
           )}
         </Panel>
       </div>
+
+      <Panel className="overview-panel">
+        <SectionTitle title="Thông tin nổi bật" />
+        <div className="overview-insights" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 14 }}>
+          <InsightItem
+            icon={<Users size={17} />}
+            label="Học sinh mới"
+            value={newStudentsThisMonth.length}
+            sub={`Trong T${curMo}/${curYr}`}
+            tone="#10b981"
+          />
+          <InsightItem
+            icon={<ReceiptText size={17} />}
+            label="Phiếu thu"
+            value={monthPayments.length}
+            sub="Đã ghi trong tháng"
+            tone="#0ea5e9"
+          />
+          <InsightItem
+            icon={<CalendarCheck size={17} />}
+            label="Buổi đã ghi"
+            value={monthLoggedLessons}
+            sub={`Trong T${curMo}/${curYr}`}
+            tone="#6366f1"
+          />
+          <InsightItem
+            icon={<CheckCircle2 size={17} />}
+            label="Chuyên cần"
+            value={monthlyAttendancePct == null ? '---' : `${monthlyAttendancePct}%`}
+            sub="Theo điểm danh tháng này"
+            tone="#f97316"
+          />
+        </div>
+      </Panel>
 
       <Panel className="overview-panel overview-quick-panel">
         <SectionTitle title="Thao tác nhanh" />

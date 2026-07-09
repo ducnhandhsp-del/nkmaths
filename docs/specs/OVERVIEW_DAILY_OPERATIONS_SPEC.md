@@ -59,10 +59,33 @@ Thu tu uu tien:
 4. Lop thieu giao vien.
 5. Lop thieu lich hoc.
 6. Hoc sinh nghi nhieu/can theo doi.
-7. Hoc sinh moi dang ky trong thang.
-8. Lop sap bat dau trong 90 phut.
+7. Lop sap bat dau trong 90 phut.
 
 Moi item phai co action dua nguoi dung ve dung man xu ly gan nhat.
+
+## Vong 2 - Thong tin noi bat
+
+Vong 2 tach cac thong tin "nen biet" ra khoi hang doi viec can xu ly.
+`Hoc sinh moi dang ky trong thang` khong con la viec can xu ly mac dinh, tru
+khi sau nay co logic rieng xac dinh hoc sinh moi chua hoan tat ho so/chua xep
+lop.
+
+Khối `Thong tin noi bat` nam duoi hang `Viec can xu ly / Lich day hom nay`,
+truoc `Thao tac nhanh`. Khong tao bieu do lon trong vong nay.
+
+Chi so vong 2:
+
+- `Hoc sinh moi`: so hoc sinh co `startDate` thuoc `curMo/curYr`.
+- `Phieu thu`: so phieu thu co ngay thu thuoc `curMo/curYr`.
+- `Buoi da ghi`: so teaching log trong thang, bo qua log nghi buoi.
+- `Chuyen can`: ty le `Co mat` / tong ban ghi diem danh trong thang, bo qua
+  log nghi buoi; neu chua co du lieu thi hien `---`.
+
+Copy `Hoc phi toi han`:
+
+- Neu `debtAmount > 0`: hien so hoc sinh can thu va tong tien nhu hien tai.
+- Neu `debtAmount === 0`: phu de nen la `Khong co hoc sinh toi han` de tranh
+  cam giac day la cong no thang bang 0.
 
 ## Lich day hom nay
 
