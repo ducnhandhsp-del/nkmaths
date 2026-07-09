@@ -38,7 +38,8 @@ interface Props {
   bankId: string;        setBankId: (v: string) => void;
   accountNo: string;     setAccountNo: (v: string) => void;
   accountName: string;   setAccountName: (v: string) => void;
-  scriptUrl: string;     setScriptUrl: (v: string) => void;
+  scriptUrl: string;
+  adminToken: string;
   gsOk: boolean | null;  saving: boolean; loadData: () => void;
   cacheMeta?: CacheMeta | null; syncState?: DataSyncState;
   baseTuition: number;   setBaseTuition: (v: number) => void;
@@ -256,7 +257,7 @@ function TemplateModal({ open, onClose, initial, onSave }: {
 ══════════════════════════════════════════════════════════════════ */
 export default function SettingsTab({
   bankId, setBankId, accountNo, setAccountNo, accountName, setAccountName,
-  scriptUrl, setScriptUrl, gsOk, saving, loadData, cacheMeta, syncState,
+  scriptUrl, adminToken, gsOk, saving, loadData, cacheMeta, syncState,
   baseTuition, setBaseTuition, schoolYear, setSchoolYear, tuitionDueDay, setTuitionDueDay, setZaloTpl,
   centerName, setCenterName, teacher, setTeacher, addr1, setAddr1, addr2, setAddr2,
   phone, setPhone, hideInactive, setHideInactive,
@@ -303,7 +304,7 @@ export default function SettingsTab({
   useEffect(() => { const t = templates.find(t => t.id === activeTplId); if (t) setTplContent(t.content); }, [activeTplId, templates]);
 
   const currentSettingsKey = JSON.stringify({
-    bankId, accountNo, accountName, scriptUrl, baseTuition, schoolYear, tuitionDueDay,
+    bankId, accountNo, accountName, scriptUrl, adminToken, baseTuition, schoolYear, tuitionDueDay,
     teacher1, teacher2, addr1, addr2, phone1, phone2,
     templates, tplContent, sheetsUrl, docUrl,
   });
@@ -312,8 +313,9 @@ export default function SettingsTab({
 
   type SettingIssue = { label: string; detail: string; tone: 'danger' | 'warning'; section: string };
   const settingIssues: SettingIssue[] = [];
-  if (!scriptUrl.trim()) settingIssues.push({ label: 'Thiếu Script URL', detail: 'App chưa có nguồn đồng bộ Google Sheets.', tone: 'danger', section: 'system' });
-  else if (!scriptUrl.trim().startsWith('https://script.google.com/macros/s/')) settingIssues.push({ label: 'Script URL chưa chuẩn', detail: 'URL nên bắt đầu bằng link Web App của Google Apps Script.', tone: 'warning', section: 'system' });
+  if (!adminToken.trim()) settingIssues.push({ label: 'Thiếu khóa quản trị', detail: 'Các thao tác quản trị cần mã xác thực hợp lệ.', tone: 'danger', section: 'system' });
+  if (!scriptUrl.trim()) settingIssues.push({ label: 'Thiếu nguồn đồng bộ', detail: 'App chưa có nguồn dữ liệu Google Sheets.', tone: 'danger', section: 'system' });
+  else if (!scriptUrl.trim().startsWith('https://script.google.com/macros/s/')) settingIssues.push({ label: 'Nguồn đồng bộ chưa chuẩn', detail: 'Cấu hình kết nối cần được kiểm tra lại.', tone: 'warning', section: 'system' });
   if (baseTuition <= 0) settingIssues.push({ label: 'Học phí chưa hợp lệ', detail: 'Mức học phí mặc định phải lớn hơn 0.', tone: 'danger', section: 'finance' });
   if (!/^\d{4}-\d{4}$/.test(schoolYear.trim())) settingIssues.push({ label: 'Niên khóa sai định dạng', detail: 'Dùng dạng 2026-2027.', tone: 'warning', section: 'finance' });
   if (tuitionDueDay < 1 || tuitionDueDay > 31) settingIssues.push({ label: 'Hạn đóng chưa hợp lệ', detail: 'Hạn đóng học phí phải từ ngày 1 đến 31.', tone: 'danger', section: 'finance' });
@@ -323,6 +325,7 @@ export default function SettingsTab({
   /* ── Handlers ─────────────────────────────────────────────────── */
   const handleLoadData = () => {
     if (!scriptUrl.trim().startsWith('https://script.google.com/macros/s/')) { toast.error('Script URL không hợp lệ'); return; }
+    if (!adminToken.trim()) { toast.error('Admin token không được để trống'); return; }
     loadData();
   };
   const handleClearCache = async () => {
@@ -342,6 +345,7 @@ export default function SettingsTab({
   // FIX: xoá silentLoadData — dead code (useCallback bao bọc loadData nhưng không dùng ở đâu)
 
   const handleSaveAll = () => {
+    if (!adminToken.trim()) { toast.error('Admin token không được để trống'); return; }
     if (!scriptUrl.trim()) { toast.error('Script URL không được để trống'); return; }
     if (baseTuition <= 0)  { toast.error('Học phí phải lớn hơn 0'); return; }
     if (tuitionDueDay < 1 || tuitionDueDay > 31) { toast.error('Hạn đóng phải từ ngày 1 đến 31'); return; }
@@ -353,7 +357,7 @@ export default function SettingsTab({
     const newTeacherList = [teacher1, teacher2].filter(Boolean);
     setCenterName(defaultCenterName);
     setTeacherList(newTeacherList); setTeacher(teacher1); setPhone(phone1); setZaloTpl(tplContent);
-    saveSettings({ baseTuition, schoolYear, tuitionDueDay, zaloTpl: tplContent, bankId, accountNo, accountName, scriptUrl, centerName: defaultCenterName, teacher: teacher1, addr1, addr2, phone: phone1, manager2Phone: phone2, hideInactive, caDayOptions, teacherList: newTeacherList });
+    saveSettings({ baseTuition, schoolYear, tuitionDueDay, zaloTpl: tplContent, bankId, accountNo, accountName, scriptUrl, adminToken: adminToken.trim(), centerName: defaultCenterName, teacher: teacher1, addr1, addr2, phone: phone1, manager2Phone: phone2, hideInactive, caDayOptions, teacherList: newTeacherList });
     saveTemplates(templates);
     try { localStorage.setItem('ltn-sheetsUrl', sheetsUrl); } catch {}
     try { localStorage.setItem('ltn-docUrl', docUrl); } catch {}
@@ -436,10 +440,6 @@ export default function SettingsTab({
         {(
           <SCard icon={Plug} title="Hệ thống & kết nối" accent="#6366f1">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-              <LField label="Apps Script URL">
-                <input value={scriptUrl} onChange={e => setScriptUrl(e.target.value)} placeholder="https://script.google.com/macros/s/..." style={INP} />
-              </LField>
 
               {/* Status + actions */}
               <div style={{

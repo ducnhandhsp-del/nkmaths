@@ -24,6 +24,7 @@ import { RULES } from './rules';
 
 interface DomainConfig {
   scriptUrl:   string;
+  adminToken:  string;
   schoolYear:  string;
   students:    Student[];
   payments:    Payment[];
@@ -50,7 +51,7 @@ interface DomainConfig {
 
 export function useDomains(cfg: DomainConfig) {
   const {
-    scriptUrl, schoolYear, students, payments, expenses, tlogs, uClasses,
+    scriptUrl, adminToken, schoolYear, students, payments, expenses, tlogs, uClasses,
     teachers, materials,
     setStudents, setPayments, setExpenses, setTlogs, setUClasses, setTeachers, setMaterials, setLeaveRequests,
     loadData,
@@ -68,11 +69,12 @@ export function useDomains(cfg: DomainConfig) {
 
   /* ── api helper — kiểm tra HTTP status lẫn GAS response body ── */
   const api = useCallback(async (body: object): Promise<any> => {
+    const requestBody = { ...body, adminToken };
     const res = await fetchWithTimeout(scriptUrl, {
       method:   'POST',
       redirect: 'follow',
       headers:  { 'Content-Type': 'text/plain' },
-      body:     JSON.stringify(body),
+      body:     JSON.stringify(requestBody),
       timeout:  RULES.network.fetchTimeout,
     });
     if (!res.ok) throw new Error(`Server lỗi HTTP ${res.status}`);
@@ -82,7 +84,7 @@ export function useDomains(cfg: DomainConfig) {
       throw new Error(data.error || 'GAS ghi thất bại');
     }
     return data;
-  }, [scriptUrl]);
+  }, [adminToken, scriptUrl]);
 
   /* ── withSave ── */
   const withSave = useCallback(async (fn: () => Promise<void>, successMsg?: string) => {

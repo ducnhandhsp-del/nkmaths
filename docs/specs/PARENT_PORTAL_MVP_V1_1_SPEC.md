@@ -3,13 +3,14 @@
 ## Muc tieu
 
 Portal public cho phu huynh/hoc sinh tra cuu tinh hinh hoc phi va diem danh cua
-mot hoc sinh cu the, nhung khong lam lo app quan tri hoac bundle quan tri tren
-domain public.
+mot hoc sinh cu the, deploy tren domain/project rieng, khong lam lo app quan tri
+hoac bundle quan tri.
 
-Domain public hien tai `nkmaths.vercel.app` phai uu tien an toan:
+Quyet dinh domain:
 
-- `/` hien portal tra cuu.
-- `/tra-cuu` hien portal tra cuu.
+- `nkmaths.vercel.app` giu vai tro app quan tri.
+- Portal tra cuu dung domain/project rieng.
+- Root `/` cua portal domain hien portal tra cuu.
 - Portal build khong import `App.tsx`, `useAppData`, `useDomains`, cac tab quan tri,
   modal quan tri, hay route/admin shell.
 - App quan tri khong duoc coi la public surface cua domain portal.
@@ -18,7 +19,7 @@ Domain public hien tai `nkmaths.vercel.app` phai uu tien an toan:
 
 ### Co trong v1.1
 
-- Tach public entry thanh portal-only bundle.
+- Tach portal entry thanh portal-only bundle.
 - Giu UI portal hien co:
   - form `Ma hoc sinh`
   - form `So dien thoai phu huynh`
@@ -27,7 +28,7 @@ Domain public hien tai `nkmaths.vercel.app` phai uu tien an toan:
   - tong quan diem danh
   - 10 buoi hoc gan nhat
 - Giu action GAS public `lookupStudentPortal`.
-- Root domain public khong render admin app.
+- Root domain portal rieng khong render admin app.
 - Sua layout row de ngay, noi dung, badge khong chong chu tren desktop/mobile.
 
 ### Chua co trong v1.1
@@ -36,7 +37,7 @@ Domain public hien tai `nkmaths.vercel.app` phai uu tien an toan:
 - QR thanh toan.
 - Diem so/bai kiem tra.
 - Dang nhap tai khoan phu huynh.
-- Deploy admin protected domain rieng.
+- Chon domain portal chinh thuc.
 
 Nhung muc nay thuoc v1.2+ hoac phase security rieng.
 
@@ -44,29 +45,26 @@ Nhung muc nay thuoc v1.2+ hoac phase security rieng.
 
 ### Entry points
 
-`index.html`
+`portal.html`
 
-- Entry public production.
+- Entry portal production.
 - Script: `/src/portalMain.tsx`.
 - Chi render `ParentPortal`.
 
-`admin.html`
+`index.html`
 
-- Entry quan tri cho local/dev hoac deploy rieng sau nay.
+- Entry quan tri mac dinh cho `nkmaths.vercel.app`.
 - Script: `/src/main.tsx`.
-- Khong duoc coi la public URL chinh.
 
 ### Vercel routing
 
-`vercel.json` rewrite tat ca request ve `/`, vi `/` la portal-only entry.
+Portal project/domain rieng build bang `npm.cmd run build:portal`, sau do
+`dist/portal.html` duoc promote thanh `dist/index.html`.
 
 Dieu nay dam bao:
 
-- `https://nkmaths.vercel.app`
-- `https://nkmaths.vercel.app/tra-cuu`
-- URL sai bat ky
-
-deu render portal, khong render admin app.
+- `nkmaths.vercel.app` van la app quan tri.
+- Portal domain rieng render portal, khong render admin app.
 
 ## GAS contract
 
@@ -130,7 +128,7 @@ loi noi bo.
 
 ### Can lam tiep sau v1.1
 
-- Tach admin sang domain/project rieng.
+- Deploy portal sang domain/project rieng.
 - Them `adminToken` hoac proxy server-side cho cac action admin:
   - `getData`
   - `save*`
@@ -165,9 +163,9 @@ Trang thai hien thi:
 ## QA bat buoc
 
 - Desktop 1365px:
-  - `/` hien portal.
-  - `/tra-cuu` hien portal.
-  - Khong thay sidebar/admin shell.
+  - `nkmaths.vercel.app` hien admin app.
+  - Portal domain rieng `/` hien portal.
+  - Portal domain rieng khong thay sidebar/admin shell.
   - Row phieu thu va diem danh khong chong chu.
 - Mobile 390px:
   - form khong tran ngang.
@@ -175,13 +173,14 @@ Trang thai hien thi:
 - Build:
   - `npm.cmd run lint`
   - `npm.cmd run build`
+  - `npm.cmd run build:portal`
 - Kiem tra bundle:
-  - production build public khong tao/chua admin entry trong `dist/index.html`.
-  - `dist/index.html` tham chieu portal entry.
+  - admin build mac dinh tham chieu `/src/main.tsx`.
+  - portal build rieng tham chieu `/src/portalMain.tsx`.
 
 ## Tieu chi hoan thanh
 
-- `nkmaths.vercel.app` khong con hien admin app.
-- `nkmaths.vercel.app/tra-cuu` van tra cuu duoc.
-- Public bundle khong import admin app.
-- Admin app van con trong source de deploy rieng sau nay.
+- `nkmaths.vercel.app` hien admin app.
+- Portal domain rieng tra cuu duoc.
+- Portal bundle khong import admin app.
+- Admin action trong GAS duoc bao ve bang `adminToken` hoac proxy.

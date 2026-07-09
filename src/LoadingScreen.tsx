@@ -15,9 +15,13 @@ const SLOGANS = [
 export default function LoadingScreen({
   error,
   onRetry,
+  secondaryActionLabel,
+  onSecondaryAction,
 }: {
   error?: string;
   onRetry?: () => void;
+  secondaryActionLabel?: string;
+  onSecondaryAction?: () => void;
 }) {
   const [slogan, setSlogan] = useState(SLOGANS[0]);
   const [showSlowHint, setShowSlowHint] = useState(false);
@@ -200,6 +204,29 @@ export default function LoadingScreen({
             >
               <RefreshCw size={15} />
               Thử tải lại
+            </button>
+          )}
+          {error && onSecondaryAction && secondaryActionLabel && (
+            <button
+              type="button"
+              onClick={onSecondaryAction}
+              style={{
+                minHeight: 40,
+                padding: '8px 14px',
+                borderRadius: 8,
+                border: '1px solid rgba(255,255,255,0.45)',
+                background: 'rgba(255,255,255,0.08)',
+                color: '#fff',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                fontSize: 13,
+                fontWeight: 800,
+                cursor: 'pointer',
+              }}
+            >
+              {secondaryActionLabel}
             </button>
           )}
         </div>

@@ -13,9 +13,9 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { CalendarCheck, FilePlus2, MessageCircle, ReceiptText, School, UserPlus } from 'lucide-react';
+import { CalendarCheck, FilePlus2, LockKeyhole, MessageCircle, ReceiptText, School, UserPlus } from 'lucide-react';
 
-import { loadSettings, parseDMY, SCRIPT_URL_DEFAULT, FEE_DEFAULT, CA_DAY_DEFAULT, TEACHER_LIST_DEFAULT, normalizeCaDayOptions, LESSON_OFF_NOTE_TAG } from './helpers';
+import { loadSettings, saveSettings, parseDMY, SCRIPT_URL_DEFAULT, FEE_DEFAULT, CA_DAY_DEFAULT, TEACHER_LIST_DEFAULT, normalizeCaDayOptions, LESSON_OFF_NOTE_TAG } from './helpers';
 import { RULES } from './rules';
 import type { Screen, Student, DeleteTarget, TrainingSub, OperationsSub, FinanceSub, ReportsSub } from './types';
 
@@ -39,26 +39,88 @@ import LearningTab    from './LearningTab';
 import FinanceTab     from './FinanceTab';
 import ReportsTab     from './ReportsTab';
 import SettingsTab    from './SettingsTab';
-import ParentPortal   from './ParentPortal';
 
 export default function App() {
-  const isParentPortal = typeof window !== 'undefined' && window.location.pathname.replace(/\/+$/, '') === '/tra-cuu';
-  return isParentPortal ? <ParentPortalShell /> : <AdminApp />;
+  return <AdminGate />;
 }
 
-function ParentPortalShell() {
+function AdminGate() {
   const saved = loadSettings();
+  const [adminTokenInput, setAdminTokenInput] = useState<string>(saved?.adminToken ?? '');
+  const [ready, setReady] = useState(() => Boolean(String(saved?.scriptUrl ?? SCRIPT_URL_DEFAULT).trim() && String(saved?.adminToken ?? '').trim()));
+
+  const handleEnter = useCallback(() => {
+    const scriptUrl = String(loadSettings()?.scriptUrl ?? saved?.scriptUrl ?? SCRIPT_URL_DEFAULT).trim();
+    const adminToken = adminTokenInput.trim();
+    if (!scriptUrl || !adminToken) return;
+    const current = loadSettings() || {};
+    saveSettings({ ...current, scriptUrl, adminToken });
+    setReady(true);
+  }, [adminTokenInput, saved?.scriptUrl]);
+
+  if (ready) return <AdminApp onChangeAdminAccess={() => setReady(false)} />;
+
   return (
-    <ParentPortal
-      scriptUrl={saved?.scriptUrl ?? SCRIPT_URL_DEFAULT}
-      centerName={saved?.centerName ?? 'LỚP TOÁN NK'}
-      baseTuition={saved?.baseTuition ?? FEE_DEFAULT}
-      phone={saved?.phone ?? '0383634949'}
-    />
+    <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', padding: 20, background: '#F0F2F8' }}>
+      <form
+        onSubmit={e => { e.preventDefault(); handleEnter(); }}
+        style={{
+          width: 'min(100%, 460px)',
+          display: 'grid',
+          gap: 16,
+          padding: 22,
+          borderRadius: 12,
+          background: '#fff',
+          border: '1px solid #dbe4f0',
+          boxShadow: '0 18px 50px rgba(15,23,42,0.08)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 42, height: 42, borderRadius: 10, display: 'grid', placeItems: 'center', background: '#ecfdf5', color: '#047857' }}>
+            <LockKeyhole size={21} />
+          </div>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>Mở khóa trang quản trị</div>
+            <div style={{ marginTop: 3, fontSize: 13, fontWeight: 700, color: '#64748b', lineHeight: 1.45 }}>
+              Nhập mã admin để vào hệ thống quản trị.
+            </div>
+          </div>
+        </div>
+
+        <label style={{ display: 'grid', gap: 6 }}>
+          <span style={{ fontSize: 12, fontWeight: 800, color: '#334155' }}>Admin token</span>
+          <input
+            type="password"
+            value={adminTokenInput}
+            onChange={e => setAdminTokenInput(e.target.value)}
+            placeholder="Token bí mật của trang quản trị"
+            autoComplete="current-password"
+            style={{ minHeight: 42, borderRadius: 8, border: '1px solid #cbd5e1', padding: '0 12px', fontSize: 14, fontWeight: 700, outline: 'none' }}
+          />
+        </label>
+
+        <button
+          type="submit"
+          disabled={!adminTokenInput.trim()}
+          style={{
+            minHeight: 42,
+            border: 0,
+            borderRadius: 8,
+            background: !adminTokenInput.trim() ? '#cbd5e1' : '#047857',
+            color: '#fff',
+            fontSize: 14,
+            fontWeight: 900,
+            cursor: !adminTokenInput.trim() ? 'not-allowed' : 'pointer',
+          }}
+        >
+          Vào trang quản trị
+        </button>
+      </form>
+    </div>
   );
 }
 
-function AdminApp() {
+function AdminApp({ onChangeAdminAccess }: { onChangeAdminAccess: () => void }) {
 
   /* ── Routing ── */
   const [screen, setScreen] = useState<Screen>('overview');
@@ -90,7 +152,8 @@ function AdminApp() {
   const [schoolYear,   setSchoolYear]   = useState<string>(_saved.current?.schoolYear   ?? '2026-2027');
   const [tuitionDueDay, setTuitionDueDay] = useState<number>(_saved.current?.tuitionDueDay ?? 15);
   const [, setZaloTpl] = useState<string>(_saved.current?.zaloTpl ?? 'Chào phụ huynh em [Ten], LỚP TOÁN NK thông báo học phí tháng [Thang]/[Nam] của em hiện còn [SoTien]. Phụ huynh vui lòng kiểm tra và thanh toán giúp lớp. Em cảm ơn ạ.');
-  const [scriptUrl,    setScriptUrl]    = useState<string>(_saved.current?.scriptUrl    ?? SCRIPT_URL_DEFAULT);
+  const [scriptUrl]    = useState<string>(_saved.current?.scriptUrl    ?? SCRIPT_URL_DEFAULT);
+  const [adminToken]   = useState<string>(_saved.current?.adminToken   ?? '');
   const [centerName,   setCenterName]   = useState<string>(_saved.current?.centerName   ?? 'LỚP TOÁN NK');
   const [teacher,      setTeacher]      = useState<string>(_saved.current?.teacher      ?? 'LÊ ĐỨC NHÂN');
   const [addr1,        setAddr1]        = useState<string>(_saved.current?.addr1        ?? '15/80 Đào Tấn');
@@ -106,7 +169,7 @@ function AdminApp() {
   const isDesktop = useIsDesktop();
 
   /* ── Data layer ── */
-  const appData = useAppData({ scriptUrl, teacherList });
+  const appData = useAppData({ scriptUrl, teacherList, adminToken });
   const {
     students, uClasses, payments, expenses, tlogs,
     teachers, leaveRequests, materials, summary,
@@ -118,7 +181,7 @@ function AdminApp() {
 
   /* ── Domain hooks (business logic + CRUD) ── */
   const d = useDomains({
-    scriptUrl, schoolYear, students, payments, expenses, tlogs, uClasses,
+    scriptUrl, adminToken, schoolYear, students, payments, expenses, tlogs, uClasses,
     teachers, materials,
     setStudents, setUClasses, setPayments, setExpenses, setTlogs,
     setTeachers, setMaterials, setLeaveRequests,
@@ -311,6 +374,8 @@ function AdminApp() {
       <LoadingScreen
         error={initialLoadError}
         onRetry={() => { void loadData({ mode: 'foreground', reason: 'manual' }); }}
+        secondaryActionLabel="Đổi admin token"
+        onSecondaryAction={onChangeAdminAccess}
       />
     );
   }
@@ -492,7 +557,8 @@ function AdminApp() {
                   bankId={bankId}           setBankId={setBankId}
                   accountNo={accountNo}     setAccountNo={setAccountNo}
                   accountName={accountName} setAccountName={setAccountName}
-                  scriptUrl={scriptUrl}     setScriptUrl={setScriptUrl}
+                  scriptUrl={scriptUrl}
+                  adminToken={adminToken}
                   gsOk={gsOk} centerName={centerName} setCenterName={setCenterName}
                   teacher={teacher}         setTeacher={setTeacher}
                   addr1={addr1}             setAddr1={setAddr1}

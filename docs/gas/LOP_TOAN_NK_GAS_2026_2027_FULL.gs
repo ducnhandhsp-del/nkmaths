@@ -141,6 +141,24 @@ function doGet(e) {
   });
 }
 
+function isPublicAction(action) {
+  return action === 'lookupStudentPortal';
+}
+
+function checkAdminToken(d) {
+  var configured = str(getConfig('adminToken')).trim() || '314159';
+
+  var provided = str(d && (d.adminToken || d.token || d.AdminToken)).trim();
+  if (!provided || provided !== configured) {
+    return {
+      ok: false,
+      error: 'Không có quyền truy cập dữ liệu quản trị.'
+    };
+  }
+
+  return null;
+}
+
 function doPost(e) {
   var result;
   try {
@@ -188,7 +206,10 @@ function doPost(e) {
       }
     };
 
-    if (map[action]) result = map[action](data);
+    if (map[action]) {
+      var authError = isPublicAction(action) ? null : checkAdminToken(data);
+      result = authError || map[action](data);
+    }
     else result = { ok: false, error: 'Unknown action: ' + action };
   } catch (err) {
     result = { ok: false, error: err && err.stack ? err.stack : String(err) };
@@ -286,6 +307,7 @@ function seedConfig() {
   rows.forEach(function(r) { map[str(r.Key)] = true; });
 
   var defaults = [
+    { Key: 'adminToken', Value: '314159', Group: 'security', Note: 'Token bat buoc cho cac action quan tri. Nen doi sang chuoi dai hon sau khi on dinh.' },
     { Key: 'schoolYear', Value: '2026-2027', Group: 'general', Note: 'Năm học hiện tại' },
     { Key: 'baseTuition', Value: '600000', Group: 'finance', Note: 'Học phí mặc định' },
     { Key: 'caDayOptions', Value: '7h30,9h,13h30,15h30,17h30,19h30', Group: 'schedule', Note: 'Ca dạy chuẩn' }

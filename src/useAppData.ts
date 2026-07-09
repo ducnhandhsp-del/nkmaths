@@ -333,7 +333,7 @@ type LoadDataOptions = {
   timeout?: number;
 };
 
-export function useAppData({ scriptUrl, teacherList }: { scriptUrl: string; teacherList: string[] }) {
+export function useAppData({ scriptUrl, teacherList, adminToken }: { scriptUrl: string; teacherList: string[]; adminToken: string }) {
   const initialCacheRef = useRef<CachePayload | null>(readCacheSnapshot());
   const initialCache = initialCacheRef.current;
   const hasInitialData = hasCacheData(initialCache);
@@ -389,7 +389,7 @@ export function useAppData({ scriptUrl, teacherList }: { scriptUrl: string; teac
   }, []);
 
   /* ── Core fetch ── */
-  /* FIX S2: dependency chỉ còn [scriptUrl] — teacherList thay đổi KHÔNG re-create loadData */
+  /* FIX S2: teacherList đọc qua ref; loadData chỉ re-create khi URL/token admin đổi */
   const loadData = useCallback(async (options: LoadDataOptions = {}) => {
     const reason = options.reason ?? 'manual';
     if (loadingRef.current) {
@@ -417,7 +417,7 @@ export function useAppData({ scriptUrl, teacherList }: { scriptUrl: string; teac
         redirect: 'follow',
         timeout,
         headers:  { 'Content-Type': 'text/plain' },
-        body:     JSON.stringify({ action: 'getData' }),
+        body:     JSON.stringify({ action: 'getData', adminToken }),
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
@@ -518,7 +518,7 @@ export function useAppData({ scriptUrl, teacherList }: { scriptUrl: string; teac
         }, 0);
       }
     }
-  }, [applyCache, scriptUrl]);
+  }, [adminToken, applyCache, scriptUrl]);
   loadDataRef.current = loadData;
 
   /* ── Initial load ── */
