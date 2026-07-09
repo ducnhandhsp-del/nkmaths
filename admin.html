@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="theme-color" content="#0f1f3d" />
+
+    <title>Quản trị - LỚP TOÁN NK</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400&family=Nunito:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400&display=swap"
+    />
+
+    <style>
+      :root {
+        --font-vn: 'Be Vietnam Pro', 'Nunito', system-ui, -apple-system,
+          'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'Droid Sans',
+          'PingFang SC', sans-serif;
+        --sat: env(safe-area-inset-top, 0px);
+        --sab: env(safe-area-inset-bottom, 0px);
+        --sal: env(safe-area-inset-left, 0px);
+        --sar: env(safe-area-inset-right, 0px);
+      }
+      html, body { font-family: var(--font-vn); overflow-x: hidden; }
+      html {
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+      }
+      @font-face {
+        font-family: 'Be Vietnam Pro';
+        font-display: swap;
+      }
+      @font-face {
+        font-family: 'Nunito';
+        font-display: swap;
+      }
+      #root:empty {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100dvh;
+        background: #f8fafc;
+      }
+      #root:empty::after {
+        content: 'Đang tải…';
+        font-family: var(--font-vn);
+        font-size: 15px;
+        font-weight: 700;
+        color: #94a3b8;
+        letter-spacing: 0.05em;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
