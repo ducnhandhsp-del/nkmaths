@@ -3,14 +3,16 @@ import assert from 'node:assert/strict';
 import {
   buildDataHealthReport,
   buildPaidMap,
+  calcMonthlyRevenue,
   calcStudentAttendance,
   calcStudentAbsenceStreak,
+  countUniqueStudentAttendances,
   getAttendanceRisk,
   getClassSessionTarget,
+  getMonthlyTuitionState,
   getPaymentTuitionPeriod,
   getTuitionCycleState,
   getTuitionSessionProgress,
-  getTuitionStatus,
   isPaidFn,
   isStudentBillableInMonth,
   lessonCountByClassPeriod,
@@ -130,32 +132,102 @@ const lessonCounts = lessonCountByClassPeriod(logs, { m: 6, y: 2026 });
 assert.deepEqual(
   getTuitionSessionProgress(baseStudent, [twoSlotClass], lessonCounts),
   { done: 2, target: 8, due: false, overdue: false },
-  'session progress counts unique class lessons in period',
+  'class lesson progress still counts unique class lessons for class-level stats',
+);
+const makeupAttendanceLogs: TeachingLog[] = [
+  {
+    ...logs[0],
+    maBuoi: 'B1',
+    rawDate: '16/06/2026',
+    date: '16/06/2026',
+    classId: '10A',
+    originalClassId: '10A',
+    attendanceList: [{ maHS: 'HS001', trangThai: 'Váº¯ng' }],
+  },
+  {
+    ...logs[0],
+    maBuoi: 'B2',
+    rawDate: '17/06/2026',
+    date: '17/06/2026',
+    classId: '10B',
+    originalClassId: '10B',
+    attendanceList: [{ maHS: 'HS001', trangThai: 'CÃ³ máº·t', LoaiDiemDanh: 'extra' }],
+  },
+  {
+    ...logs[0],
+    maBuoi: 'B2',
+    rawDate: '17/06/2026',
+    date: '17/06/2026',
+    classId: '10B',
+    originalClassId: '10B',
+    attendanceList: [{ maHS: 'HS001', trangThai: 'CÃ³ máº·t', LoaiDiemDanh: 'extra' }],
+  },
+];
+assert.equal(
+  countUniqueStudentAttendances(makeupAttendanceLogs, 'HS001'),
+  1,
+  'tuition attendance counts present makeup in another class once and ignores absence',
+);
+assert.deepEqual(
+  getTuitionCycleState({ student: baseStudent, classes: [twoSlotClass, threeSlotClass], payments: [], tlogs: makeupAttendanceLogs, baseTuition: 600000 }).sessionProgress,
+  { done: 1, target: 8, due: false, overdue: false },
+  'tuition cycle counts student attendance rows, not host class lessons',
 );
 
 const fullTwoSlotProgress = getTuitionSessionProgress(baseStudent, [twoSlotClass], new Map([['10A', 8]]));
 assert.deepEqual(fullTwoSlotProgress, { done: 8, target: 8, due: true, overdue: false }, '2 sessions/week reaches tuition due at 8 lessons');
-assert.equal(
-  getTuitionStatus({ inactive: false, paid: false, pastDue: false, sessionDue: fullTwoSlotProgress.due, sessionOverdue: fullTwoSlotProgress.overdue }),
-  'due',
-  'unpaid tuition is due when session target is reached',
-);
 const overdueTwoSlotProgress = getTuitionSessionProgress(baseStudent, [twoSlotClass], new Map([['10A', 9]]));
 assert.deepEqual(overdueTwoSlotProgress, { done: 9, target: 8, due: false, overdue: true }, '2 sessions/week is overdue after passing 8 lessons');
+
+const enrollmentPayment: Payment = { ...payments[0], date: '20/06/2026', thangHP: 6, namHP: 2026, amount: 300000 };
+const enrollmentState = getMonthlyTuitionState({
+  student: baseStudent,
+  period: { m: 6, y: 2026 },
+  payments: [enrollmentPayment],
+  baseTuition: 600000,
+  pastDue: true,
+});
 assert.equal(
-  getTuitionStatus({ inactive: false, paid: false, pastDue: false, sessionDue: overdueTwoSlotProgress.due, sessionOverdue: overdueTwoSlotProgress.overdue }),
-  'overdue',
-  'unpaid tuition is overdue only after passing the session target',
-);
-assert.equal(
-  getTuitionStatus({ inactive: false, paid: true, pastDue: false, sessionDue: false, sessionOverdue: true }),
+  enrollmentState.status,
   'paid',
-  'paid tuition stays paid even after passing the session target',
+  'enrollment month is closed when it has a tuition-period payment even if amount is below base tuition',
+);
+assert.equal(enrollmentState.outstandingAmount, 0, 'partial enrollment payment does not create automatic carry-over debt');
+assert.equal(enrollmentState.amount, 300000, 'paid enrollment month shows the actual paid amount');
+
+const nextMonthState = getMonthlyTuitionState({
+  student: baseStudent,
+  period: { m: 7, y: 2026 },
+  payments: [enrollmentPayment],
+  baseTuition: 600000,
+  pastDue: false,
+});
+assert.equal(nextMonthState.status, 'unpaid', 'next month is independent from the paid enrollment month');
+assert.equal(nextMonthState.outstandingAmount, 600000, 'next month uses base tuition when unpaid');
+
+const prepaidJuly: Payment = { ...payments[0], date: '28/06/2026', thangHP: 7, namHP: 2026, amount: 600000 };
+assert.equal(calcMonthlyRevenue([prepaidJuly], 6, 2026), 600000, 'cash revenue follows receipt date for prepaid tuition');
+assert.equal(
+  getMonthlyTuitionState({
+    student: baseStudent,
+    period: { m: 7, y: 2026 },
+    payments: [prepaidJuly],
+    baseTuition: 600000,
+    pastDue: false,
+  }).status,
+  'paid',
+  'debt status follows tuition period for prepaid tuition',
 );
 assert.equal(
-  getTuitionStatus({ inactive: false, paid: false, pastDue: true, sessionDue: false }),
-  'due',
-  'calendar due date does not override session-based overdue logic',
+  getMonthlyTuitionState({
+    student: baseStudent,
+    period: { m: 6, y: 2026 },
+    payments: [prepaidJuly],
+    baseTuition: 600000,
+    pastDue: false,
+  }).status,
+  'unpaid',
+  'prepaid next-month tuition does not mark the receipt month as paid',
 );
 
 const cycleLogs: TeachingLog[] = Array.from({ length: 9 }, (_, i) => ({
@@ -177,6 +249,10 @@ const cycleLogs: TeachingLog[] = Array.from({ length: 9 }, (_, i) => ({
   excused: 0,
   attendanceList: [],
 }));
+cycleLogs.forEach((log, index) => {
+  log.maBuoi = `CYCLE-${index + 1}`;
+  log.attendanceList = [{ maHS: 'HS001', trangThai: 'CÃ³ máº·t' }];
+});
 const cycleStudent: Student = { ...baseStudent, startDate: '01/06/2026' };
 assert.deepEqual(
   getTuitionCycleState({ student: cycleStudent, classes: [twoSlotClass], payments: [], tlogs: cycleLogs, baseTuition: 600000 }).sessionProgress,

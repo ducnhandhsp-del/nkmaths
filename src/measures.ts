@@ -322,6 +322,50 @@ export const countUniqueClassLessons = (
   return lessons.size;
 };
 
+const lessonUniqueKey = (log: TeachingLog): string =>
+  String(log.maBuoi || log.id || `${log.rawDate || log.date || ''}|${log.classId || ''}|${log.caDay || ''}`).trim();
+
+const attendanceStatusOf = (entry: any): AttendanceStatus =>
+  normalizeAttendanceStatus(
+    entry?.trangThai
+    || entry?.['Trạng thái']
+    || entry?.['Tráº¡ng thÃ¡i']
+    || entry?.['TrÃ¡ÂºÂ¡ng thÃƒÂ¡i']
+    || entry?.TrangThai
+    || entry?.status
+    || '',
+  );
+
+export const countUniqueStudentAttendances = (
+  tlogs: TeachingLog[],
+  studentId: string,
+  opts: { fromTs?: number; fromExclusive?: boolean; toTs?: number } = {},
+): number => {
+  const sid = String(studentId || '').trim();
+  if (!sid) return 0;
+  const fromTs = opts.fromTs || 0;
+  const toTs = opts.toTs || Number.POSITIVE_INFINITY;
+  const lessons = new Set<string>();
+
+  tlogs.forEach(log => {
+    if (isLessonOffLog(log)) return;
+    const ts = lessonDateTs(log);
+    if (!ts) return;
+    if (opts.fromExclusive ? ts <= fromTs : ts < fromTs) return;
+    if (ts > toTs) return;
+
+    const present = (log.attendanceList || []).some((entry: any) => (
+      attendanceStudentId(entry) === sid && attendanceStatusOf(entry) === 'present'
+    ));
+    if (!present) return;
+
+    const key = lessonUniqueKey(log);
+    if (key) lessons.add(key);
+  });
+
+  return lessons.size;
+};
+
 export interface SessionProgress {
   done: number;
   target: number;
@@ -347,6 +391,78 @@ export const getTuitionSessionProgress = (
 };
 
 export type TuitionStatus = 'inactive' | 'paid' | 'not_due' | 'due' | 'overdue' | 'no_schedule';
+
+export type MonthlyTuitionStatus = 'inactive' | 'not_billable' | 'paid' | 'unpaid' | 'overdue';
+
+export interface MonthlyTuitionState {
+  student: Student;
+  period: Period;
+  billable: boolean;
+  inactive: boolean;
+  paid: boolean;
+  payments: Payment[];
+  payment?: Payment;
+  status: MonthlyTuitionStatus;
+  amount: number;
+  paidAmount: number;
+  outstandingAmount: number;
+  isEnrollmentMonth: boolean;
+}
+
+export const isEnrollmentMonth = (student: Pick<Student, 'startDate'>, period: Period): boolean => {
+  const startTs = parseDMY(student.startDate || '');
+  if (!startTs) return false;
+  const d = new Date(startTs);
+  return d.getMonth() + 1 === period.m && d.getFullYear() === period.y;
+};
+
+export const getMonthlyTuitionState = ({
+  student,
+  period,
+  payments = [],
+  baseTuition = 0,
+  pastDue = false,
+}: {
+  student: Student;
+  period: Period;
+  payments?: Payment[];
+  baseTuition?: number;
+  pastDue?: boolean;
+}): MonthlyTuitionState => {
+  const inactive = !isStudentActive(student);
+  const billable = !inactive && isStudentBillableInMonth(student, period);
+  const periodPayments = payments.filter(payment => {
+    if (payment.studentId !== student.id) return false;
+    const paymentPeriod = getPaymentTuitionPeriod(payment);
+    return paymentPeriod?.m === period.m && paymentPeriod?.y === period.y;
+  });
+  const paidAmount = periodPayments.reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
+  const paid = periodPayments.length > 0;
+  const status: MonthlyTuitionStatus = inactive
+    ? 'inactive'
+    : !billable
+      ? 'not_billable'
+      : paid
+        ? 'paid'
+        : pastDue
+          ? 'overdue'
+          : 'unpaid';
+  const outstandingAmount = status === 'unpaid' || status === 'overdue' ? baseTuition : 0;
+  return {
+    student,
+    period,
+    billable,
+    inactive,
+    paid,
+    payments: periodPayments,
+    payment: periodPayments[0],
+    status,
+    amount: paid ? paidAmount : outstandingAmount,
+    paidAmount,
+    outstandingAmount,
+    isEnrollmentMonth: isEnrollmentMonth(student, period),
+  };
+};
 
 export const getTuitionStatus = ({
   inactive,
@@ -428,8 +544,8 @@ export const getTuitionCycleState = ({
   const lastPaymentTs = studentPayments[0]?.ts || 0;
   const startTs = parseDMY(student.startDate || '') || 0;
   const cycleStartTs = lastPaymentTs || startTs;
-  const done = target > 0 && classId
-    ? countUniqueClassLessons(tlogs, classId, { fromTs: cycleStartTs, fromExclusive: !!lastPaymentTs })
+  const done = target > 0
+    ? countUniqueStudentAttendances(tlogs, student.id, { fromTs: cycleStartTs, fromExclusive: !!lastPaymentTs })
     : 0;
   const sessionProgress = {
     done,
