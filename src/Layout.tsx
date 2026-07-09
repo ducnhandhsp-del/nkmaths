@@ -47,7 +47,7 @@ export function useIsDesktop() {
   return isDesktop;
 }
 
-const SIDEBAR_W = 236;
+const SIDEBAR_W = 220;
 const SIDEBAR_COLLAPSED_W = 72;
 const BRAND_NAME = 'LỚP TOÁN NK';
 
@@ -158,8 +158,8 @@ const SidebarContent = memo(({
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#1E1B4B', overflow: 'hidden' }}>
-      <div style={{ padding: collapsed ? '18px 12px 16px' : '20px 18px 18px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'flex-start', gap: 12, minHeight: 76, flexShrink: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', minHeight: '100dvh', background: '#1E1B4B', overflow: 'hidden' }}>
+      <div style={{ padding: collapsed ? '18px 12px 16px' : '20px 16px 18px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'flex-start', gap: 12, minHeight: 76, flexShrink: 0 }}>
         <button
           onClick={() => { set('overview'); onClose?.(); }}
           title="Về Tổng quan"
@@ -179,7 +179,7 @@ const SidebarContent = memo(({
         )}
       </div>
 
-      <nav style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: collapsed ? '14px 10px' : '14px 12px' }}>
+      <nav style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: collapsed ? '14px 10px' : '14px 10px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {SIDEBAR_ITEMS.map(item => {
                 const Icon = item.icon;
@@ -197,11 +197,11 @@ const SidebarContent = memo(({
                       alignItems: 'center',
                       justifyContent: collapsed ? 'center' : 'flex-start',
                       gap: collapsed ? 0 : 10,
-                      padding: collapsed ? '9px 0' : '9px 11px',
+                      padding: collapsed ? '9px 0' : '9px 10px',
                       borderRadius: 11,
                       border: 'none',
                       cursor: 'pointer',
-                      fontSize: 13,
+                      fontSize: 13.5,
                       fontWeight: 800,
                       transition: 'all 0.13s',
                       background: itemActive ? '#4F46E5' : 'transparent',
@@ -225,7 +225,7 @@ const SidebarContent = memo(({
         </div>
       </nav>
 
-      <div style={{ padding: collapsed ? '10px' : '12px 14px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+      <div style={{ padding: collapsed ? '10px' : '12px 12px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
         {setCollapsed && (
           <button
             onClick={() => setCollapsed(!collapsed)}
@@ -260,7 +260,7 @@ export const Sidebar = memo(({ isDesktop, ...navProps }: SidebarNavProps & { isD
   if (!isDesktop) return null;
   const width = collapsed ? SIDEBAR_COLLAPSED_W : SIDEBAR_W;
   return (
-    <aside style={{ width, minWidth: width, minHeight: '100dvh', position: 'sticky', top: 0, alignSelf: 'flex-start', boxShadow: '8px 0 28px rgba(30,27,75,0.18)', flexShrink: 0, zIndex: 30, transition: 'width 0.18s ease, min-width 0.18s ease' }} className="print:hidden">
+    <aside style={{ width, minWidth: width, height: '100dvh', minHeight: '100dvh', position: 'sticky', top: 0, alignSelf: 'stretch', background: '#1E1B4B', boxShadow: '8px 0 28px rgba(30,27,75,0.18)', flexShrink: 0, zIndex: 30, transition: 'width 0.18s ease, min-width 0.18s ease' }} className="print:hidden">
       <SidebarContent {...navProps} collapsed={collapsed} setCollapsed={setCollapsed} />
     </aside>
   );

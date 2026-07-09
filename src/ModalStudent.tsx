@@ -259,7 +259,6 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
         <div className="ltn-form-modal-header" style={{ padding:'18px 24px',borderBottom:'1px solid #f1f5f9',display:'flex',alignItems:'center',gap:14,background:'white',flexShrink:0 }}>
           <div style={{ flex:1,minWidth:0 }}>
             <h3 style={{ fontSize:17,fontWeight:800,color:'#0f172a',margin:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{capitalizeName(s.name)}</h3>
-            <p style={{ fontSize:13,color:'#6366f1',fontWeight:600,margin:'3px 0 0' }}>{s.id} · Lớp {s.classId}</p>
             {isInactive&&<span style={{ display:'inline-block',marginTop:5,fontSize:12,fontWeight:700,color:'#e11d48',background:'#fff1f2',border:'1px solid #fecaca',padding:'3px 10px',borderRadius:6,textTransform:'uppercase' }}>Đã nghỉ học</span>}
           </div>
           <div style={{ display:'flex',alignItems:'center',gap:8,flexShrink:0 }}>
