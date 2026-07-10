@@ -21,7 +21,7 @@ import {
 import { parseDMY } from './helpers';
 import { getMonthlyTuitionState, getPaymentTuitionPeriod, isStudentActiveInMonth } from './measures';
 import { MobileActionFab } from './AppComponents';
-import { Button, IconButton } from './dsComponents';
+import { Button, IconButton, SearchBar, Select } from './dsComponents';
 import { DataTable, DetailMetric, EmptyState, MobileCompactCard, MoneyText, PageToolbar, StatusBadge } from './uiSystem';
 import type { ClassRecord, DeleteTarget, Payment, Student, Teacher, TeachingLog } from './types';
 
@@ -314,6 +314,8 @@ export default function TeachersTab({
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Teacher | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [teacherQuery, setTeacherQuery] = useState('');
+  const [teacherStatusFilter, setTeacherStatusFilter] = useState<'active' | 'all' | 'onleave' | 'inactive' | 'noClass'>('active');
 
   const rows = useMemo<TeacherRow[]>(() => {
     const names = new Map<string, string>();
@@ -421,7 +423,19 @@ export default function TeachersTab({
     });
   }, [teachers, uClasses, students, tlogs, payments, curMo, curYr]);
 
-  const visibleRows = rows;
+  const visibleRows = useMemo(() => {
+    const q = teacherQuery.trim().toLowerCase();
+    return rows.filter(row => {
+      const status = teacherStatus(row.teacher.status);
+      if (teacherStatusFilter === 'active' && status !== 'active') return false;
+      if (teacherStatusFilter === 'onleave' && status !== 'onleave') return false;
+      if (teacherStatusFilter === 'inactive' && status !== 'inactive') return false;
+      if (teacherStatusFilter === 'noClass' && row.classes.length > 0) return false;
+      if (!q) return true;
+      const haystack = `${row.teacher.name || ''} ${row.teacher.id || ''} ${row.teacher.phone || ''} ${row.teacher.specialization || ''}`.toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [rows, teacherQuery, teacherStatusFilter]);
 
   const detailRow = detailId ? rows.find(r => r.id === detailId) ?? null : null;
 
@@ -549,8 +563,11 @@ export default function TeachersTab({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: embedded ? 10 : 16 }}>
       <style>{`
+        .teacher-toolbar-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
         .teacher-desktop-table{display:block}.teacher-mobile-cards{display:none}
         @media(max-width:767px){
+          .teacher-toolbar-filters{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+          .teacher-toolbar-filters > *{width:100%!important;min-width:0!important}
           .teacher-desktop-table{display:none!important}.teacher-mobile-cards{display:block!important}
         }
       `}</style>
@@ -561,6 +578,21 @@ export default function TeachersTab({
         actions={<Button intent="success" size="sm" icon={<Plus size={14} />} onClick={openAdd}>Thêm giáo viên</Button>}
       >
         {toolbarPrefix}
+        <div className="teacher-toolbar-filters">
+          <SearchBar value={teacherQuery} onChange={setTeacherQuery} placeholder="Tìm GV" width={136} />
+          <Select
+            value={teacherStatusFilter}
+            onChange={v => setTeacherStatusFilter(v as typeof teacherStatusFilter)}
+            options={[
+              { value: 'active', label: 'Đang dạy' },
+              { value: 'all', label: 'Tất cả' },
+              { value: 'onleave', label: 'Tạm nghỉ' },
+              { value: 'inactive', label: 'Đã nghỉ' },
+              { value: 'noClass', label: 'Chưa có lớp' },
+            ]}
+            style={{ width: 124, minWidth: 116 }}
+          />
+        </div>
       </PageToolbar>
       {!embedded && (
         <MobileActionFab

@@ -9,6 +9,7 @@ import { getLessonOffReason, isLessonOffLog, normalizeCaDayLabel, normalizeSched
 import { attendanceStudentId, calcStudentAbsenceStreak, getAttendanceRisk, normalizeAttendanceStatus as normalizeAttendanceStatusCore } from './measures';
 import { Button, Pager, Select } from './dsComponents';
 import { ActionableKpi, ActionableKpiGrid, DataTable, DateText, EmptyState, MobileCompactCard, PageToolbar, StatusBadge, ToolbarTabs } from './uiSystem';
+import FilterMenu from './FilterMenu';
 import type { Student, TeachingLog, LeaveRequest, OperationsSub } from './types';
 
 const DAYS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
@@ -947,9 +948,16 @@ export default function OperationsTab({
             <button type="button" className="ops-period-button" onClick={() => setScheduleMonth(value => addMonthsToKey(value, 1))}>›</button>
           </div>
           {scheduleMonth !== currentMonth && (
-            <Button size="sm" intent="neutral" variant="outline" onClick={() => setScheduleMonth(currentMonth)}>Tháng này</Button>
+            <div className="ops-desktop-only">
+              <Button size="sm" intent="neutral" variant="outline" onClick={() => setScheduleMonth(currentMonth)}>Tháng này</Button>
+            </div>
           )}
-          <Select value={scheduleClass} onChange={setScheduleClass} options={classOptions} size="md" style={{ width: 108, minWidth: 96 }} />
+          <div className="ops-desktop-only">
+            <Select value={scheduleClass} onChange={setScheduleClass} options={classOptions} size="md" style={{ width: 108, minWidth: 96 }} />
+          </div>
+          <FilterMenu label="Lọc" activeCount={scheduleClass ? 1 : 0} className="ops-mobile-only">
+            <Select value={scheduleClass} onChange={setScheduleClass} options={classOptions} size="sm" />
+          </FilterMenu>
         </>
       )}
       {sub === 'lessons' && (
@@ -961,13 +969,39 @@ export default function OperationsTab({
             size="md"
             style={{ width: 108, minWidth: 96 }}
           />
-          <Select
-            value={dCls}
-            onChange={value => { setDCls(value); setPgD(1); }}
-            options={classOptions}
-            size="md"
-            style={{ width: 108, minWidth: 96 }}
-          />
+          <div className="ops-desktop-only">
+            <Select
+              value={dCls}
+              onChange={value => { setDCls(value); setPgD(1); }}
+              options={classOptions}
+              size="md"
+              style={{ width: 108, minWidth: 96 }}
+            />
+          </div>
+          <div className="ops-desktop-only">
+            <Select
+              value={lessonFocus}
+              onChange={value => { setLessonFocus(value as typeof lessonFocus); setPgD(1); }}
+              options={[
+                { value: 'all', label: 'Tất cả' },
+                { value: 'noAttendance', label: 'Chưa điểm danh' },
+              ]}
+              size="md"
+              style={{ width: 124, minWidth: 116 }}
+            />
+          </div>
+          <FilterMenu label="Lọc" activeCount={(dCls ? 1 : 0) + (lessonFocus !== 'all' ? 1 : 0)} className="ops-mobile-only">
+            <Select value={dCls} onChange={value => { setDCls(value); setPgD(1); }} options={classOptions} size="sm" />
+            <Select
+              value={lessonFocus}
+              onChange={value => { setLessonFocus(value as typeof lessonFocus); setPgD(1); }}
+              options={[
+                { value: 'all', label: 'Tất cả' },
+                { value: 'noAttendance', label: 'Chưa điểm danh' },
+              ]}
+              size="sm"
+            />
+          </FilterMenu>
         </>
       )}
       {sub === 'attendance' && (
@@ -979,7 +1013,33 @@ export default function OperationsTab({
             size="md"
             style={{ width: 108, minWidth: 96 }}
           />
-          <Select value={attendanceClass} onChange={setAttendanceClass} options={attendanceClassOptions} size="md" style={{ width: 108, minWidth: 96 }} />
+          <div className="ops-desktop-only">
+            <Select value={attendanceClass} onChange={setAttendanceClass} options={attendanceClassOptions} size="md" style={{ width: 108, minWidth: 96 }} />
+          </div>
+          <div className="ops-desktop-only">
+            <Select
+              value={attendanceFocus}
+              onChange={value => setAttendanceFocus(value as typeof attendanceFocus)}
+              options={[
+                { value: 'all', label: 'Tất cả' },
+                { value: 'warning', label: 'Cần theo dõi' },
+              ]}
+              size="md"
+              style={{ width: 124, minWidth: 116 }}
+            />
+          </div>
+          <FilterMenu label="Lọc" activeCount={(attendanceClass ? 1 : 0) + (attendanceFocus !== 'all' ? 1 : 0)} className="ops-mobile-only">
+            <Select value={attendanceClass} onChange={setAttendanceClass} options={attendanceClassOptions} size="sm" />
+            <Select
+              value={attendanceFocus}
+              onChange={value => setAttendanceFocus(value as typeof attendanceFocus)}
+              options={[
+                { value: 'all', label: 'Tất cả' },
+                { value: 'warning', label: 'Cần theo dõi' },
+              ]}
+              size="sm"
+            />
+          </FilterMenu>
         </>
       )}
     </div>
@@ -989,6 +1049,7 @@ export default function OperationsTab({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <style>{`
         .ops-toolbar-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+        .ops-mobile-only{display:none}
         .ops-period-control{display:flex;align-items:center;gap:4px;border:1px solid #e2e8f0;padding:3px 7px;border-radius:8px;background:white}
         .ops-period-button{width:28px;height:28px;border:0;background:transparent;cursor:pointer;border-radius:6px;color:#64748b;font-size:18px;line-height:1}
         .ops-period-button:hover{background:#f1f5f9;color:#0f172a}
@@ -997,6 +1058,8 @@ export default function OperationsTab({
           .ops-toolbar-filters{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
           .ops-period-control{justify-content:space-between}
           .ops-toolbar-filters > *{width:100%!important;min-width:0!important}
+          .ops-desktop-only{display:none!important}
+          .ops-mobile-only{display:block}
         }
       `}</style>
       <PageToolbar

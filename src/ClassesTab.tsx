@@ -8,6 +8,7 @@ import { fixVietnameseText, isStudentActive, normalizeCaDayLabel, normalizeSched
 import { getMonthlyTuitionState, getPaymentTuitionPeriod, isStudentActiveInMonth } from './measures';
 import { SearchBar, Select, Button } from './dsComponents';
 import { DataTable, DetailMetric, EmptyState, MobileCompactCard, MoneyText, PageToolbar, StatusBadge } from './uiSystem';
+import FilterMenu from './FilterMenu';
 import type { Student, ClassRecord, Payment, DeleteTarget, TeachingLog } from './types';
 
 interface Props {
@@ -430,6 +431,7 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
   const teachers = React.useMemo(() =>
     [...new Set(uClasses.map(c => resolveTeacher(getClassTeacher(c))).filter(Boolean))],
   [uClasses]);
+  const [classStatusFilter, setClassStatusFilter] = React.useState<'all' | ClassStatus>('all');
 
   // FIX C3 Bug: filter compares resolveTeacher(raw) against fClsTeacher (already resolved)
   const filtCls = React.useMemo(() => {
@@ -438,15 +440,23 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
       const classCode = getClassCode(c);
       const resolvedTeacher = resolveTeacher(getClassTeacher(c));
       return (!q || classCode.toLowerCase().includes(q))
-        && (!fClsTeacher || resolvedTeacher === fClsTeacher);
+        && (!fClsTeacher || resolvedTeacher === fClsTeacher)
+        && (classStatusFilter === 'all' || getClassStatus(c) === classStatusFilter);
     });
-  }, [clsStats, qCls, fClsTeacher]);
+  }, [clsStats, qCls, fClsTeacher, classStatusFilter]);
 
   // FIX C4: memoize select options
   const teacherOptions = React.useMemo(() =>
     [{ value: '', label: 'Giáo viên' }, ...teachers.map(t => ({ value: t, label: t }))],
   [teachers]);
-  const hasActiveFilter = !!(qCls || fClsTeacher);
+  const classStatusOptions = [
+    { value: 'all', label: 'Tất cả' },
+    { value: 'active', label: 'Đang mở' },
+    { value: 'missingTeacher', label: 'Thiếu GV' },
+    { value: 'missingSchedule', label: 'Chưa lịch' },
+    { value: 'inactive', label: 'Đã đóng' },
+  ];
+  const hasActiveFilter = !!(qCls || fClsTeacher || classStatusFilter !== 'all');
   const emptyText = hasActiveFilter ? 'Không tìm thấy lớp phù hợp' : 'Chưa có lớp học';
   const emptySub = hasActiveFilter ? 'Thử đổi từ khóa tìm kiếm hoặc bộ lọc.' : 'Tạo lớp đầu tiên để gán học sinh, giáo viên và lịch học.';
 
@@ -575,9 +585,12 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
       <style>{`
         .class-toolbar-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
         .class-desktop-table{display:block}.class-mobile-cards{display:none}
+        .class-mobile-only{display:none}
         @media(max-width:767px){
           .class-toolbar-filters{width:100%;display:grid;grid-template-columns:minmax(0,1fr) minmax(112px,1fr);gap:8px}
           .class-toolbar-filters > *{width:100%!important;min-width:0!important}
+          .class-desktop-only{display:none!important}
+          .class-mobile-only{display:block}
           .class-desktop-table{display:none!important}.class-mobile-cards{display:block!important}
         }
       `}</style>
@@ -592,7 +605,15 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
         {toolbarPrefix}
         <div className="class-toolbar-filters">
           <SearchBar value={qCls} onChange={setQCls} placeholder="Tìm" width={126}/>
-          <Select value={fClsTeacher} onChange={setFClsTeacher} options={teacherOptions} style={{ width: 136, minWidth: 118 }}/>
+          <div className="class-desktop-only">
+            <Select value={fClsTeacher} onChange={setFClsTeacher} options={teacherOptions} style={{ width: 136, minWidth: 118 }}/>
+          </div>
+          <FilterMenu label="Lọc" activeCount={(fClsTeacher ? 1 : 0) + (classStatusFilter !== 'all' ? 1 : 0)}>
+            <div className="class-mobile-only">
+              <Select value={fClsTeacher} onChange={setFClsTeacher} options={teacherOptions} size="sm" />
+            </div>
+            <Select value={classStatusFilter} onChange={v => setClassStatusFilter(v as typeof classStatusFilter)} options={classStatusOptions} size="sm" />
+          </FilterMenu>
         </div>
       </PageToolbar>
 

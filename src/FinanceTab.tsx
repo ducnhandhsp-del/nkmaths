@@ -25,8 +25,9 @@ import {
   normalizeAttendanceStatus,
   parsePeriod,
 } from './measures';
-import { Badge, Button, Pager, Select } from './dsComponents';
+import { Badge, Button, Pager, SearchBar, Select } from './dsComponents';
 import { ActionableKpi, ActionableKpiGrid, DataTable, DateText, EmptyState, MobileCompactCard, MoneyText, MonthText, PageToolbar, StatusBadge, ToolbarTabs } from './uiSystem';
+import FilterMenu from './FilterMenu';
 import type { Payment, Expense, Student, FinanceSub, TeachingLog } from './types';
 
 interface Props {
@@ -147,7 +148,7 @@ export default function FinanceTab({
   financeSubtab,
   setFinanceSubtab,
   payments, expenses, students, uClasses, tlogs,
-  curMo, curYr, fMo, setFMo, fTch, setFTch, fFC, setFFC,
+  curMo, curYr, qF, setQF, fMo, setFMo, fTch, setFTch, fFC, setFFC, fSt, setFSt,
   pgF, setPgF, isPaid, baseTuition, schoolYear, tuitionDueDay,
   onViewInvoice, onViewFinance, onShowFAB, onEditPayment, onDeletePayment, onEditExpense, onDeleteExpense, onViewExpense,
 }: Props) {
@@ -162,7 +163,8 @@ export default function FinanceTab({
     const amount = debtAmount > 0 ? debtAmount : baseTuition;
     return `Chào phụ huynh em ${s.name || ''}, LỚP TOÁN NK thông báo học phí tháng ${fM || curMo}/${fY || curYr} của em hiện còn ${fmtVND(amount)}. Phụ huynh vui lòng kiểm tra và thanh toán giúp lớp. Em cảm ơn ạ.`;
   };
-  const [debtFocus, setDebtFocus] = useState<'all' | 'unpaid'>('all');
+  const debtStatusFilter: 'unpaid' | 'all' | 'paid' =
+    fSt === 'all' || fSt === 'paid' || fSt === 'unpaid' ? fSt : 'unpaid';
   const debtListRef = useRef<HTMLDivElement>(null);
   const ledgerListRef = useRef<HTMLDivElement>(null);
   const expenseListRef = useRef<HTMLDivElement>(null);
@@ -173,10 +175,12 @@ export default function FinanceTab({
   const [pgLedger, setPgLedger] = useState(1);
   const [lFilterMo, setLFilterMo] = useState('');
   const [lFilterCls, setLFilterCls] = useState('');
+  const [ledgerQuery, setLedgerQuery] = useState('');
   // FIX Bug 3: reset về trang 1 khi có phiếu mới (optimistic update thêm vào đầu)
-  useEffect(() => { setPgLedger(1); }, [payments.length, lFilterMo, lFilterCls]);
+  useEffect(() => { setPgLedger(1); }, [payments.length, lFilterMo, lFilterCls, ledgerQuery]);
   const filteredLedger = useMemo(() => {
     const [lFM, lFY] = (lFilterMo || '').split('/').map(Number);
+    const q = ledgerQuery.trim().toLowerCase();
     return payments.slice().reverse().filter(p => {
       if (lFilterMo) {
         const period = getPaymentTuitionPeriod(p);
@@ -185,9 +189,13 @@ export default function FinanceTab({
       if (lFilterCls) {
         if (paymentClassId(p, students) !== lFilterCls) return false;
       }
+      if (q) {
+        const haystack = `${p.docNum || ''} ${p.studentId || ''} ${p.studentName || ''}`.toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
       return true;
     });
-  }, [payments, lFilterMo, lFilterCls, students]);
+  }, [payments, lFilterMo, lFilterCls, ledgerQuery, students]);
 
   const pagedLedger = useMemo(() => {
     return filteredLedger.slice((pgLedger - 1) * LEDGER_IPP, pgLedger * LEDGER_IPP);
@@ -197,8 +205,9 @@ export default function FinanceTab({
   const [pgExpense, setPgExpense] = useState(1);
   const [eFilterMo, setEFilterMo] = useState('');
   const [eFilterSpender, setEFilterSpender] = useState('');
+  const [eFilterCategory, setEFilterCategory] = useState('');
   // FIX Bug 3: reset về trang 1 khi có phiếu chi mới
-  useEffect(() => { setPgExpense(1); }, [expenses.length, eFilterMo, eFilterSpender]);
+  useEffect(() => { setPgExpense(1); }, [expenses.length, eFilterMo, eFilterSpender, eFilterCategory]);
   const filteredExpenses = useMemo(() => {
     const [eFM, eFY] = (eFilterMo || '').split('/').map(Number);
     return expenses.slice().reverse().filter(e => {
@@ -207,9 +216,10 @@ export default function FinanceTab({
         if (!r || r.m !== eFM || r.y !== eFY) return false;
       }
       if (eFilterSpender && e.spender !== eFilterSpender) return false;
+      if (eFilterCategory && e.category !== eFilterCategory) return false;
       return true;
     });
-  }, [expenses, eFilterMo, eFilterSpender]);
+  }, [expenses, eFilterMo, eFilterSpender, eFilterCategory]);
   const pagedExpense = useMemo(() => {
     return filteredExpenses.slice((pgExpense - 1) * EXPENSE_IPP, pgExpense * EXPENSE_IPP);
   }, [filteredExpenses, pgExpense]);
@@ -243,6 +253,7 @@ export default function FinanceTab({
   useEffect(() => {
     if (!fMo) setFMo(currentMonthKey);
   }, [fMo, setFMo, currentMonthKey]);
+  useEffect(() => { setPgF(1); }, [qF, debtStatusFilter, setPgF]);
   const debtPeriodValue = fMo || currentMonthKey;
   const selectedDebtMonth = useMemo(() => {
     const [m, y] = debtPeriodValue.split('/').map(Number);
@@ -306,12 +317,19 @@ export default function FinanceTab({
 
   const debtTableRows = useMemo(() => financeStudents
     .map(buildDebtRow)
-    .filter(row => debtFocus !== 'unpaid' || row.status === 'overdue' || row.status === 'unpaid')
+    .filter(row => {
+      if (debtStatusFilter === 'unpaid' && row.status !== 'overdue' && row.status !== 'unpaid') return false;
+      if (debtStatusFilter === 'paid' && row.status !== 'paid') return false;
+      const q = qF.trim().toLowerCase();
+      if (!q) return true;
+      const s = row.student;
+      return `${s.id || ''} ${s.name || ''} ${s.parentName || ''} ${s.parentPhone || ''}`.toLowerCase().includes(q);
+    })
     .sort((a, b) => {
       const rank = (row: DebtTableRow) => row.status === 'overdue' ? 0 : row.status === 'unpaid' ? 1 : row.status === 'paid' ? 2 : row.status === 'not_billable' ? 3 : 4;
       return rank(a) - rank(b) || a.student.name.localeCompare(b.student.name, 'vi');
     }),
-  [buildDebtRow, debtFocus, financeStudents]);
+  [buildDebtRow, debtStatusFilter, financeStudents, qF]);
 
   const pagedDebtRows = useMemo(() => debtTableRows.slice((pgF - 1) * IPP, pgF * IPP), [debtTableRows, pgF]);
   const classOptions = useMemo(() => [
@@ -321,6 +339,12 @@ export default function FinanceTab({
   const expenseSpenderOptions = useMemo(() => [
     { value: '', label: 'Người chi' },
     ...[...new Set(expenses.map(e => e.spender).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, 'vi'))
+      .map(v => ({ value: v, label: v })),
+  ], [expenses]);
+  const expenseCategoryOptions = useMemo(() => [
+    { value: '', label: 'Danh mục' },
+    ...[...new Set(expenses.map(e => e.category).filter(Boolean))]
       .sort((a, b) => a.localeCompare(b, 'vi'))
       .map(v => ({ value: v, label: v })),
   ], [expenses]);
@@ -697,7 +721,7 @@ export default function FinanceTab({
       ]}
       active={finSub}
       onChange={id => {
-        if (id === 'debt') setDebtFocus('all');
+        if (id === 'debt' && !fSt) setFSt('unpaid');
         setFinanceSubtab?.(id);
       }}
     />
@@ -707,20 +731,63 @@ export default function FinanceTab({
     <>
       {finSub === 'debt' && (
         <>
-          <Select value={fFC} onChange={v => { setFFC(v); setPgF(1); }} options={classOptions} size="md" style={{ width: 104, minWidth: 96 }} />
           <MonthSelect value={debtPeriodValue} allowAll={false} onChange={v => { setFMo(v); setPgF(1); }} />
+          <div className="finance-desktop-only">
+            <Select value={fFC} onChange={v => { setFFC(v); setPgF(1); }} options={classOptions} size="md" style={{ width: 108, minWidth: 96 }} />
+          </div>
+          <div className="finance-desktop-only">
+            <Select
+              value={debtStatusFilter}
+              onChange={v => { setFSt(v); setPgF(1); }}
+              options={[
+                { value: 'unpaid', label: 'Cần thu' },
+                { value: 'all', label: 'Tất cả' },
+                { value: 'paid', label: 'Đã thu' },
+              ]}
+              size="md"
+              style={{ width: 116, minWidth: 108 }}
+            />
+          </div>
+          <FilterMenu label="Lọc" className="finance-mobile-only" activeCount={(fFC ? 1 : 0) + (debtStatusFilter !== 'unpaid' ? 1 : 0) + (qF ? 1 : 0)} panelWidth={260}>
+            <Select value={fFC} onChange={v => { setFFC(v); setPgF(1); }} options={classOptions} size="sm" />
+            <Select
+              value={debtStatusFilter}
+              onChange={v => { setFSt(v); setPgF(1); }}
+              options={[
+                { value: 'unpaid', label: 'Cần thu' },
+                { value: 'all', label: 'Tất cả' },
+                { value: 'paid', label: 'Đã thu' },
+              ]}
+              size="sm"
+            />
+            <SearchBar value={qF} onChange={v => { setQF(v); setPgF(1); }} placeholder="Tìm HS" width="100%" size="sm" />
+          </FilterMenu>
         </>
       )}
       {finSub === 'ledger' && (
         <>
           <MonthSelect value={lFilterMo} onChange={v => { setLFilterMo(v); setPgLedger(1); }} />
-          <Select value={lFilterCls} onChange={v => { setLFilterCls(v); setPgLedger(1); }} options={classOptions} size="md" style={{ width: 104, minWidth: 96 }} />
+          <div className="finance-desktop-only">
+            <Select value={lFilterCls} onChange={v => { setLFilterCls(v); setPgLedger(1); }} options={classOptions} size="md" style={{ width: 108, minWidth: 96 }} />
+          </div>
+          <FilterMenu label="Lọc" className="finance-mobile-only" activeCount={(lFilterCls ? 1 : 0) + (ledgerQuery ? 1 : 0)} panelWidth={260}>
+            <Select value={lFilterCls} onChange={v => { setLFilterCls(v); setPgLedger(1); }} options={classOptions} size="sm" />
+            <SearchBar value={ledgerQuery} onChange={v => { setLedgerQuery(v); setPgLedger(1); }} placeholder="Tìm HS / số phiếu" width="100%" size="sm" />
+          </FilterMenu>
         </>
       )}
       {finSub === 'expense' && (
         <>
           <MonthSelect value={eFilterMo} onChange={v => { setEFilterMo(v); setPgExpense(1); }} />
-          <Select value={eFilterSpender} onChange={v => { setEFilterSpender(v); setPgExpense(1); }} options={expenseSpenderOptions} size="md" style={{ width: 128, minWidth: 112 }} />
+          <div className="finance-desktop-only">
+            <Select value={eFilterSpender} onChange={v => { setEFilterSpender(v); setPgExpense(1); }} options={expenseSpenderOptions} size="md" style={{ width: 128, minWidth: 112 }} />
+          </div>
+          <FilterMenu label="Lọc" activeCount={(eFilterSpender ? 1 : 0) + (eFilterCategory ? 1 : 0)} panelWidth={260}>
+            <div className="finance-mobile-only">
+              <Select value={eFilterSpender} onChange={v => { setEFilterSpender(v); setPgExpense(1); }} options={expenseSpenderOptions} size="sm" />
+            </div>
+            <Select value={eFilterCategory} onChange={v => { setEFilterCategory(v); setPgExpense(1); }} options={expenseCategoryOptions} size="sm" />
+          </FilterMenu>
         </>
       )}
     </>
@@ -728,13 +795,13 @@ export default function FinanceTab({
 
   const focusDebtAll = () => {
     setFinanceSubtab?.('debt');
-    setDebtFocus('all');
+    setFSt('all');
     setPgF(1);
     scrollTo(debtListRef);
   };
   const focusDebtUnpaid = () => {
     setFinanceSubtab?.('debt');
-    setDebtFocus('unpaid');
+    setFSt('unpaid');
     setPgF(1);
     scrollTo(debtListRef);
   };
@@ -751,10 +818,15 @@ export default function FinanceTab({
       <style>{`
         .finance-toolbar-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
         .finance-toolbar-filters select{min-width:96px}
+        .finance-mobile-only{display:none}
+        .finance-section-tools{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:8px}
         @media(max-width:767px){
           .finance-toolbar-filters{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
           .finance-toolbar-filters > *{width:100%!important;min-width:0!important}
           .finance-toolbar-filters select{width:100%!important;min-width:0!important}
+          .finance-desktop-only{display:none!important}
+          .finance-mobile-only{display:block}
+          .finance-section-tools{display:none}
         }
       `}</style>
       <PageToolbar
@@ -820,13 +892,10 @@ export default function FinanceTab({
             .fin-debt-desktop{display:block}.fin-debt-mobile{display:none}
             @media(max-width:767px){.fin-debt-desktop{display:none!important}.fin-debt-mobile{display:block!important}}
           `}</style>
-          {debtFocus === 'unpaid' && (
-            <div style={{ padding: '8px 10px', borderRadius: 10, border: '1px solid #fecaca', background: '#fff1f2', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-              <span style={{ fontSize: 12, fontWeight: 900, color: '#be123c' }}>Đang lọc học sinh chưa thu hoặc quá hạn học phí</span>
-              <Button intent="danger" variant="outline" size="sm" onClick={() => setDebtFocus('all')}>Bỏ lọc</Button>
-            </div>
-          )}
           <section>
+          <div className="finance-section-tools">
+            <SearchBar value={qF} onChange={v => { setQF(v); setPgF(1); }} placeholder="Tìm HS" width={170} size="sm" />
+          </div>
           <div className="fin-debt-desktop">
             <DataTable
               columns={debtColumns}
@@ -911,6 +980,9 @@ export default function FinanceTab({
             @media(max-width:767px){.fin-ledger-desktop,.fin-expense-desktop{display:none!important}.fin-ledger-mobile,.fin-expense-mobile{display:grid!important}}
           `}</style>
           <section className="finance-transaction-section">
+            <div className="finance-section-tools">
+              <SearchBar value={ledgerQuery} onChange={v => { setLedgerQuery(v); setPgLedger(1); }} placeholder="Tìm HS / số phiếu" width={190} size="sm" />
+            </div>
             <div className="fin-ledger-desktop">
               <DataTable
                 columns={ledgerColumns}

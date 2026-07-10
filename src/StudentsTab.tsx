@@ -7,6 +7,7 @@ import { IPP, capitalizeName, fixVietnameseText, isStudentActive } from './helpe
 import { isStudentActiveInMonth, isStudentBillableInMonth } from './measures';
 import { Pager, Button, Select } from './dsComponents';
 import { DataTable, EmptyState, MobileCompactCard, PageToolbar, StatusBadge } from './uiSystem';
+import FilterMenu from './FilterMenu';
 import type { Student, DeleteTarget } from './types';
 
 interface Props {
@@ -113,10 +114,10 @@ export default function StudentsTab({
   embedded = false,
   toolbarPrefix,
 }: Props) {
-  const [statusFilter, setStatusFilter] = useState<'active' | 'all' | 'inactive'>(hideInactive ? 'active' : 'all');
+  const [statusFilter, setStatusFilter] = useState<'active' | 'all' | 'inactive' | 'unassigned'>(hideInactive ? 'active' : 'all');
 
   useEffect(() => {
-    if (hideInactive && statusFilter !== 'active') setStatusFilter('active');
+    if (hideInactive && (statusFilter === 'all' || statusFilter === 'inactive')) setStatusFilter('active');
   }, [hideInactive, statusFilter]);
 
   const canShowDebt = !!curMo && !!curYr && !!isPaid;
@@ -145,12 +146,26 @@ export default function StudentsTab({
       const active = isStudentActive(s);
       if (statusFilter === 'inactive' && isStudentActive(s)) return false;
       if (statusFilter === 'active' && !active) return false;
+      if (statusFilter === 'unassigned' && (!active || String(s.classId || '').trim())) return false;
       return true;
     });
   }, [filtS, statusFilter]);
 
   const paged = displayed.slice((pgS - 1) * IPP, pgS * IPP);
-  const hasActiveFilter = !!qS || !!fCls;
+  const hasActiveFilter = !!qS || !!fCls || statusFilter !== 'active';
+  const statusOptions = [
+    { value: 'active', label: 'Đang học' },
+    { value: 'all', label: 'Tất cả' },
+    { value: 'inactive', label: 'Đã nghỉ' },
+    { value: 'unassigned', label: 'Chưa có lớp' },
+  ];
+  const setStudentStatusFilter = (value: string) => {
+    const next = value as typeof statusFilter;
+    setStatusFilter(next);
+    setHideInactive(next === 'active' || next === 'unassigned');
+    if (next === 'unassigned') setFCls('');
+    setPgS(1);
+  };
   const resetFilters = () => {
     setQS('');
     setFCls('');
@@ -293,11 +308,14 @@ export default function StudentsTab({
         .student-action-icon--empty:hover{box-shadow:none;transform:none}
         .student-mobile-actions .student-action-icon{width:34px;height:34px;flex-basis:34px}
         .student-desktop-table{display:block}.student-mobile-cards{display:none}
+        .student-mobile-only{display:none}
         @media(max-width:767px){
           .student-toolbar-filters{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
           .student-toolbar-search{width:100%;min-width:0}
           .student-toolbar-filters > *{width:100%!important;min-width:0!important}
           .student-toolbar-filters select{width:100%!important;min-width:0!important}
+          .student-desktop-only{display:none!important}
+          .student-mobile-only{display:block}
           .student-toolbar-reset{grid-column:1/-1}
           .student-desktop-table{display:none!important}.student-mobile-cards{display:block!important}
         }
@@ -322,12 +340,20 @@ export default function StudentsTab({
             placeholder="Tìm"
             aria-label="Tìm học sinh"
           />
-          <Select value={fCls} onChange={v => { setFCls(v); setPgS(1); }} options={classOptions} style={{ width: 92, minWidth: 88 }} />
-          {hasActiveFilter && (
-            <button type="button" className="student-toolbar-reset" onClick={resetFilters}>
-              Xóa lọc
-            </button>
-          )}
+          <div className="student-desktop-only">
+            <Select value={fCls} onChange={v => { setFCls(v); setPgS(1); }} options={classOptions} style={{ width: 104, minWidth: 96 }} />
+          </div>
+          <FilterMenu label="Lọc" activeCount={(statusFilter !== 'active' ? 1 : 0) + (fCls ? 1 : 0)} className="student-toolbar-menu">
+            <div className="student-mobile-only">
+              <Select value={fCls} onChange={v => { setFCls(v); setPgS(1); }} options={classOptions} size="sm" />
+            </div>
+            <Select value={statusFilter} onChange={setStudentStatusFilter} options={statusOptions} size="sm" />
+            {hasActiveFilter && (
+              <button type="button" className="student-toolbar-reset" onClick={resetFilters}>
+                Xóa lọc
+              </button>
+            )}
+          </FilterMenu>
         </div>
       </PageToolbar>
 
