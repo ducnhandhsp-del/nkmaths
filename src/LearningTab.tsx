@@ -105,7 +105,7 @@ export default function LearningTab(props: Props) {
     <ToolbarTabs tabs={tabs} active={sub} onChange={props.setTrainingSubtab} />
   );
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {sub === 'students' ? (
         <StudentsTab
           key="students"

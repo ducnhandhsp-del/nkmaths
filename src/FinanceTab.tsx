@@ -26,7 +26,7 @@ import {
   parsePeriod,
 } from './measures';
 import { Badge, Button, Pager, SearchBar, Select } from './dsComponents';
-import { ActionableKpi, ActionableKpiGrid, DataTable, DateText, EmptyState, MobileCompactCard, MoneyText, MonthText, PageToolbar, StatusBadge, ToolbarTabs } from './uiSystem';
+import { ActionableKpi, ActionableKpiGrid, DataTable, DateText, EmptyState, MobileCompactCard, MoneyText, MonthText, PageToolbar, StatusBadge, ToolbarTabs, useIsMobileViewport } from './uiSystem';
 import FilterMenu from './FilterMenu';
 import type { Payment, Expense, Student, FinanceSub, TeachingLog } from './types';
 
@@ -176,11 +176,12 @@ export default function FinanceTab({
   const [lFilterMo, setLFilterMo] = useState('');
   const [lFilterCls, setLFilterCls] = useState('');
   const [ledgerQuery, setLedgerQuery] = useState('');
+  const isMobileViewport = useIsMobileViewport();
   // FIX Bug 3: reset về trang 1 khi có phiếu mới (optimistic update thêm vào đầu)
   useEffect(() => { setPgLedger(1); }, [payments.length, lFilterMo, lFilterCls, ledgerQuery]);
   const filteredLedger = useMemo(() => {
     const [lFM, lFY] = (lFilterMo || '').split('/').map(Number);
-    const q = ledgerQuery.trim().toLowerCase();
+    const q = isMobileViewport ? '' : ledgerQuery.trim().toLowerCase();
     return payments.slice().reverse().filter(p => {
       if (lFilterMo) {
         const period = getPaymentTuitionPeriod(p);
@@ -195,7 +196,7 @@ export default function FinanceTab({
       }
       return true;
     });
-  }, [payments, lFilterMo, lFilterCls, ledgerQuery, students]);
+  }, [payments, lFilterMo, lFilterCls, ledgerQuery, students, isMobileViewport]);
 
   const pagedLedger = useMemo(() => {
     return filteredLedger.slice((pgLedger - 1) * LEDGER_IPP, pgLedger * LEDGER_IPP);
@@ -318,7 +319,7 @@ export default function FinanceTab({
     .filter(row => {
       if (debtStatusFilter === 'unpaid' && row.status !== 'overdue' && row.status !== 'unpaid') return false;
       if (debtStatusFilter === 'paid' && row.status !== 'paid') return false;
-      const q = qF.trim().toLowerCase();
+      const q = isMobileViewport ? '' : qF.trim().toLowerCase();
       if (!q) return true;
       const s = row.student;
       return `${s.id || ''} ${s.name || ''} ${s.parentName || ''} ${s.parentPhone || ''}`.toLowerCase().includes(q);
@@ -327,7 +328,7 @@ export default function FinanceTab({
       const rank = (row: DebtTableRow) => row.status === 'overdue' ? 0 : row.status === 'unpaid' ? 1 : row.status === 'paid' ? 2 : row.status === 'not_billable' ? 3 : 4;
       return rank(a) - rank(b) || a.student.name.localeCompare(b.student.name, 'vi');
     }),
-  [buildDebtRow, debtStatusFilter, financeStudents, qF]);
+  [buildDebtRow, debtStatusFilter, financeStudents, qF, isMobileViewport]);
 
   const pagedDebtRows = useMemo(() => debtTableRows.slice((pgF - 1) * IPP, pgF * IPP), [debtTableRows, pgF]);
   const classOptions = useMemo(() => [
@@ -745,7 +746,7 @@ export default function FinanceTab({
           <div className="finance-desktop-only">
             <SearchBar value={qF} onChange={v => { setQF(v); setPgF(1); }} placeholder="Tìm HS" width={116} size="md" />
           </div>
-          <FilterMenu label="Lọc" className="finance-mobile-only" activeCount={(fFC ? 1 : 0) + (debtStatusFilter !== 'unpaid' ? 1 : 0) + (qF ? 1 : 0)} panelWidth={260}>
+          <FilterMenu label="Lọc" className="finance-mobile-only" activeCount={(fFC ? 1 : 0) + (debtStatusFilter !== 'unpaid' ? 1 : 0)} panelWidth={260}>
             <Select value={fFC} onChange={v => { setFFC(v); setPgF(1); }} options={classOptions} size="sm" />
             <Select
               value={debtStatusFilter}
@@ -757,7 +758,6 @@ export default function FinanceTab({
               ]}
               size="sm"
             />
-            <SearchBar value={qF} onChange={v => { setQF(v); setPgF(1); }} placeholder="Tìm HS" width="100%" size="sm" />
           </FilterMenu>
         </>
       )}
@@ -770,9 +770,8 @@ export default function FinanceTab({
           <div className="finance-desktop-only">
             <SearchBar value={ledgerQuery} onChange={v => { setLedgerQuery(v); setPgLedger(1); }} placeholder="Tìm HS / số phiếu" width={188} size="sm" />
           </div>
-          <FilterMenu label="Lọc" className="finance-mobile-only" activeCount={(lFilterCls ? 1 : 0) + (ledgerQuery ? 1 : 0)} panelWidth={260}>
+          <FilterMenu label="Lọc" className="finance-mobile-only" activeCount={lFilterCls ? 1 : 0} panelWidth={260}>
             <Select value={lFilterCls} onChange={v => { setLFilterCls(v); setPgLedger(1); }} options={classOptions} size="sm" />
-            <SearchBar value={ledgerQuery} onChange={v => { setLedgerQuery(v); setPgLedger(1); }} placeholder="Tìm HS / số phiếu" width="100%" size="sm" />
           </FilterMenu>
         </>
       )}
@@ -806,7 +805,7 @@ export default function FinanceTab({
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <style>{`
         .finance-toolbar-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
         .finance-toolbar-filters select{min-width:96px}
@@ -821,7 +820,7 @@ export default function FinanceTab({
       `}</style>
       <PageToolbar
         title={finSub === 'debt' ? 'HỌC PHÍ' : finSub === 'ledger' ? 'Phiếu thu' : 'Phiếu chi'}
-        hideActionsOnMobile={finSub !== 'expense'}
+        hideActionsOnMobile
         actions={(
           <Button intent={finSub === 'expense' ? 'danger' : 'success'} size="sm" icon={<Plus size={13} />} onClick={() => onShowFAB(finSub === 'expense' ? 'expense' : 'income')}>
             {finSub === 'expense' ? 'Thêm phiếu chi' : 'Thêm phiếu thu'}
@@ -897,7 +896,7 @@ export default function FinanceTab({
             />
           </div>
 
-          <div className="fin-debt-mobile" style={{ padding: 10 }}>
+          <div className="fin-debt-mobile" style={{ padding: 6 }}>
             {pagedDebtRows.length === 0 ? (
               <EmptyState text="Không có học sinh phù hợp" sub="Thử đổi bộ lọc công nợ." compact />
             ) : pagedDebtRows.map(row => {
@@ -980,7 +979,7 @@ export default function FinanceTab({
                 footer={<Pager page={pgLedger} total={filteredLedger.length} perPage={LEDGER_IPP} setPage={setPgLedger} showTotal />}
               />
             </div>
-            <div className="fin-ledger-mobile" style={{ gap: 8, padding: 10 }}>
+            <div className="fin-ledger-mobile" style={{ gap: 6, padding: 6 }}>
             {pagedLedger.length === 0 ? (
                 <EmptyState text="Chưa có phiếu thu phù hợp" sub="Thử đổi tháng hoặc lớp." compact />
               ) : pagedLedger.map(p => {
@@ -1033,7 +1032,7 @@ export default function FinanceTab({
               footer={<Pager page={pgExpense} total={filteredExpenses.length} perPage={EXPENSE_IPP} setPage={setPgExpense} showTotal />}
             />
           </div>
-          <div className="fin-expense-mobile" style={{ gap: 8, padding: 10 }}>
+          <div className="fin-expense-mobile" style={{ gap: 6, padding: 6 }}>
             {pagedExpense.length === 0 ? (
               <EmptyState text="Chưa có phiếu chi phù hợp" sub="Thử đổi tháng hoặc người chi." compact />
             ) : pagedExpense.map(e => (

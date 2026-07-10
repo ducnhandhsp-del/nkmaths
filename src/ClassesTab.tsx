@@ -580,12 +580,13 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
   );
 
   return (
-    <div style={{ display:'flex',flexDirection:'column',gap: embedded ? 10 : 14 }}>
+    <div style={{ display:'flex',flexDirection:'column',gap: embedded ? 8 : 12 }}>
       <style>{`
         .class-toolbar-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
         .class-desktop-table{display:block}.class-mobile-cards{display:none}
         @media(max-width:767px){
           .class-toolbar-filters{width:100%;display:grid;grid-template-columns:minmax(0,1fr) minmax(112px,1fr);gap:8px}
+          .class-toolbar-filters > div:first-child{display:none!important}
           .class-toolbar-filters > *{width:100%!important;min-width:0!important}
           .class-desktop-table{display:none!important}.class-mobile-cards{display:block!important}
         }
@@ -594,6 +595,7 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
       <PageToolbar
         title="Lớp học"
         embedded={embedded}
+        hideActionsOnMobile
         actions={!embedded && (
           <Button intent="success" size="sm" icon={<Plus size={13}/>} onClick={onAddClass}>Thêm lớp</Button>
         )}
@@ -621,7 +623,7 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
           />
         </div>
 
-        <div className="class-mobile-cards" style={{ padding: 10 }}>
+        <div className="class-mobile-cards" style={{ padding: 6 }}>
           {filtCls.length === 0 ? emptyState : filtCls.map((c, idx) => {
             const classId = getClassCode(c);
             const schedule = compactScheduleLabel(getSchedule(c));

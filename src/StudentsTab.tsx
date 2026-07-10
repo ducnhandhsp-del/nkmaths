@@ -290,7 +290,7 @@ export default function StudentsTab({
   ], [debtMonthsOf, onCollectFee]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: embedded ? 10 : 14 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: embedded ? 8 : 12 }}>
       <style>{`
         .student-toolbar-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
         .student-toolbar-search{width:136px;min-width:118px;height:34px;border:1px solid #dbe3ef;border-radius:8px;background:#fff;padding:0 10px;font-size:13px;font-weight:800;color:#0f172a;outline:none}
@@ -310,7 +310,7 @@ export default function StudentsTab({
         .student-desktop-table{display:block}.student-mobile-cards{display:none}
         @media(max-width:767px){
           .student-toolbar-filters{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-          .student-toolbar-search{width:100%;min-width:0}
+          .student-toolbar-search{display:none}
           .student-toolbar-filters > *{width:100%!important;min-width:0!important}
           .student-toolbar-filters select{width:100%!important;min-width:0!important}
           .student-toolbar-reset{grid-column:1/-1}
@@ -363,7 +363,7 @@ export default function StudentsTab({
           />
         </div>
 
-        <div className="student-mobile-cards" style={{ padding: 10 }}>
+        <div className="student-mobile-cards" style={{ padding: 6 }}>
           {paged.length === 0 ? (
             <div style={{ padding: '36px 16px', textAlign: 'center' }}>{emptyState}</div>
           ) : paged.map((s) => {

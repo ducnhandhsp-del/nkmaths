@@ -324,9 +324,9 @@ Tim HS
 
 UI de khong vo layout:
 
-- Toolbar desktop chi nen hien class + month + status.
-- Search `Tim HS` dat o header bang cong no hoac slot dau tien cua filter row neu du chieu ngang.
-- Mobile giu 2 cot, khong can dua them neu dang on.
+- Toolbar desktop hien month + class + status + search neu du chieu ngang.
+- Search `Tim HS` la desktop-only.
+- Mobile giu 2 cot va an search de khong vo layout; search khong duoc loc ngam tren mobile.
 
 Nghiep vu:
 
@@ -350,13 +350,13 @@ Van de:
 
 De xuat dua lai:
 
-1. Search section-level trong bang phieu thu:
+1. Search desktop-only tren toolbar:
 
 ```text
 Tim HS / so phieu
 ```
 
-2. Giu month + class tren toolbar.
+2. Giu month + class tren toolbar; mobile an search.
 
 Khong nen them:
 

@@ -252,7 +252,7 @@ export default function ReportsTab({
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <style>{`
         .report-dashboard-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
         .report-section{background:white;border:1px solid #e2e8f0;border-radius:16px;box-shadow:0 1px 3px rgba(15,23,42,0.05);overflow:hidden}

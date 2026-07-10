@@ -20,7 +20,6 @@ import {
 
 import { parseDMY } from './helpers';
 import { getMonthlyTuitionState, getPaymentTuitionPeriod, isStudentActiveInMonth } from './measures';
-import { MobileActionFab } from './AppComponents';
 import { Button, IconButton, SearchBar, Select } from './dsComponents';
 import { DataTable, DetailMetric, EmptyState, MobileCompactCard, MoneyText, PageToolbar, StatusBadge } from './uiSystem';
 import type { ClassRecord, DeleteTarget, Payment, Student, Teacher, TeachingLog } from './types';
@@ -561,12 +560,13 @@ export default function TeachersTab({
   ], [curMo]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: embedded ? 10 : 16 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: embedded ? 8 : 12 }}>
       <style>{`
         .teacher-toolbar-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
         .teacher-desktop-table{display:block}.teacher-mobile-cards{display:none}
         @media(max-width:767px){
-          .teacher-toolbar-filters{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+          .teacher-toolbar-filters{width:100%;display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+          .teacher-toolbar-filters > div:first-child{display:none!important}
           .teacher-toolbar-filters > *{width:100%!important;min-width:0!important}
           .teacher-desktop-table{display:none!important}.teacher-mobile-cards{display:block!important}
         }
@@ -575,6 +575,7 @@ export default function TeachersTab({
       <PageToolbar
         title="Giáo viên"
         embedded={embedded}
+        hideActionsOnMobile
         actions={<Button intent="success" size="sm" icon={<Plus size={14} />} onClick={openAdd}>Thêm giáo viên</Button>}
       >
         {toolbarPrefix}
@@ -594,13 +595,6 @@ export default function TeachersTab({
           />
         </div>
       </PageToolbar>
-      {!embedded && (
-        <MobileActionFab
-          actions={[{ key: 'teacher', label: 'Thêm giáo viên', icon: <Plus size={15} />, tone: 'success', onClick: openAdd }]}
-          variant="inline"
-        />
-      )}
-
       <div>
         <div className="teacher-desktop-table">
           <DataTable
@@ -616,7 +610,7 @@ export default function TeachersTab({
           />
         </div>
 
-        <div className="teacher-mobile-cards" style={{ padding: 10 }}>
+        <div className="teacher-mobile-cards" style={{ padding: 6 }}>
           {visibleRows.length === 0 ? (
             <div style={{ padding: '28px 12px' }}>
               <EmptyState text={emptyText} sub={emptySub} compact />

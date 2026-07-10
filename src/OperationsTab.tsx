@@ -1046,7 +1046,7 @@ export default function OperationsTab({
   );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <style>{`
         .ops-toolbar-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
         .ops-mobile-only{display:none}
@@ -1135,7 +1135,7 @@ export default function OperationsTab({
               footer={<Pager page={schedulePage} total={displayScheduleRows.length} perPage={IPP} setPage={setSchedulePage} showTotal />}
             />
           </div>
-          <div className="ops-schedule-mobile" style={{ gap: 8, padding: 10 }}>
+          <div className="ops-schedule-mobile" style={{ gap: 6, padding: 6 }}>
             {displayScheduleRows.length === 0 ? (
               <EmptyState text="Không có lịch dạy trong tháng này" sub="Thử đổi tháng/năm hoặc lớp." compact />
             ) : pagedScheduleRows.map(row => {
@@ -1210,7 +1210,7 @@ export default function OperationsTab({
               footer={<Pager page={pgD} total={filteredLessons.length} perPage={IPP} setPage={setPgD} showTotal />}
             />
           </div>
-          <div className="ops-lessons-mobile" style={{ gap: 8, padding: 10 }}>
+          <div className="ops-lessons-mobile" style={{ gap: 6, padding: 6 }}>
             {pagedLessons.length === 0 ? (
               <EmptyState text="Chưa có buổi học phù hợp" sub="Thử đổi tháng hoặc lớp." compact />
             ) : pagedLessons.map(log => {
@@ -1265,7 +1265,7 @@ export default function OperationsTab({
               density="compact"
             />
           </div>
-          <div className="ops-attendance-mobile" style={{ gap: 8, padding: 10 }}>
+          <div className="ops-attendance-mobile" style={{ gap: 6, padding: 6 }}>
             {filteredAttendance.length === 0 ? (
               <EmptyState text="Chưa có dữ liệu chuyên cần phù hợp" sub="Thử đổi bộ lọc chuyên cần." compact />
             ) : filteredAttendance.map(row => {

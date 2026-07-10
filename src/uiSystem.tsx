@@ -229,7 +229,7 @@ export const notify = {
   zaloCopied: () => toast.success('Đã copy tin nhắn Zalo'),
 };
 
-function useIsMobileViewport() {
+export function useIsMobileViewport() {
   const [isMobile, setIsMobile] = useState(() => {
     if (typeof window === 'undefined') return false;
     return window.matchMedia('(max-width: 767px)').matches;
@@ -269,6 +269,8 @@ export function PageToolbar({
   const isMobileViewport = useIsMobileViewport();
   const shouldRenderActions = actions && (!hideActionsOnMobile || !isMobileViewport);
 
+  const mobile = isMobileViewport;
+
   return (
     <div
       className="ltn-page-toolbar"
@@ -277,8 +279,8 @@ export function PageToolbar({
         display: 'flex',
         alignItems: 'center',
         flexWrap: 'wrap',
-        gap: 10,
-        padding: '12px 14px',
+        gap: mobile ? 8 : 10,
+        padding: mobile ? '10px 10px' : '12px 14px',
         ...style,
       }}
     >
@@ -286,14 +288,14 @@ export function PageToolbar({
         <>
           <div style={{ flexShrink: 0 }}>
             {typeof title === 'string'
-              ? <h2 className="ltn-page-toolbar-title" style={{ fontSize: 22, fontWeight: 800, color: colors.neutral[900], textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>{title}</h2>
+              ? <h2 className="ltn-page-toolbar-title" style={{ fontSize: mobile ? 20 : 22, fontWeight: 800, color: colors.neutral[900], textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>{title}</h2>
               : title}
           </div>
           <span className="ltn-page-toolbar-divider" style={{ width: 1, height: 22, background: colors.neutral[200], flexShrink: 0 }} />
         </>
       )}
       {children && (
-        <div className="ltn-page-toolbar-controls" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, minWidth: 0, ...controlsStyle }}>
+        <div className="ltn-page-toolbar-controls" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: mobile ? 8 : 10, minWidth: 0, ...controlsStyle }}>
           {children}
         </div>
       )}
@@ -449,8 +451,9 @@ export function ContextBar({
 }
 
 export function ActionableKpiGrid({ children, cols }: { children: React.ReactNode; cols?: number }) {
+  const mobile = useIsMobileViewport();
   return (
-    <div className="ltn-actionable-kpi-grid" style={{ display: 'grid', gridTemplateColumns: cols ? `repeat(${cols},1fr)` : 'repeat(auto-fit,minmax(190px,1fr))', gap: 12 }}>
+    <div className="ltn-actionable-kpi-grid" style={{ display: 'grid', gridTemplateColumns: cols ? `repeat(${cols},1fr)` : 'repeat(auto-fit,minmax(190px,1fr))', gap: mobile ? 8 : 12 }}>
       {children}
     </div>
   );
@@ -476,6 +479,7 @@ export function ActionableKpi({
   delta?: number | null;
 }) {
   const [hov, setHov] = useState(false);
+  const mobile = useIsMobileViewport();
   const t = TONE[tone];
   const clickable = !!onClick;
   return (
@@ -489,10 +493,10 @@ export function ActionableKpi({
       style={{
         ...CARD,
         width: '100%',
-        padding: '14px 16px',
+        padding: mobile ? '10px 12px' : '14px 16px',
         display: 'flex',
         alignItems: 'center',
-        gap: 12,
+        gap: mobile ? 9 : 12,
         textAlign: 'left',
         border: `1.5px solid ${hov && clickable ? `${t.solid}55` : colors.neutral[200]}`,
         cursor: clickable ? 'pointer' : 'default',
@@ -502,11 +506,11 @@ export function ActionableKpi({
         opacity: 1,
       }}
     >
-      <span className="ltn-actionable-kpi-icon" style={{ width: 42, height: 42, borderRadius: radius.md, background: t.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-        {iconNode(icon, 19, t.text)}
+      <span className="ltn-actionable-kpi-icon" style={{ width: mobile ? 36 : 42, height: mobile ? 36 : 42, borderRadius: radius.md, background: t.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        {iconNode(icon, mobile ? 17 : 19, t.text)}
       </span>
       <span style={{ flex: 1, minWidth: 0 }}>
-        <span className="ltn-actionable-kpi-value" style={{ display: 'block', fontSize: 22, fontWeight: 800, color: colors.neutral[900], lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</span>
+        <span className="ltn-actionable-kpi-value" style={{ display: 'block', fontSize: mobile ? 20 : 22, fontWeight: 800, color: colors.neutral[900], lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</span>
         <span className="ltn-actionable-kpi-label" style={{ display: 'block', fontSize: 12, fontWeight: 700, color: colors.neutral[500], marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
         {sub && <span className="ltn-actionable-kpi-sub" style={{ display: 'block', fontSize: 11, color: colors.neutral[400], marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</span>}
       </span>
@@ -1200,6 +1204,7 @@ export function MobileCompactCard({
   style?: React.CSSProperties;
 }) {
   const t = TONE[tone];
+  const mobile = useIsMobileViewport();
   return (
     <div
       role={onClick ? 'button' : undefined}
@@ -1214,15 +1219,15 @@ export function MobileCompactCard({
       style={{
         ...CARD,
         width: '100%',
-        padding: '12px 12px',
-        borderRadius: 14,
+        padding: mobile ? '10px 10px' : '12px 12px',
+        borderRadius: mobile ? 12 : 14,
         borderColor: onClick ? t.border : colors.neutral[200],
         boxShadow: '0 1px 8px rgba(15,23,42,.045)',
         cursor: onClick ? 'pointer' : 'default',
         opacity: muted ? 0.64 : 1,
         display: 'grid',
         gridTemplateColumns: 'minmax(0,1fr) auto',
-        gap: 10,
+        gap: mobile ? 8 : 10,
         alignItems: 'start',
         fontFamily: typography.fontFamily,
         ...style,
