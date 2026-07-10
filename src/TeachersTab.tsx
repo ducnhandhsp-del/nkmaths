@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 
 import { parseDMY } from './helpers';
-import { getPaymentTuitionPeriod, getTuitionCycleState, isStudentActive } from './measures';
+import { getMonthlyTuitionState, getPaymentTuitionPeriod, isStudentActiveInMonth } from './measures';
 import { MobileActionFab } from './AppComponents';
 import { Button, IconButton } from './dsComponents';
 import { DataTable, DetailMetric, EmptyState, MobileCompactCard, MoneyText, PageToolbar, StatusBadge } from './uiSystem';
@@ -362,14 +362,14 @@ export default function TeachersTab({
       });
       const classes = [...classMap.values()];
       const classIds = new Set(classes.map(getClassId).filter(Boolean));
+      const tuitionPeriod = { m: curMo, y: curYr };
       const activeStudents = students.filter(s =>
-        isStudentActive(s) && (teacherMatches(s.teacher, name) || classIds.has(s.classId))
+        isStudentActiveInMonth(s, tuitionPeriod) && (teacherMatches(s.teacher, name) || classIds.has(s.classId))
       );
-      const tuitionStates = activeStudents.map(student => getTuitionCycleState({
+      const tuitionStates = activeStudents.map(student => getMonthlyTuitionState({
         student,
-        classes,
+        period: tuitionPeriod,
         payments,
-        tlogs,
       }));
       const billableStudents = tuitionStates.filter(state => state.billable).map(state => state.student);
       const teacherPayments = payments.filter(p => {

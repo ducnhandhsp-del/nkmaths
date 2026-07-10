@@ -5,7 +5,7 @@ import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Clock, Plus, Trash2, X, Users, MapPin, User } from 'lucide-react';
 import { fixVietnameseText, isStudentActive, normalizeCaDayLabel, normalizeScheduleCaText, resolveTeacher } from './helpers';
-import { getPaymentTuitionPeriod, getTuitionCycleState } from './measures';
+import { getMonthlyTuitionState, getPaymentTuitionPeriod, isStudentActiveInMonth } from './measures';
 import { SearchBar, Select, Button } from './dsComponents';
 import { DataTable, DetailMetric, EmptyState, MobileCompactCard, MoneyText, PageToolbar, StatusBadge } from './uiSystem';
 import type { Student, ClassRecord, Payment, DeleteTarget, TeachingLog } from './types';
@@ -156,24 +156,23 @@ function ClassStudentListOverlay({ title, students, tone, onClose }: {
   return typeof document === 'undefined' ? content : createPortal(content, document.body);
 }
 
-function ClassDetailModal({ cls, curMo, curYr, students, payments = [], tlogs = [], onClose, onEdit, onDelete }: {
+function ClassDetailModal({ cls, curMo, curYr, students, payments = [], onClose, onEdit, onDelete }: {
   cls: ClassRecord & { studentCount?: number; paidCount?: number; pct?: number };
   curMo: number; curYr: number;
   students: Student[];
   payments?: Payment[];
-  tlogs?: TeachingLog[];
   onClose: () => void; onEdit: () => void; onDelete?: () => void;
 }) {
   // Chỉ tính HS đang học — bỏ qua HS đã nghỉ
+  const tuitionPeriod = { m: curMo, y: curYr };
   const clsStudents = students.filter(s =>
     s.classId === getClassCode(cls) &&
-    isStudentActive(s)
+    isStudentActiveInMonth(s, tuitionPeriod)
   );
-  const tuitionStates = clsStudents.map(student => getTuitionCycleState({
+  const tuitionStates = clsStudents.map(student => getMonthlyTuitionState({
     student,
-    classes: [cls],
+    period: tuitionPeriod,
     payments,
-    tlogs,
   }));
   const billableStudents = tuitionStates.filter(state => state.billable).map(state => state.student);
   const paid   = tuitionStates.filter(state => state.status === 'paid').map(state => state.student);
@@ -383,7 +382,7 @@ function ClassDetailModal({ cls, curMo, curYr, students, payments = [], tlogs = 
   );
 }
 
-export default function ClassesTab({ uClasses,students,payments=[],tlogs=[],curMo,curYr,qCls,setQCls,fClsTeacher,setFClsTeacher,onEditClass,onDeleteClass,onAddClass,onAddDiary,embedded=false,toolbarPrefix }: Props) {
+export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,qCls,setQCls,fClsTeacher,setFClsTeacher,onEditClass,onDeleteClass,onAddClass,onAddDiary,embedded=false,toolbarPrefix }: Props) {
   const [detailCls, setDetailCls] = useState<any>(null);
 
   // FIX C4: memoize getSchedule helper (stable reference)
@@ -403,15 +402,15 @@ export default function ClassesTab({ uClasses,students,payments=[],tlogs=[],curM
 
   // FIX C4: memoize clsStats — chỉ tính HS đang học (bỏ HS nghỉ)
   const clsStats = React.useMemo(() => uClasses.map(c => {
+    const tuitionPeriod = { m: curMo, y: curYr };
     const cls = students.filter(s =>
       s.classId === getClassCode(c) &&
-      isStudentActive(s)
+      isStudentActiveInMonth(s, tuitionPeriod)
     );
-    const tuitionStates = cls.map(student => getTuitionCycleState({
+    const tuitionStates = cls.map(student => getMonthlyTuitionState({
       student,
-      classes: [c],
+      period: tuitionPeriod,
       payments,
-      tlogs,
     }));
     const billable = tuitionStates.filter(state => state.billable);
     const paidCount = tuitionStates.filter(state => state.status === 'paid').length;
@@ -425,7 +424,7 @@ export default function ClassesTab({ uClasses,students,payments=[],tlogs=[],curM
       .reduce((sum, p) => sum + (p.amount || 0), 0);
     return { ...c, studentCount: cls.length, billableCount: billable.length, paidCount, pct, paidAmount };
   }).sort((a, b) => getClassCode(a).localeCompare(getClassCode(b), 'vi')),
-  [uClasses, students, payments, tlogs, curMo, curYr]);
+  [uClasses, students, payments, curMo, curYr]);
 
   // FIX C4: memoize teacher list (uses resolveTeacher per class)
   const teachers = React.useMemo(() =>
@@ -657,7 +656,6 @@ export default function ClassesTab({ uClasses,students,payments=[],tlogs=[],curM
         curYr={curYr}
         students={students}
         payments={payments}
-        tlogs={tlogs}
         onClose={()=>setDetailCls(null)}
         onEdit={()=>{onEditClass(detailCls);setDetailCls(null);}}
         onDelete={onDeleteClass ? () => {

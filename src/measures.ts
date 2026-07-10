@@ -79,8 +79,10 @@ export const isStudentActiveInMonth = (student: Pick<Student, 'status' | 'startD
   const startTs = parseDMY(student.startDate || '');
   const endTs = parseDMY(student.endDate || '');
   const endRaw = String(student.endDate || '').trim();
+  const inactiveStatus = student.status === 'inactive';
 
   if (startTs && startTs >= nextMonthStart) return false;
+  if (inactiveStatus && (!endRaw || endRaw === '---' || !endTs)) return false;
   if (endTs && endRaw && endRaw !== '---' && endTs < monthStart) return false;
   return isStudentActive(student as Pick<Student, 'status' | 'endDate'>) || (!!startTs && (!endTs || endTs >= monthStart));
 };
@@ -99,7 +101,7 @@ export const isStudentBillableInMonth = (student: Pick<Student, 'startDate' | 'e
   if (endTs && endRaw && endRaw !== '---') {
     const d = new Date(endTs);
     const leaveMonth = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
-    if (monthStart >= leaveMonth) return false;
+    if (monthStart > leaveMonth) return false;
   }
 
   return true;
@@ -138,6 +140,12 @@ export const getPaymentTuitionPeriod = (payment: Payment, fallbackYear?: number)
   const period = parsePeriod(payment.date || '');
   if (period) return period;
   return m >= 1 && m <= 12 && fallbackYear ? { m, y: fallbackYear } : null;
+};
+
+export const hasExplicitPaymentTuitionPeriod = (payment: Payment): boolean => {
+  const m = Number((payment as any).thangHP);
+  const y = Number((payment as any).namHP);
+  return m >= 1 && m <= 12 && y >= 2000;
 };
 
 export const getPaymentReceiptPeriod = (payment: Payment): Period | null => parsePeriod(payment.date || '');
@@ -429,7 +437,7 @@ export const getMonthlyTuitionState = ({
   baseTuition?: number;
   pastDue?: boolean;
 }): MonthlyTuitionState => {
-  const inactive = !isStudentActive(student);
+  const inactive = !isStudentActiveInMonth(student, period);
   const billable = !inactive && isStudentBillableInMonth(student, period);
   const periodPayments = payments.filter(payment => {
     if (payment.studentId !== student.id) return false;
@@ -602,8 +610,8 @@ export const getTuitionPeriodState = ({
   baseTuition?: number;
   pastDue?: boolean;
 }): TuitionPeriodState => {
-  const inactive = !isStudentActive(student);
-  const billable = isStudentBillableInMonth(student, period);
+  const inactive = !isStudentActiveInMonth(student, period);
+  const billable = !inactive && isStudentBillableInMonth(student, period);
   const payment = payments.find(p => {
     if (p.studentId !== student.id) return false;
     const paymentPeriod = getPaymentTuitionPeriod(p);
@@ -677,7 +685,7 @@ export const buildDataHealthReport = ({
   }).length;
   const classWithoutSchedule = classes.filter(c => classIdOf(c) && classScheduleSlots(c).length === 0).length;
   const paymentWithoutStudent = payments.filter(p => !studentIds.has(String(p.studentId || '').trim())).length;
-  const paymentWithoutPeriod = payments.filter(p => !getPaymentTuitionPeriod(p)).length;
+  const paymentWithoutPeriod = payments.filter(p => !hasExplicitPaymentTuitionPeriod(p)).length;
   const lessonWithoutAttendance = tlogs.filter(log => !isLessonOffLog(log) && (!Array.isArray(log.attendanceList) || log.attendanceList.length === 0)).length;
 
   const issues: DataHealthIssue[] = [

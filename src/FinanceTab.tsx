@@ -14,13 +14,14 @@
  */
 import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { Plus, Check, TrendingDown, TrendingUp, Wallet, AlertTriangle, MessageCircle, ReceiptText } from 'lucide-react';
-import { fmtVND, capitalizeName, isStudentActive, normalizePaymentMethod, resolveTeacher, buildSchoolYearMonths } from './helpers';
+import { fmtVND, capitalizeName, normalizePaymentMethod, resolveTeacher, buildSchoolYearMonths } from './helpers';
 import {
   attendanceStudentId,
   classIdOf,
   getMonthlyTuitionState,
   getPaymentTuitionPeriod,
   isStudentBillableInMonth,
+  isStudentActiveInMonth,
   normalizeAttendanceStatus,
   parsePeriod,
 } from './measures';
@@ -161,8 +162,6 @@ export default function FinanceTab({
     const amount = debtAmount > 0 ? debtAmount : baseTuition;
     return `Chào phụ huynh em ${s.name || ''}, LỚP TOÁN NK thông báo học phí tháng ${fM || curMo}/${fY || curYr} của em hiện còn ${fmtVND(amount)}. Phụ huynh vui lòng kiểm tra và thanh toán giúp lớp. Em cảm ơn ạ.`;
   };
-  // FIX: dùng isStudentActive từ helpers, nhất quán toàn app
-  const activeStudents = useMemo(() => students.filter(isStudentActive), [students]);
   const [debtFocus, setDebtFocus] = useState<'all' | 'unpaid'>('all');
   const debtListRef = useRef<HTMLDivElement>(null);
   const ledgerListRef = useRef<HTMLDivElement>(null);
@@ -297,12 +296,13 @@ export default function FinanceTab({
     };
   }, [baseTuition, curMo, curYr, isPaid, isSelectedPeriodPastDue, payments, schoolYearMonths, selectedDebtMonth]);
   const financeStudents = useMemo(() => {
-    return activeStudents.filter(s => {
+    return students.filter(s => {
       if (fFC && s.classId !== fFC) return false;
+      if (!isStudentActiveInMonth(s, selectedDebtMonth)) return false;
       if (!isStudentBillableInMonth(s, selectedDebtMonth)) return false;
       return true;
     });
-  }, [activeStudents, fFC, selectedDebtMonth]);
+  }, [fFC, selectedDebtMonth, students]);
 
   const debtTableRows = useMemo(() => financeStudents
     .map(buildDebtRow)
@@ -377,7 +377,7 @@ export default function FinanceTab({
   const tempTuitionRows = useMemo<TempTuitionRow[]>(() => {
     const map = new Map<string, TempTuitionRow>();
     const seen = new Set<string>();
-    activeStudents.forEach(student => {
+    financeStudents.forEach(student => {
       if (fFC && student.classId !== fFC) return;
       map.set(student.id, {
         id: student.id,
@@ -410,7 +410,7 @@ export default function FinanceTab({
     return [...map.values()]
       .filter(row => row.totalSessions > 0)
       .sort((a, b) => b.totalSessions - a.totalSessions || a.student.name.localeCompare(b.student.name, 'vi'));
-  }, [activeStudents, fFC, selectedDebtMonth, tlogs]);
+  }, [financeStudents, fFC, selectedDebtMonth, tlogs]);
   const attendanceAuditByStudent = useMemo(() => {
     return new Map(tempTuitionRows.map(row => [row.id, row]));
   }, [tempTuitionRows]);
@@ -457,7 +457,7 @@ export default function FinanceTab({
         return (
           <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 2, color: '#334155', fontWeight: 950, fontSize: 12, lineHeight: 1.1 }}>
             {audit.totalSessions}
-            {audit.extraSessions > 0 && <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#4f46e5' }}>+{audit.extraSessions} ngoài lớp</span>}
+            {audit.extraSessions > 0 && <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#4f46e5' }}>+{audit.extraSessions} thêm vào buổi</span>}
           </span>
         );
       },
@@ -854,7 +854,7 @@ export default function FinanceTab({
               const amount = getDebtPeriodAmount(row);
               const actionAmount = amount || row.debtAmount || baseTuition;
               const audit = attendanceAuditByStudent.get(row.id);
-              const sessionLabel = audit?.totalSessions ? `${audit.totalSessions} buổi${audit.extraSessions ? ` · ${audit.extraSessions} ngoài lớp` : ''}` : '0 buổi';
+              const sessionLabel = audit?.totalSessions ? `${audit.totalSessions} buổi${audit.extraSessions ? ` · ${audit.extraSessions} thêm vào buổi` : ''}` : '0 buổi';
               return (
                 <MobileCompactCard
                   key={`${s.id}-debt-card`}

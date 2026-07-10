@@ -1129,7 +1129,7 @@ function saveDiary(d) {
 
     var lesson = normalizeLessonInput(d, false);
     if (!lesson.MaBuoi) {
-      lesson.MaBuoi = lesson.LoaiBuoiHoc === 'regular'
+      lesson.MaBuoi = lesson.LoaiBuoiHoc === 'regular' && lesson.MaLop
         ? makeLessonId(lesson.Ngay, lesson.MaLop, lesson.CaDay)
         : makeAdhocLessonId(lesson.Ngay, lesson.MaLop, lesson.CaDay, lesson.LoaiBuoiHoc);
     }
@@ -1162,11 +1162,33 @@ function updateDiary(d) {
       oldMaBuoi = makeLessonId(oldDate, oldClass, oldCa);
     }
 
-    var lesson = normalizeLessonInput(d, true);
-    if (!lesson.MaBuoi) lesson.MaBuoi = oldMaBuoi || makeLessonId(lesson.Ngay, lesson.MaLop, lesson.CaDay);
-
     var row = findRowByValue(SHEETS.BUOIHOC, 'MaBuoi', oldMaBuoi);
     var existing = row > 0 ? getObjectAtRow(SHEETS.BUOIHOC, row) : null;
+
+    var lesson = normalizeLessonInput(d, true);
+    if (!lesson.MaBuoi) {
+      var oldDateForCompare = existing ? formatDate(existing.Ngay) : formatDate(d.originalDate || d.date);
+      var oldClassForCompare = existing ? str(existing.MaLop || existing.classId) : str(d.originalClassId || d.classId);
+      var oldCaForCompare = existing ? normalizeCaDay(existing.CaDay || existing.caDay) : normalizeCaDay(d.originalCaDay || d.caDay);
+      var oldTypeForCompare = existing ? normalizeLessonType(existing.LoaiBuoiHoc || existing.lessonType) : normalizeLessonType(d.originalLessonType || d.originalLoaiBuoiHoc || d.lessonType);
+      var identityChanged =
+        oldDateForCompare !== lesson.Ngay ||
+        oldClassForCompare !== lesson.MaLop ||
+        oldCaForCompare !== lesson.CaDay ||
+        oldTypeForCompare !== lesson.LoaiBuoiHoc;
+
+      lesson.MaBuoi = identityChanged
+        ? (lesson.LoaiBuoiHoc === 'regular' && lesson.MaLop
+          ? makeLessonId(lesson.Ngay, lesson.MaLop, lesson.CaDay)
+          : makeAdhocLessonId(lesson.Ngay, lesson.MaLop, lesson.CaDay, lesson.LoaiBuoiHoc))
+        : (oldMaBuoi || makeLessonId(lesson.Ngay, lesson.MaLop, lesson.CaDay));
+    }
+
+    var targetRow = findRowByValue(SHEETS.BUOIHOC, 'MaBuoi', lesson.MaBuoi);
+    if (targetRow > 0 && targetRow !== row) {
+      return { ok: false, error: 'Đã có buổi học cùng ngày/lớp/ca. Vui lòng mở buổi đó để cập nhật.' };
+    }
+
     lesson.CreatedAt = existing && existing.CreatedAt ? existing.CreatedAt : (lesson.CreatedAt || nowStr());
     lesson.UpdatedAt = nowStr();
 
@@ -1211,9 +1233,7 @@ function deleteDiary(d) {
 
 function normalizeLessonType(raw) {
   var s = str(raw).toLowerCase();
-  if (s === 'makeup' || s === 'hoc_bu' || s === 'hoc bu') return 'makeup';
-  if (s === 'review' || s === 'on_tap' || s === 'on tap') return 'review';
-  if (s === 'extra' || s === 'them_buoi' || s === 'them buoi') return 'extra';
+  if (s === 'extra' || s === 'review' || s === 'on_tap' || s === 'on tap' || s === 'them_buoi' || s === 'them buoi') return 'extra';
   return 'regular';
 }
 

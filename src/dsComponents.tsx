@@ -276,7 +276,7 @@ export function AttendancePicker({students,onChange,readOnly=false}:AttendancePi
                   <span style={{fontSize:11,fontWeight:700,color:colors.neutral[300],width:18,flexShrink:0,textAlign:'center'}}>{idx+1}</span>
                   <div style={{flex:1,minWidth:0}}>
                     <p style={{fontSize:13,fontWeight:700,color:colors.neutral[900],margin:0,lineHeight:1.35,wordBreak:'break-word'}}>{s.name}</p>
-                    <p style={{fontSize:11,color:colors.neutral[400],margin:'1px 0 0'}}>{s.id}{isExtra ? ' · Học bù / ngoài lớp' : ''}</p>
+                    <p style={{fontSize:11,color:colors.neutral[400],margin:'1px 0 0'}}>{s.id}{isExtra ? ' · Thêm vào buổi' : ''}</p>
                   </div>
                   <span style={{padding:'3px 9px',borderRadius:999,background:activeStatus.bg,border:`1px solid ${activeStatus.border}`,fontSize:11,fontWeight:700,color:activeStatus.color,flexShrink:0,whiteSpace:'nowrap'}}>
                     {activeStatus.label}
@@ -290,7 +290,7 @@ export function AttendancePicker({students,onChange,readOnly=false}:AttendancePi
                       <p style={{fontSize:13,fontWeight:800,color:colors.neutral[900],margin:0,lineHeight:1.3,wordBreak:'break-word'}}>{s.name}</p>
                       <p style={{fontSize:11,color:colors.neutral[400],margin:'1px 0 0',display:'flex',alignItems:'center',gap:5,flexWrap:'wrap'}}>
                         <span>{s.id}</span>
-                        {isExtra && <span style={{padding:'1px 6px',borderRadius:999,background:'#eef2ff',border:'1px solid #c7d2fe',color:'#4f46e5',fontSize:10,fontWeight:900}}>Học bù / ngoài lớp</span>}
+                        {isExtra && <span style={{padding:'1px 6px',borderRadius:999,background:'#eef2ff',border:'1px solid #c7d2fe',color:'#4f46e5',fontSize:10,fontWeight:900}}>Thêm vào buổi</span>}
                       </p>
                     </div>
                     {isExtra && s.onRemove && (

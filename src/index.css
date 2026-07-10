@@ -647,6 +647,40 @@ body.font-fallback select {
   gap: 12px;
 }
 .ltn-quick-grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ltn-quick-grid.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ltn-diary-info-card {
+  gap: 12px;
+}
+.ltn-diary-id-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  margin-top: 8px;
+  min-height: 26px;
+  padding: 4px 8px;
+  border: 1px solid #dbe4f0;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+.ltn-diary-id-chip strong {
+  min-width: 0;
+  color: #0f172a;
+  font-weight: 950;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ltn-diary-id-chip.compact {
+  margin-top: 0;
+  min-height: 24px;
+  padding: 3px 7px;
+  font-size: 10.5px;
+}
 .ltn-grid-12 {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
@@ -929,6 +963,7 @@ body.font-fallback select {
   }
   .ltn-quick-grid,
   .ltn-quick-grid.three,
+  .ltn-quick-grid.four,
   .ltn-grid-12,
   .ltn-info-grid,
   .ltn-inline-pair { grid-template-columns: 1fr; }

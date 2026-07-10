@@ -4,7 +4,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ReceiptText, UserPlus } from 'lucide-react';
 import { IPP, capitalizeName, fixVietnameseText, isStudentActive } from './helpers';
-import { isStudentBillableInMonth } from './measures';
+import { isStudentActiveInMonth, isStudentBillableInMonth } from './measures';
 import { Pager, Button, Select } from './dsComponents';
 import { DataTable, EmptyState, MobileCompactCard, PageToolbar, StatusBadge } from './uiSystem';
 import type { Student, DeleteTarget } from './types';
@@ -132,8 +132,9 @@ export default function StudentsTab({
   }, [uClasses]);
 
   const debtMonthsOf = useCallback((s: Student): number | null => {
-    if (!canShowDebt || !isStudentActive(s)) return null;
+    if (!canShowDebt) return null;
     return schoolMonthsUntil(curMo!, curYr!)
+      .filter(fm => isStudentActiveInMonth(s, fm))
       .filter(fm => isStudentBillableInMonth(s, fm))
       .filter(fm => !isPaid!(s.id, fm.m, fm.y))
       .length;

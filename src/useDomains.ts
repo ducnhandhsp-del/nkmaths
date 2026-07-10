@@ -19,7 +19,7 @@ import {
   fetchWithTimeout, formatDate, sanitizeObject, sanitizeAttendance,
   parseCaDayToHours, parseDMY, isStudentActive, buildSchoolYearMonths, isLessonOffLog,
 } from './helpers';
-import { buildPaidMap, isPaidFn, getActiveStudents, calcPaidPct, countPaidStudents, isStudentBillableInMonth } from './measures';
+import { buildPaidMap, isPaidFn, getActiveStudents, calcPaidPct, countPaidStudents, isStudentActiveInMonth, isStudentBillableInMonth } from './measures';
 import { RULES } from './rules';
 
 interface DomainConfig {
@@ -739,7 +739,7 @@ export function useDomains(cfg: DomainConfig) {
   const [fM, fY] = (fMo || '01/2026').split('/').map(Number);
 
   const isStudentBillableForPeriod = useCallback((s: Student, fm: { m: number; y: number }): boolean => (
-    isStudentBillableInMonth(s, fm)
+    isStudentActiveInMonth(s, fm) && isStudentBillableInMonth(s, fm)
   ), []);
 
   const filtFin = useMemo(() => {

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import { X, Save, DollarSign, Printer, Check, TrendingDown, MessageCircle, Wallet } from 'lucide-react';
 import { fmtVND, formatDate, makeVietQR, BANK_DEFAULT, toInputDate, localDateStr, normalizePaymentMethod, buildSchoolYearMonths, fixVietnameseText } from './helpers';
-import { getPaymentTuitionPeriod, getTuitionCycleState, isStudentBillableInMonth } from './measures';
+import { getPaymentTuitionPeriod, isStudentBillableInMonth } from './measures';
 import { Button, FilterTabs } from './dsComponents';
 import type { Student, Payment, Expense, ClassRecord, TeachingLog } from './types';
 
@@ -81,7 +81,6 @@ export function PaymentFormModal({
   students,
   classes = [],
   payments = [],
-  tlogs = [],
   isSaving,
   onSave,
   baseTuition,
@@ -165,13 +164,6 @@ export function PaymentFormModal({
   const rawStudentId = extractStudentId(form.maHS);
   const selectedStudent = students.find(s => s.id === rawStudentId);
   const selectedClass = classes.find(c => classIdOf(c) === String(form.maLop || selectedStudent?.classId || '').trim());
-  const cycleState = selectedStudent ? getTuitionCycleState({
-    student: selectedStudent,
-    classes,
-    payments,
-    tlogs,
-    baseTuition,
-  }) : null;
   const duplicatePayment = useMemo(() => {
     const thangHP = Number(form.thangHP);
     const namHP = Number(form.namHP);
@@ -214,7 +206,6 @@ export function PaymentFormModal({
     if (!form.date) { toast.error('Vui lòng chọn ngày thu'); return; }
     if (!form.soTien || Number(form.soTien) <= 0) { toast.error('Số tiền không hợp lệ'); return; }
     if (!form.thangHP) { toast.error('Vui lòng chọn tháng học phí'); return; }
-    if (!editingPayment && cycleState?.status === 'paid' && !window.confirm(`Chu kỳ hiện tại của ${selectedStudent?.name || maHS} đã thu (${cycleState.lastPayment?.docNum || cycleState.lastPayment?.id || 'phiếu gần nhất'}). Bạn vẫn muốn lưu thêm phiếu?`)) return;
     if (duplicatePayment && !window.confirm(`Học sinh ${selectedStudent?.name || maHS} đã có phiếu thu T${form.thangHP}/${form.namHP || curYr} (${duplicatePayment.docNum || duplicatePayment.id}). Bạn vẫn muốn lưu thêm phiếu?`)) return;
     const maLop = String(form.maLop || selectedStudent?.classId || '').trim();
     const nguoiThu = String(form.nguoiThu || selectedStudent?.teacher || teacherOf(selectedClass) || '').trim();
@@ -383,7 +374,7 @@ export function ExpenseFormModal({
 
 export function FABModal({
   open, onClose, students, classes = [], isSaving, onSaveFee, onSaveExpense,
-  baseTuition, editingPayment, editingExpense, initialTab, payments = [], tlogs = [],
+  baseTuition, editingPayment, editingExpense, initialTab, payments = [],
 }: {
   open: boolean; onClose: () => void; students: Student[]; classes?: ClassRecord[]; isSaving: boolean;
   onSaveFee: (f: any) => Promise<void>; onSaveExpense: (f: any) => Promise<void>;
@@ -477,13 +468,6 @@ export function FABModal({
   const collectorName = String((fee as any).nguoiThu || selectedStudent?.teacher || selectedClass?.GiaoVien || selectedClass?.['Giáo viên'] || '').trim() || '---';
   const receiptAmount = Number(fee.soTien || 0);
   const receiptClassId = String(selectedStudent?.classId || classIdOf(selectedClass) || '').trim();
-  const feeCycleState = selectedStudent ? getTuitionCycleState({
-    student: selectedStudent,
-    classes,
-    payments,
-    tlogs,
-    baseTuition,
-  }) : null;
   const duplicateFeePayment = (() => {
     const thangHP = Number(fee.thangHP);
     const namHP = Number(fee.namHP);
@@ -673,7 +657,6 @@ export function FABModal({
                 if (!fee.date) { toast.error('⚠️ Vui lòng chọn ngày thu!'); return; }
                 if (!fee.soTien || Number(fee.soTien) <= 0) { toast.error('⚠️ Số tiền không hợp lệ!'); return; }
                 if (!fee.thangHP) { toast.error('⚠️ Vui lòng chọn tháng học phí!'); return; }
-                if (!editingPayment && feeCycleState?.status === 'paid' && !window.confirm(`Chu kỳ hiện tại của ${selectedStudent?.name || maHS} đã thu (${feeCycleState.lastPayment?.docNum || feeCycleState.lastPayment?.id || 'phiếu gần nhất'}). Bạn vẫn muốn lưu thêm phiếu?`)) return;
                 if (duplicateFeePayment && !window.confirm(`Học sinh ${selectedStudent?.name || maHS} đã có phiếu thu T${fee.thangHP}/${fee.namHP || curYr} (${duplicateFeePayment.docNum || duplicateFeePayment.id}). Bạn vẫn muốn lưu thêm phiếu?`)) return;
                 const maLop = selectedStudent?.classId || '';
                 onClose(); onSaveFee({ ...fee, maHS, maLop, MaLop: maLop, classId: maLop, nguoiThu: collectorName, collector: collectorName });

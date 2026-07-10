@@ -19,8 +19,9 @@ import {
   calcStudentAbsenceStreak,
   calcStudentAttendance,
   getAttendanceRisk,
+  getMonthlyTuitionState,
   getPaymentReceiptPeriod,
-  getTuitionCycleState,
+  isStudentActiveInMonth,
   normalizeAttendanceStatus,
 } from './measures';
 import { ActionableKpi, ActionableKpiGrid, EmptyState, MoneyText, PageToolbar } from './uiSystem';
@@ -310,13 +311,17 @@ export default function OverviewTab({
   onAddIncome,
 }: Props) {
   const activeStudents = useMemo(() => students.filter(isStudentActive), [students]);
-  const tuitionStates = useMemo(() => activeStudents.map(student => getTuitionCycleState({
+  const tuitionPeriod = useMemo(() => ({ m: curMo, y: curYr }), [curMo, curYr]);
+  const tuitionStudents = useMemo(
+    () => students.filter(student => isStudentActiveInMonth(student, tuitionPeriod)),
+    [students, tuitionPeriod],
+  );
+  const tuitionStates = useMemo(() => tuitionStudents.map(student => getMonthlyTuitionState({
     student,
-    classes: uClasses,
+    period: tuitionPeriod,
     payments,
-    tlogs,
     baseTuition,
-  })), [activeStudents, baseTuition, payments, tlogs, uClasses]);
+  })), [baseTuition, payments, tuitionPeriod, tuitionStudents]);
   const billableStudents = useMemo(
     () => tuitionStates.filter(state => state.billable).map(state => state.student),
     [tuitionStates],
@@ -442,7 +447,7 @@ export default function OverviewTab({
 
     return [
       dueUnrecordedToday.length > 0 && { id: 'attendance', tone: '#6366f1', title: `${dueUnrecordedToday.length} buổi đã tới giờ chưa ghi`, sub: 'Mở điểm danh để ghi ngay', onClick: () => goOperations('attendance') },
-      unpaidStudents.length > 0 && { id: 'debt', tone: '#e11d48', title: `${unpaidStudents.length} học sinh có học phí tới hạn`, sub: <><MoneyText value={debtAmount} tone="danger" /> cần thu theo chu kỳ</>, onClick: () => goFinance('debt') },
+      unpaidStudents.length > 0 && { id: 'debt', tone: '#e11d48', title: `${unpaidStudents.length} học sinh có học phí tới hạn`, sub: <><MoneyText value={debtAmount} tone="danger" /> cần thu theo tháng</>, onClick: () => goFinance('debt') },
       unassigned > 0 && { id: 'unassigned', tone: '#f59e0b', title: `${unassigned} học sinh chờ xếp lớp`, sub: 'Cần gán lớp học', onClick: () => goTraining('students') },
       missingTeacher > 0 && { id: 'teacher', tone: '#ef4444', title: `${missingTeacher} lớp thiếu giáo viên`, sub: 'Cần phân công giáo viên', onClick: () => goTraining('classes') },
       missingSchedule > 0 && { id: 'schedule', tone: '#f97316', title: `${missingSchedule} lớp thiếu lịch học`, sub: 'Cần bổ sung Buổi 1/2/3', onClick: () => goTraining('classes') },

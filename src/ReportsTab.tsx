@@ -214,7 +214,8 @@ export default function ReportsTab({
 
   const classStudentRows = useMemo<ClassStudentRow[]>(() => uClasses.map(cls => {
     const classId = classIdOf(cls);
-    const classStudents = activeStudents.filter(student => student.classId === classId);
+    const period = { m: filterMo, y: filterYr };
+    const classStudents = students.filter(student => student.classId === classId && isStudentActiveInMonth(student, period));
     return {
       classId,
       className: classNameOf(cls),
@@ -224,7 +225,7 @@ export default function ReportsTab({
     };
   }).filter(row => row.classId || row.students > 0)
     .sort((a, b) => b.students - a.students || a.className.localeCompare(b.className, 'vi')),
-  [activeStudents, filterMo, filterYr, isPaid, uClasses]);
+  [filterMo, filterYr, isPaid, students, uClasses]);
 
   const maxRevenue = Math.max(...monthlyRevenue.map(row => row.revenue), 0);
   const yearlyReceiptCount = monthlyRevenue.reduce((sum, row) => sum + row.count, 0);

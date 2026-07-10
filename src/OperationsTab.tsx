@@ -305,10 +305,8 @@ function lessonOffReasonLabel(log: TeachingLog) {
 }
 
 function lessonTypeLabel(log: TeachingLog) {
-  const type = String(log.lessonType || log.LoaiBuoiHoc || 'regular');
-  if (type === 'makeup') return 'Hoc bu';
-  if (type === 'review') return 'On tap';
-  if (type === 'extra') return 'Them buoi';
+  const type = String(log.lessonType || log.LoaiBuoiHoc || 'regular').trim().toLowerCase();
+  if (type === 'extra' || type === 'review' || type === 'on_tap' || type === 'on tap' || type === 'them_buoi' || type === 'them buoi') return 'Tăng cường';
   return '';
 }
 

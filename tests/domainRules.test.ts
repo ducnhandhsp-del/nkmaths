@@ -43,7 +43,18 @@ const baseStudent: Student = {
 
 assert.equal(isStudentBillableInMonth(baseStudent, { m: 5, y: 2026 }), false, 'before start month is not billable');
 assert.equal(isStudentBillableInMonth(baseStudent, { m: 6, y: 2026 }), true, 'start month is billable');
-assert.equal(isStudentBillableInMonth({ ...baseStudent, endDate: '10/08/2026' }, { m: 8, y: 2026 }), false, 'leave month is not billable');
+assert.equal(isStudentBillableInMonth({ ...baseStudent, endDate: '10/08/2026' }, { m: 8, y: 2026 }), true, 'leave month is still billable');
+assert.equal(isStudentBillableInMonth({ ...baseStudent, endDate: '10/08/2026' }, { m: 9, y: 2026 }), false, 'months after leave month are not billable');
+assert.equal(
+  getMonthlyTuitionState({
+    student: { ...baseStudent, status: 'inactive', endDate: '' },
+    period: { m: 8, y: 2026 },
+    payments: [],
+    baseTuition: 600000,
+  }).status,
+  'inactive',
+  'inactive student without endDate is not billable',
+);
 
 const payments: Payment[] = [
   {

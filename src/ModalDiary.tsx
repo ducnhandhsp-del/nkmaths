@@ -25,21 +25,21 @@ function normalizeAttendanceType(raw: any): 'regular' | 'extra' {
   return s === 'extra' || s === 'ngoai_lop' || s === 'ngoai lop' ? 'extra' : 'regular';
 }
 
-type LessonType = 'regular' | 'extra' | 'makeup' | 'review';
+type LessonType = 'regular' | 'extra';
 
 const LESSON_TYPE_OPTIONS: { value: LessonType; label: string }[] = [
-  { value: 'regular', label: 'Theo lịch' },
-  { value: 'extra', label: 'Thêm buổi' },
-  { value: 'makeup', label: 'Học bù' },
-  { value: 'review', label: 'Ôn tập' },
+  { value: 'regular', label: 'Chính khóa' },
+  { value: 'extra', label: 'Tăng cường' },
 ];
 
 function normalizeLessonType(raw: any): LessonType {
   const s = String(raw || '').trim().toLowerCase();
-  if (s === 'makeup' || s === 'hoc_bu' || s === 'hoc bu') return 'makeup';
-  if (s === 'review' || s === 'on_tap' || s === 'on tap') return 'review';
-  if (s === 'extra' || s === 'them_buoi' || s === 'them buoi') return 'extra';
+  if (s === 'extra' || s === 'review' || s === 'on_tap' || s === 'on tap' || s === 'them_buoi' || s === 'them buoi') return 'extra';
   return 'regular';
+}
+
+function lessonTypeLabel(raw: any): string {
+  return LESSON_TYPE_OPTIONS.find(o => o.value === normalizeLessonType(raw))?.label || 'Chính khóa';
 }
 
 function attendanceStatusFromLabel(raw: any): 'present' | 'absent' | 'excused' {
@@ -138,7 +138,7 @@ export function DiaryModal({
       setClassId(preselectedClassId||'');
       setDate(preselectedDate||localDateStr());
       setCaDay(normalizeCaDayLabel(preselectedCaDay||''));
-      setLessonType(preselectedClassId && preselectedDate && preselectedCaDay ? 'regular' : 'extra');
+      setLessonType('regular');
       setManualCaDay(!!preselectedCaDay);
       setContent('');
       setHw('');
@@ -157,16 +157,16 @@ export function DiaryModal({
     (!s.endDate || s.endDate==='---' || s.endDate==='')
   ), [classId, students]);
   const extraStudents = useMemo(() => students.filter(s => extraIds.includes(s.id)), [extraIds, students]);
+  const attendanceStudentIds = useMemo(() => new Set([...cls.map(s => s.id), ...extraIds]), [cls, extraIds]);
   const eligibleExtraStudents = useMemo(() => students
     .filter(s =>
       s.id &&
-      s.classId !== classId &&
       s.status !== 'inactive' &&
       (!s.endDate || s.endDate === '---' || s.endDate === '') &&
-      !extraIds.includes(s.id)
+      !attendanceStudentIds.has(s.id)
     )
     .sort((a, b) => a.name.localeCompare(b.name, 'vi')),
-  [classId, extraIds, students]);
+  [attendanceStudentIds, students]);
   const filteredExtraStudents = useMemo(() => {
     const q = normalizeSearchText(extraQuery);
     if (!q) return [];
@@ -181,7 +181,7 @@ export function DiaryModal({
     setExtraIds(prev => prev.includes(picked.id) ? prev : [...prev, picked.id]);
     setAtt(prev => ({
       ...prev,
-      [picked.id]: prev[picked.id] || { trangThai: normalizeAttendanceLabel(''), ghiChu: 'Học ngoài lớp' },
+      [picked.id]: prev[picked.id] || { trangThai: normalizeAttendanceLabel(''), ghiChu: classId ? 'Thêm vào buổi' : 'Buổi ngoài giờ' },
     }));
     setExtraQuery('');
   };
@@ -203,7 +203,7 @@ export function DiaryModal({
     toInputDate(req.date || '') === date
   ), [classId, date, leaveRequests]);
   const caList=normalizeCaDayOptions(caDayOptions);
-  const classOptions=[{value:'',label:'-- Chọn lớp học --'},...uniqueClasses.map(c=>({value:classCode(c),label:`Lớp ${classCode(c)}`})).filter(o=>o.value)];
+  const classOptions=[{value:'',label:'-- Không gắn lớp --'},...uniqueClasses.map(c=>({value:classCode(c),label:`Lớp ${classCode(c)}`})).filter(o=>o.value)];
   const caSelectList = caDay && !caList.includes(caDay) ? [...caList, caDay] : caList;
   const caOptions=[{value:'',label:'-- Chọn ca dạy --'},...caSelectList.map(ca=>({value:ca,label:`⏰ ${ca}`}))];
   const suggestedCaDay = clsRecord ? extractScheduleTimes(clsRecord)[0] || '' : '';
@@ -265,17 +265,21 @@ export function DiaryModal({
 
   const saveAttendance = [
     ...cls.map(s=>({maHS:s.id,tenHS:s.name,trangThai:att[s.id]?.trangThai||normalizeAttendanceLabel('present'),ghiChu:att[s.id]?.ghiChu||'',loaiDiemDanh:'regular'})),
-    ...extraStudents.map(s=>({maHS:s.id,tenHS:s.name,trangThai:att[s.id]?.trangThai||normalizeAttendanceLabel('present'),ghiChu:att[s.id]?.ghiChu||'Học ngoài lớp',loaiDiemDanh:'extra'})),
+    ...extraStudents.map(s=>({maHS:s.id,tenHS:s.name,trangThai:att[s.id]?.trangThai||normalizeAttendanceLabel('present'),ghiChu:att[s.id]?.ghiChu||(classId ? 'Thêm vào buổi' : 'Buổi ngoài giờ'),loaiDiemDanh:'extra'})),
   ];
-  const diaryContext = classId && date && caDay
-    ? `Lớp ${classId} · ${formatDate(date)} · ${caDay}`
-    : 'Chọn lớp, ngày học và ca dạy để bắt đầu';
+  const diaryContext = date && caDay
+    ? `${classId ? `Lớp ${classId}` : lessonTypeLabel(lessonType)} · ${formatDate(date)} · ${caDay}`
+    : 'Chọn ngày học, ca dạy và thêm học sinh vào buổi';
+  const editingLessonId = String(editingLog?.maBuoi || editingLog?.id || '').trim();
   const canAddExtraStudent = extraQuery.trim() && filteredExtraStudents.length > 0;
+  const attendanceTitle = classId
+    ? `Điểm danh học sinh · ${cls.length} trong lớp · ${extraIds.length} thêm vào buổi`
+    : `Điểm danh học sinh · ${extraIds.length} học sinh trong buổi`;
 
   const doSave=()=>{
-    if(!classId){toast.error('⚠️ Vui lòng chọn lớp học!');return;}
     if(!caDay){toast.error('⚠️ Vui lòng chọn ca dạy!');return;}
     if(!content.trim()){toast.error('⚠️ Vui lòng nhập nội dung bài dạy!');return;}
+    if(saveAttendance.length === 0){toast.error('⚠️ Vui lòng thêm ít nhất một học sinh vào buổi!');return;}
     onSave({ date,classId,caDay: normalizeCaDayLabel(caDay),lessonType,content,homework:hw||'---',teacherNote:teacherNote.trim(),teacherName,
       ...(editingLog&&{originalId:editingLog.maBuoi||editingLog.id,originalDate:editingLog.originalDate||editingLog.rawDate,originalClassId:editingLog.originalClassId||editingLog.classId,originalCaDay:editingLog.originalCaDay||editingLog.caDay||''}),
       attendance:saveAttendance,
@@ -292,6 +296,11 @@ export function DiaryModal({
               <div>
                 <h2>{editingLog ? 'Cập nhật buổi học' : 'Ghi buổi học'}</h2>
                 <p>{editingLog ? `Đang sửa nhật ký đã lưu · ${diaryContext}` : diaryContext}</p>
+                {editingLessonId && (
+                  <span className="ltn-diary-id-chip">
+                    Mã buổi <strong>{editingLessonId}</strong>
+                  </span>
+                )}
               </div>
             </div>
             <button className="ltn-quick-close" onClick={onClose} aria-label="Đóng">×</button>
@@ -299,9 +308,9 @@ export function DiaryModal({
         </header>
 
         <div className="ltn-quick-body">
-          <section className="ltn-quick-card" style={{ borderColor:'#bfdbfe', background:'#f8fbff' }}>
+          <section className="ltn-quick-card ltn-diary-info-card" style={{ borderColor:'#bfdbfe', background:'#f8fbff' }}>
               <p className="ltn-section-title">Thông tin buổi học</p>
-              <div className="ltn-quick-grid three">
+              <div className="ltn-quick-grid four">
                 <div className="ltn-quick-field">
                   <label>Lớp</label>
                   <select value={classId} onChange={e=>handleClassChange(e.target.value)}>
@@ -347,59 +356,57 @@ export function DiaryModal({
 
           <section className="ltn-quick-card soft">
             <div className="ltn-quick-card-head">
-              <h3>Điểm danh học sinh · {cls.length} trong lớp · {extraIds.length} học bù / ngoài lớp</h3>
+              <h3>{attendanceTitle}</h3>
             </div>
             {approvedLeaves.length > 0 && (
               <div style={{ marginBottom: 8, border: '1px solid #fde68a', background: '#fffbeb', color: '#92400e', borderRadius: 10, padding: '8px 10px', fontSize: 12, fontWeight: 800 }}>
                 {approvedLeaves.length} đơn nghỉ phép đã duyệt được tự đánh dấu Có phép.
               </div>
             )}
-            {classId && (
-              <div style={{ marginBottom: 10, display: 'grid', gap: 8 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 8, alignItems: 'center' }}>
-                  <input
-                    value={extraQuery}
-                    onChange={e=>setExtraQuery(e.target.value)}
-                    onKeyDown={e=>{
-                      if (e.key !== 'Enter') return;
-                      e.preventDefault();
-                      if (canAddExtraStudent) handleAddExtraStudent(filteredExtraStudents[0].id);
-                    }}
-                    placeholder="Tìm học sinh"
-                    aria-label="Tìm học sinh học bù hoặc ngoài lớp"
-                    style={{ minHeight: 36, border: '1px solid #e2e8f0', borderRadius: 10, padding: '0 10px', fontSize: 12, fontWeight: 800, color: '#334155', background: 'white', minWidth: 0 }}
-                  />
-                  <Button intent="primary" variant="outline" size="sm" onClick={()=>handleAddExtraStudent()} disabled={!canAddExtraStudent}>Thêm</Button>
-                </div>
-                {extraQuery.trim() && (
-                  <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, background: 'white', overflow: 'hidden', maxHeight: 220, overflowY: 'auto' }}>
-                    {filteredExtraStudents.length > 0 ? filteredExtraStudents.map(s => (
-                      <button
-                        key={s.id}
-                        type="button"
-                        onClick={()=>handleAddExtraStudent(s.id)}
-                        style={{ width:'100%', minHeight: 46, padding:'8px 11px', border:0, borderBottom:'1px solid #f1f5f9', background:'white', display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, cursor:'pointer', textAlign:'left' }}
-                      >
-                        <span style={{ minWidth:0 }}>
-                          <span style={{ display:'block', fontSize:13, fontWeight:900, color:'#0f172a', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{s.name}</span>
-                          <span style={{ display:'block', marginTop:2, fontSize:11, fontWeight:800, color:'#64748b' }}>{s.id} · {s.classId || 'Chưa lớp'}</span>
-                        </span>
-                        <span style={{ flexShrink:0, fontSize:11, fontWeight:900, color:'#4f46e5', background:'#eef2ff', border:'1px solid #c7d2fe', borderRadius:999, padding:'3px 8px' }}>Thêm</span>
-                      </button>
-                    )) : (
-                      <div style={{ padding:'11px 12px', fontSize:12, fontWeight:800, color:'#94a3b8', textAlign:'center' }}>
-                        Không có học sinh phù hợp
-                      </div>
-                    )}
-                  </div>
-                )}
+            <div style={{ marginBottom: 10, display: 'grid', gap: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 8, alignItems: 'center' }}>
+                <input
+                  value={extraQuery}
+                  onChange={e=>setExtraQuery(e.target.value)}
+                  onKeyDown={e=>{
+                    if (e.key !== 'Enter') return;
+                    e.preventDefault();
+                    if (canAddExtraStudent) handleAddExtraStudent(filteredExtraStudents[0].id);
+                  }}
+                  placeholder="Tìm học sinh"
+                  aria-label="Tìm học sinh thêm vào buổi"
+                  style={{ minHeight: 36, border: '1px solid #e2e8f0', borderRadius: 10, padding: '0 10px', fontSize: 12, fontWeight: 800, color: '#334155', background: 'white', minWidth: 0 }}
+                />
+                <Button intent="primary" variant="outline" size="sm" onClick={()=>handleAddExtraStudent()} disabled={!canAddExtraStudent}>Thêm</Button>
               </div>
-            )}
+              {extraQuery.trim() && (
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, background: 'white', overflow: 'hidden', maxHeight: 220, overflowY: 'auto' }}>
+                  {filteredExtraStudents.length > 0 ? filteredExtraStudents.map(s => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={()=>handleAddExtraStudent(s.id)}
+                      style={{ width:'100%', minHeight: 46, padding:'8px 11px', border:0, borderBottom:'1px solid #f1f5f9', background:'white', display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, cursor:'pointer', textAlign:'left' }}
+                    >
+                      <span style={{ minWidth:0 }}>
+                        <span style={{ display:'block', fontSize:13, fontWeight:900, color:'#0f172a', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{s.name}</span>
+                        <span style={{ display:'block', marginTop:2, fontSize:11, fontWeight:800, color:'#64748b' }}>{s.id} · {s.classId || 'Chưa lớp'}</span>
+                      </span>
+                      <span style={{ flexShrink:0, fontSize:11, fontWeight:900, color:'#4f46e5', background:'#eef2ff', border:'1px solid #c7d2fe', borderRadius:999, padding:'3px 8px' }}>Thêm</span>
+                    </button>
+                  )) : (
+                    <div style={{ padding:'11px 12px', fontSize:12, fontWeight:800, color:'#94a3b8', textAlign:'center' }}>
+                      Không có học sinh phù hợp
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
             {allAttStudents.length > 0 ? (
               <AttendancePicker students={allAttStudents} onChange={handleAttChange}/>
             ) : (
               <div style={{ minHeight:100, display:'flex', alignItems:'center', justifyContent:'center', color:'#94a3b8', fontSize:13, fontStyle:'italic' }}>
-                {classId ? 'Lớp này chưa có học sinh đang học' : 'Chọn lớp để điểm danh'}
+                {classId ? 'Lớp này chưa có học sinh đang học' : 'Tìm và thêm học sinh vào buổi học'}
               </div>
             )}
           </section>
@@ -427,6 +434,9 @@ export function DiaryDetailModal({ log, onClose, onEdit }: { log:any; onClose:()
   const [attendanceFilter,setAttendanceFilter]=useState<'all'|'present'|'absent'|'excused'>('all');
   const [attendanceQuery,setAttendanceQuery]=useState('');
   const detailAttendance = l.attendanceList || [];
+  const detailLessonId = String(l.maBuoi || l.id || '').trim();
+  const detailLessonType = lessonTypeLabel(l.lessonType || l.LoaiBuoiHoc);
+  const detailTitle = l.classId ? `Buổi học ${l.classId}` : detailLessonType;
   const detailPresent = detailAttendance.length
     ? detailAttendance.filter((a:any) => normalizeAttendanceLabel(a.trangThai||a['Trạng thái']||a.TrangThai||'') === 'Có mặt').length
     : Number(l.present || 0);
@@ -466,8 +476,18 @@ export function DiaryDetailModal({ log, onClose, onEdit }: { log:any; onClose:()
           <div style={{ display:'flex',alignItems:'center',gap:12, minWidth:0 }}>
             <div style={{ width:38,height:38,borderRadius:10,background:'#EEF2FF',display:'flex',alignItems:'center',justifyContent:'center' }}><BookOpen size={18} color="#4F46E5"/></div>
             <div style={{ minWidth:0 }}>
-              <h3 style={{ fontSize:17,fontWeight:900,color:'#0f172a',margin:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>Buổi học {l.classId || '---'}</h3>
-              <p style={{ color:'#64748B',fontSize:13,margin:'3px 0 0',fontWeight:700 }}>{formatDate(l.date)}{l.caDay ? ` · ${l.caDay}` : ''}</p>
+              <h3 style={{ fontSize:17,fontWeight:900,color:'#0f172a',margin:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{detailTitle}</h3>
+              <div style={{ display:'flex',alignItems:'center',gap:6,flexWrap:'wrap',marginTop:4 }}>
+                <p style={{ color:'#64748B',fontSize:13,margin:0,fontWeight:700 }}>{formatDate(l.date)}{l.caDay ? ` · ${l.caDay}` : ''}</p>
+                <span className="ltn-diary-id-chip compact">
+                  Loại buổi <strong>{detailLessonType}</strong>
+                </span>
+                {detailLessonId && (
+                  <span className="ltn-diary-id-chip compact">
+                    Mã buổi <strong>{detailLessonId}</strong>
+                  </span>
+                )}
+              </div>
             </div>
           </div>
           <div style={{ display:'flex',alignItems:'center',gap:8,flexShrink:0 }}>
