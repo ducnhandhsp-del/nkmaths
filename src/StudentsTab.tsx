@@ -390,12 +390,13 @@ export default function StudentsTab({
                 muted={inactive}
                 onClick={() => onViewStudent(s)}
                 actions={(
-                  <div onClick={e => e.stopPropagation()} className="student-mobile-actions" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  <>
                     {zaloPhone.length >= 9 && (
                       <MobileRecordAction
                         href={`https://zalo.me/${zaloPhone}`}
                         title={`Zalo ${capitalizeName(s.name)}`}
                         tone="zalo"
+                        bare
                       >
                         <ZaloMark size={18} />
                       </MobileRecordAction>
@@ -409,7 +410,7 @@ export default function StudentsTab({
                         <ReceiptText size={15} aria-hidden="true" />
                       </MobileRecordAction>
                     )}
-                  </div>
+                  </>
                 )}
               />
             );

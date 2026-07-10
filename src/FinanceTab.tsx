@@ -933,7 +933,14 @@ export default function FinanceTab({
                             <ReceiptText size={15} />
                           </MobileRecordAction>
                           {zaloPhone.length >= 9 && (
-                            <MobileRecordAction title={copiedId === s.id ? 'Đã copy tin nhắn' : 'Nhắc phí Zalo'} tone={copiedId === s.id ? 'success' : 'zalo'} onClick={() => copyMsg(s.id, makeZaloMsg(s, actionAmount))}>
+                            <MobileRecordAction
+                              title={copiedId === s.id ? 'Đã copy tin nhắn' : 'Nhắc phí Zalo'}
+                              tone={copiedId === s.id ? 'success' : 'zalo'}
+                              onClick={() => {
+                                copyMsg(s.id, makeZaloMsg(s, actionAmount));
+                                window.open(`https://zalo.me/${zaloPhone}`, '_blank', 'noopener,noreferrer');
+                              }}
+                            >
                               {copiedId === s.id ? <Check size={15} /> : <ZaloMark size={18} />}
                             </MobileRecordAction>
                           )}

@@ -300,6 +300,21 @@ function fmtWeekDate(d: Date) {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+function lessonDateLabel(log: TeachingLog) {
+  const raw = String(log.rawDate || log.date || '').trim();
+  const ts = parseDMY(raw);
+  const parsed = ts ? new Date(ts) : (raw ? new Date(raw) : null);
+  if (!parsed || Number.isNaN(parsed.getTime())) return raw || 'Chưa rõ ngày';
+  const dayCode = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][parsed.getDay()];
+  return `${DAY_FULL[dayCode]} · ${fmtWeekDate(parsed)}`;
+}
+
+function lessonAttendanceRatio(log: TeachingLog) {
+  if (isLessonOffLog(log)) return 'Nghỉ';
+  const a = lessonAttendanceSummary(log);
+  return `${a.present}/${a.total || 0}`;
+}
+
 function lessonOffReasonLabel(log: TeachingLog) {
   return getLessonOffReason(log) || 'Chưa ghi lý do nghỉ';
 }
@@ -1126,9 +1141,9 @@ export default function OperationsTab({
                 <MobileRecordRow
                   key={row.id}
                   marker={<MobileRecordMarker tone={scheduleStatusTone(row.status)}>{row.slot.classId || 'Lớp'}</MobileRecordMarker>}
-                  title={row.slot.caDay || 'Ca dạy'}
-                  right={<ScheduleBadge status={row.status} log={row.tlog} />}
-                  meta={`${DAY_FULL[dayCode]} · ${fmtWeekDate(row.slot.date)} · ${row.slot.facility || 'Chưa rõ cơ sở'}`}
+                  title={`${DAY_FULL[dayCode]} · ${fmtWeekDate(row.slot.date)}`}
+                  right={<span style={{ height: 22, display: 'inline-flex', alignItems: 'center', padding: '0 9px', borderRadius: 999, background: '#eef2ff', border: '1px solid #c7d2fe', color: '#4338ca', fontSize: 12, fontWeight: 950 }}>{row.slot.caDay || 'Ca dạy'}</span>}
+                  meta={row.slot.facility || 'Chưa rõ cơ sở'}
                   note={row.slot.teacher || 'Chưa rõ GV'}
                   tone={scheduleStatusTone(row.status)}
                   onClick={() => openScheduleRow(row)}
@@ -1196,15 +1211,16 @@ export default function OperationsTab({
               const st = lessonStatus(log);
               const homework = String(log.homework || '').trim();
               const isOff = isLessonOffLog(log);
-              const typeLabel = lessonTypeLabel(log);
+              const contentLabel = isOff ? (log.content || 'Lớp nghỉ') : (log.content || 'Chưa có nội dung');
+              const homeworkLabel = homework && homework !== '---' ? homework : 'Chưa có BTVN';
               return (
                 <MobileRecordRow
                   key={`${log.classId}-${log.rawDate || log.date}-${log.caDay}`}
                   marker={<MobileRecordMarker tone={st.tone}>{log.classId || 'Lớp'}</MobileRecordMarker>}
-                  title={log.caDay || 'Buổi học'}
-                  right={<StatusBadge domain="lesson" status={st.label} label={st.label} tone={st.tone} />}
-                  meta={<><DateText value={log.date} /> · {lessonAttendanceLabel(log)}{typeLabel ? ` · ${typeLabel}` : ''}</>}
-                  note={isOff ? `Lý do: ${lessonOffReasonLabel(log)}` : (log.content || (homework && homework !== '---' ? homework : 'Chưa có nội dung'))}
+                  title={lessonDateLabel(log)}
+                  right={<span style={{ height: 22, display: 'inline-flex', alignItems: 'center', padding: '0 9px', borderRadius: 999, background: '#f8fafc', border: '1px solid #e2e8f0', color: '#334155', fontSize: 12, fontWeight: 950 }}>{lessonAttendanceRatio(log)}</span>}
+                  meta={isOff ? `Lý do: ${lessonOffReasonLabel(log)}` : contentLabel}
+                  note={isOff ? contentLabel : `BTVN: ${homeworkLabel}`}
                   tone={st.tone}
                   onClick={() => onViewDiary(log)}
                 />

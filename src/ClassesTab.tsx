@@ -637,10 +637,9 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
               <MobileRecordRow
                 key={classId || idx}
                 marker={<MobileRecordMarker tone={meta.tone}>{classId || 'Lớp'}</MobileRecordMarker>}
-                title={getClassTitle(c)}
+                title={`${schedule || 'Chưa có lịch'}${branch ? ` · ${branch}` : ''}`}
                 right={`${c.studentCount || 0} HS`}
-                meta={`${schedule || 'Chưa có lịch'}${branch ? ` · ${branch}` : ''}`}
-                note={status !== 'active'
+                meta={status !== 'active'
                   ? <StatusBadge domain="general" status={status} label={meta.label} tone={meta.tone} />
                   : `${teacherName || 'Chưa phân công'} · ${tuitionLabel}`}
                 tone={meta.tone}

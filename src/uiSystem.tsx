@@ -1469,6 +1469,7 @@ export function MobileRecordAction({
   href,
   onClick,
   disabled = false,
+  bare = false,
 }: {
   children: React.ReactNode;
   title: string;
@@ -1476,6 +1477,7 @@ export function MobileRecordAction({
   href?: string;
   onClick?: () => void;
   disabled?: boolean;
+  bare?: boolean;
 }) {
   const cfg = tone === 'zalo'
     ? { bg: '#eef6ff', border: '#bfdbfe', text: '#0068ff' }
@@ -1484,8 +1486,8 @@ export function MobileRecordAction({
     width: 32,
     height: 32,
     borderRadius: 12,
-    border: `1px solid ${cfg.border}`,
-    background: cfg.bg,
+    border: bare ? '1px solid transparent' : `1px solid ${cfg.border}`,
+    background: bare ? 'transparent' : cfg.bg,
     color: cfg.text,
     padding: 0,
     display: 'inline-flex',
