@@ -6,7 +6,7 @@ import { ReceiptText, UserPlus } from 'lucide-react';
 import { IPP, capitalizeName, compareClassCode, fixVietnameseText, isStudentActive } from './helpers';
 import { isStudentActiveInMonth, isStudentBillableInMonth } from './measures';
 import { Pager, Button, Select } from './dsComponents';
-import { DataTable, EmptyState, MobileCompactCard, PageToolbar, StatusBadge } from './uiSystem';
+import { DataTable, EmptyState, MobileOperationalCard, PageToolbar, StatusBadge } from './uiSystem';
 import type { Student, DeleteTarget } from './types';
 
 interface Props {
@@ -370,21 +370,23 @@ export default function StudentsTab({
             const inactive = !isStudentActive(s);
             const zaloPhone = String(s.parentPhone || s.studentPhone || '').replace(/\D/g, '');
             const debtMonths = debtMonthsOf(s);
+            const parentLabel = s.parentName ? `PH: ${s.parentName}` : 'Chưa có PH';
+            const phoneLabel = s.parentPhone || s.studentPhone || 'Chưa có SĐT';
             return (
-              <MobileCompactCard
+              <MobileOperationalCard
                 key={s.id}
                 title={capitalizeName(s.name)}
-                subtitle={`${s.id || '—'}${s.classId ? ` · ${s.classId}` : ''}`}
-                value={<DebtMonthsState months={debtMonths} />}
-                badge={<StatusBadge domain="student" status={inactive ? 'inactive' : 'active'} />}
+                right={<DebtMonthsState months={debtMonths} />}
+                meta={`${s.classId || 'Chưa có lớp'} · ${parentLabel}`}
+                note={(
+                  <span style={{ color: zaloPhone.length >= 9 ? '#047857' : '#b45309' }}>
+                    {inactive ? 'Đã nghỉ' : phoneLabel}
+                  </span>
+                )}
                 tone={inactive ? 'neutral' : 'primary'}
                 muted={inactive}
                 onClick={() => onViewStudent(s)}
                 style={{ marginBottom: 8 }}
-                meta={[
-                  { key: 'parent', label: s.parentName || 'Chưa có PH', tone: s.parentName ? 'neutral' as const : 'warning' as const },
-                  { key: 'phone', label: s.parentPhone || s.studentPhone || 'Chưa có SĐT', tone: zaloPhone.length >= 9 ? 'success' as const : 'warning' as const },
-                ]}
                 actions={(
                   <div onClick={e => e.stopPropagation()} className="student-mobile-actions" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     {zaloPhone.length >= 9 && (

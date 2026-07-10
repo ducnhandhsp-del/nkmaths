@@ -1286,6 +1286,97 @@ export function MobileCompactCard({
   );
 }
 
+export function MobileOperationalCard({
+  title,
+  right,
+  meta,
+  note,
+  actions,
+  onClick,
+  tone = 'neutral',
+  muted = false,
+  style,
+  titleLines = 2,
+}: {
+  title: React.ReactNode;
+  right?: React.ReactNode;
+  meta?: React.ReactNode;
+  note?: React.ReactNode;
+  actions?: React.ReactNode;
+  onClick?: () => void;
+  tone?: UiTone;
+  muted?: boolean;
+  style?: React.CSSProperties;
+  titleLines?: 1 | 2;
+}) {
+  const t = TONE[tone];
+  const mobile = useIsMobileViewport();
+  return (
+    <div
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={onClick ? (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onClick();
+        }
+      } : undefined}
+      style={{
+        ...CARD,
+        width: '100%',
+        padding: mobile ? '10px 11px' : '12px 13px',
+        borderRadius: mobile ? 12 : 14,
+        borderColor: onClick ? t.border : colors.neutral[200],
+        boxShadow: '0 1px 8px rgba(15,23,42,.045)',
+        cursor: onClick ? 'pointer' : 'default',
+        opacity: muted ? 0.64 : 1,
+        display: 'grid',
+        gap: 7,
+        fontFamily: typography.fontFamily,
+        ...style,
+      }}
+    >
+      <div style={{ display: 'grid', gridTemplateColumns: right ? 'minmax(0,1fr) auto' : 'minmax(0,1fr)', gap: 10, alignItems: 'start' }}>
+        <p
+          style={{
+            margin: 0,
+            minWidth: 0,
+            fontSize: 14,
+            fontWeight: 950,
+            color: colors.neutral[900],
+            lineHeight: 1.25,
+            overflow: 'hidden',
+            display: '-webkit-box',
+            WebkitBoxOrient: 'vertical',
+            WebkitLineClamp: titleLines,
+          }}
+        >
+          {title}
+        </p>
+        {right && (
+          <div style={{ flexShrink: 0, justifySelf: 'end', textAlign: 'right', fontSize: 14, fontWeight: 950, color: colors.neutral[900], lineHeight: 1.2, whiteSpace: 'nowrap' }}>
+            {right}
+          </div>
+        )}
+      </div>
+      {meta && (
+        <div style={{ minWidth: 0, color: colors.neutral[500], fontSize: 11.5, fontWeight: 850, lineHeight: 1.35, overflow: 'hidden', display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2 }}>
+          {meta}
+        </div>
+      )}
+      {(note || actions) && (
+        <div style={{ display: 'grid', gridTemplateColumns: actions ? 'minmax(0,1fr) auto' : 'minmax(0,1fr)', gap: 8, alignItems: 'center' }}>
+          <div style={{ minWidth: 0, color: colors.neutral[700], fontSize: 11.5, fontWeight: 850, lineHeight: 1.35, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {note}
+          </div>
+          {actions && <div onClick={e => e.stopPropagation()} style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>{actions}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ConfirmDialog({
   open,
   title,

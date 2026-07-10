@@ -7,7 +7,7 @@ import { Clock, Plus, Trash2, X, Users, MapPin, User } from 'lucide-react';
 import { compareClassCode, fixVietnameseText, isStudentActive, normalizeCaDayLabel, normalizeScheduleCaText, resolveTeacher } from './helpers';
 import { getMonthlyTuitionState, getPaymentTuitionPeriod, isStudentActiveInMonth } from './measures';
 import { SearchBar, Select, Button } from './dsComponents';
-import { DataTable, DetailMetric, EmptyState, MobileCompactCard, MoneyText, PageToolbar, StatusBadge } from './uiSystem';
+import { DataTable, DetailMetric, EmptyState, MobileOperationalCard, MoneyText, PageToolbar, StatusBadge } from './uiSystem';
 import type { Student, ClassRecord, Payment, DeleteTarget, TeachingLog } from './types';
 
 interface Props {
@@ -632,27 +632,25 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
             const branch = getClassBranch(c);
             const status = getClassStatus(c);
             const meta = classStatusMeta(status);
+            const tuitionLabel = `HP T${curMo}: ${c.paidCount || 0}/${c.billableCount || 0}`;
             return (
-              <MobileCompactCard
+              <MobileOperationalCard
                 key={classId || idx}
                 title={getClassTitle(c)}
-                subtitle={teacherName || branch || 'Chưa phân công'}
-                value={`${c.studentCount || 0} HS`}
-                badge={status !== 'active' ? <StatusBadge domain="general" status={status} label={meta.label} tone={meta.tone} /> : undefined}
+                right={`${c.studentCount || 0} HS`}
+                meta={`${schedule || 'Chưa có lịch'}${branch ? ` · ${branch}` : ''}`}
+                note={status !== 'active'
+                  ? <StatusBadge domain="general" status={status} label={meta.label} tone={meta.tone} />
+                  : `${teacherName || 'Chưa phân công'} · ${tuitionLabel}`}
                 tone={meta.tone}
                 onClick={() => setDetailCls(c)}
                 style={{ marginBottom: idx === filtCls.length - 1 ? 0 : 8 }}
-                meta={[
-                  { key: 'schedule', label: hasSchedule ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Clock size={12} color="#6366f1" />{schedule}</span> : 'Chưa có lịch', tone: hasSchedule ? 'primary' as const : 'warning' as const },
-                  { key: 'tuition', label: `HP T${curMo}: ${c.paidCount || 0}/${c.billableCount || 0}`, tone: (c.billableCount || 0) > 0 && (c.paidCount || 0) >= (c.billableCount || 0) ? 'success' as const : 'warning' as const },
-                  ...(branch ? [{ key: 'branch', label: branch, tone: 'neutral' as const }] : []),
-                ]}
                 actions={(
                   <div onClick={e => e.stopPropagation()} style={{ display:'flex',gap:6,justifyContent:'flex-end',flexWrap:'wrap' }}>
                     {onAddDiary && hasSchedule && (
                       <button onClick={() => onAddDiary(classId)}
                         style={{ minHeight:34,padding:'7px 10px',borderRadius:999,background:'#f0fdf4',border:'1px solid #bbf7d0',color:'#047857',fontWeight:900,fontSize:12,cursor:'pointer' }}>
-                        Ghi buổi
+                        Ghi
                       </button>
                     )}
                   </div>

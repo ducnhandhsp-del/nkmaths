@@ -26,7 +26,7 @@ import {
   parsePeriod,
 } from './measures';
 import { Badge, Button, Pager, SearchBar, Select } from './dsComponents';
-import { ActionableKpi, ActionableKpiGrid, DataTable, DateText, EmptyState, MobileCompactCard, MoneyText, MonthText, PageToolbar, StatusBadge, ToolbarTabs, useIsMobileViewport } from './uiSystem';
+import { ActionableKpi, ActionableKpiGrid, DataTable, DateText, EmptyState, MobileOperationalCard, MoneyText, MonthText, PageToolbar, StatusBadge, ToolbarTabs, useIsMobileViewport } from './uiSystem';
 import type { Payment, Expense, Student, FinanceSub, TeachingLog } from './types';
 
 interface Props {
@@ -909,20 +909,16 @@ export default function FinanceTab({
               const audit = attendanceAuditByStudent.get(row.id);
               const sessionLabel = audit?.totalSessions ? `${audit.totalSessions} buổi${audit.extraSessions ? ` · ${audit.extraSessions} thêm vào buổi` : ''}` : '0 buổi';
               return (
-                <MobileCompactCard
+                <MobileOperationalCard
                   key={`${s.id}-debt-card`}
                   title={capitalizeName(s.name)}
-                  subtitle={`${s.id || '—'} · ${s.classId || 'Chưa có lớp'}`}
-                  value={<MoneyText value={amount} compact tone={periodStatus === 'paid' ? 'success' : periodStatus === 'overdue' ? 'danger' : undefined} />}
-                  badge={<StatusBadge domain="tuition" status={periodStatus} label={meta.label} tone={meta.tone} />}
+                  right={<MoneyText value={amount} compact tone={periodStatus === 'paid' ? 'success' : periodStatus === 'overdue' ? 'danger' : undefined} />}
+                  meta={`${s.classId || 'Chưa có lớp'} · T${selectedDebtMonth.m}/${selectedDebtMonth.y} · ${sessionLabel}`}
+                  note={<StatusBadge domain="tuition" status={periodStatus} label={meta.label} tone={meta.tone} />}
                   tone={meta.tone}
                   muted={row.isInactive}
                   onClick={() => onViewFinance(s)}
                   style={{ marginBottom: 8 }}
-                  meta={[
-                    { key: 'sessions', label: sessionLabel, tone: audit?.extraSessions ? 'primary' : 'neutral' },
-                    { key: 'period', label: `T${selectedDebtMonth.m}/${selectedDebtMonth.y}`, tone: 'primary' },
-                  ]}
                   actions={(
                     <div className="ltn-mobile-action-row" onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                       {periodStatus === 'paid' && receipt ? (
@@ -984,19 +980,18 @@ export default function FinanceTab({
                 const period = getPaymentTuitionPeriod(p);
                 const cls = paymentClassId(p, students);
                 return (
-                  <MobileCompactCard
+                  <MobileOperationalCard
                     key={p.id || p.docNum || `${p.studentId}-${p.date}-${p.amount}`}
                     title={capitalizeName(p.studentName) || p.docNum || 'Phiếu thu'}
-                    subtitle={`${p.studentId || '—'}${cls ? ` · ${cls}` : ''}`}
-                    value={<MoneyText value={p.amount} compact tone="success" />}
-                    badge={<StatusBadge domain="tuition" status="paid" label="Đã thu" tone="success" />}
+                    right={<MoneyText value={p.amount} compact tone="success" />}
+                    meta={(
+                      <>
+                        <DateText value={p.date} /> · {period ? <MonthText month={period.m} year={period.y} /> : 'Chưa rõ kỳ'}{cls ? ` · ${cls}` : ''}
+                      </>
+                    )}
+                    note={paymentCollector(p, students, uClasses) || 'Chưa rõ người thu'}
                     tone="success"
                     onClick={() => onViewInvoice(p)}
-                    meta={[
-                      { key: 'date', label: <DateText value={p.date} />, tone: 'neutral' },
-                      { key: 'period', label: period ? <MonthText month={period.m} year={period.y} /> : 'Chưa rõ kỳ', tone: 'primary' },
-                      { key: 'collector', label: paymentCollector(p, students, uClasses) || 'Chưa rõ người thu', tone: 'success' },
-                    ]}
                     actions={(
                       <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                         <Button intent="primary" variant="outline" size="sm" onClick={() => onEditPayment(p)}>Sửa</Button>
@@ -1034,19 +1029,14 @@ export default function FinanceTab({
             {pagedExpense.length === 0 ? (
               <EmptyState text="Chưa có phiếu chi phù hợp" sub="Thử đổi tháng hoặc người chi." compact />
             ) : pagedExpense.map(e => (
-                <MobileCompactCard
+                <MobileOperationalCard
                   key={e.id || e.docNum || `${e.date}-${e.description}-${e.amount}`}
                   title={e.description || e.docNum || 'Phiếu chi'}
-                  subtitle={e.docNum || '—'}
-                  value={<MoneyText value={e.amount} compact tone="danger" />}
-                  badge={<StatusBadge domain="general" status="danger" label="Đã chi" tone="danger" />}
+                  right={<MoneyText value={e.amount} compact tone="danger" />}
+                  meta={<><DateText value={e.date} /> · {e.category || 'Chưa phân loại'}</>}
+                  note={e.spender || 'Chưa rõ người chi'}
                   tone="danger"
                   onClick={() => onViewExpense(e)}
-                  meta={[
-                    { key: 'date', label: <DateText value={e.date} />, tone: 'neutral' },
-                    { key: 'category', label: e.category || 'Chưa phân loại', tone: 'warning' },
-                    { key: 'spender', label: e.spender || 'Chưa rõ người chi', tone: 'danger' },
-                  ]}
                   actions={(
                     <div onClick={event => event.stopPropagation()} style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                       <Button intent="primary" variant="outline" size="sm" onClick={() => onEditExpense(e)}>Sửa</Button>

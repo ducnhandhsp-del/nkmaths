@@ -8,7 +8,7 @@ import { AlertTriangle, BookOpen, CalendarX, CheckCircle, Edit3, Eye, Phone, Plu
 import { getLessonOffReason, isLessonOffLog, normalizeCaDayLabel, normalizeScheduleCaText, parseCaDayToHours, parseDMY } from './helpers';
 import { attendanceStudentId, calcStudentAbsenceStreak, getAttendanceRisk, normalizeAttendanceStatus as normalizeAttendanceStatusCore } from './measures';
 import { Button, Pager, Select } from './dsComponents';
-import { ActionableKpi, ActionableKpiGrid, DataTable, DateText, EmptyState, MobileCompactCard, PageToolbar, StatusBadge, ToolbarTabs } from './uiSystem';
+import { ActionableKpi, ActionableKpiGrid, DataTable, DateText, EmptyState, MobileOperationalCard, PageToolbar, StatusBadge, ToolbarTabs } from './uiSystem';
 import type { Student, TeachingLog, LeaveRequest, OperationsSub } from './types';
 
 const DAYS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
@@ -1123,17 +1123,14 @@ export default function OperationsTab({
               const dayCode = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][row.slot.date.getDay()];
               const locked = row.status === 'future' || row.status === 'cancelled';
               return (
-                <MobileCompactCard
+                <MobileOperationalCard
                   key={row.id}
                   title={`${row.slot.caDay} · ${row.slot.classId}`}
-                  subtitle={`${DAY_FULL[dayCode]} · ${fmtWeekDate(row.slot.date)}`}
-                  badge={<ScheduleBadge status={row.status} log={row.tlog} />}
+                  right={<ScheduleBadge status={row.status} log={row.tlog} />}
+                  meta={`${DAY_FULL[dayCode]} · ${fmtWeekDate(row.slot.date)} · ${row.slot.facility || 'Chưa rõ cơ sở'}`}
+                  note={row.slot.teacher || 'Chưa rõ GV'}
                   tone={scheduleStatusTone(row.status)}
                   onClick={() => openScheduleRow(row)}
-                  meta={[
-                    { key: 'teacher', label: row.slot.teacher || 'Chưa rõ GV', tone: row.slot.teacher && row.slot.teacher !== '—' ? 'neutral' as const : 'warning' as const },
-                    { key: 'facility', label: row.slot.facility || 'Chưa rõ cơ sở', tone: row.slot.facility && row.slot.facility !== '—' ? 'info' as const : 'warning' as const },
-                  ]}
                   actions={(
                     <div onClick={event => event.stopPropagation()} style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, flexWrap: 'wrap' }}>
                       {row.tlog ? (
@@ -1146,7 +1143,7 @@ export default function OperationsTab({
                         <>
                           {!locked && (
                             <Button intent="success" variant="outline" size="sm" onClick={() => onAddDiary(row.slot.classId, row.slot.isoDate, row.slot.caDay)}>
-                              Ghi buổi
+                              Ghi
                             </Button>
                           )}
                           <Button intent="warning" variant="outline" size="sm" onClick={() => markScheduleOff(row)}>
@@ -1200,21 +1197,14 @@ export default function OperationsTab({
               const isOff = isLessonOffLog(log);
               const typeLabel = lessonTypeLabel(log);
               return (
-                <MobileCompactCard
+                <MobileOperationalCard
                   key={`${log.classId}-${log.rawDate || log.date}-${log.caDay}`}
                   title={`${log.classId || '—'} · ${log.caDay || '—'}`}
-                  subtitle={<DateText value={log.date} />}
-                  value={lessonAttendanceLabel(log)}
-                  badge={<StatusBadge domain="lesson" status={st.label} label={st.label} tone={st.tone} />}
+                  right={<StatusBadge domain="lesson" status={st.label} label={st.label} tone={st.tone} />}
+                  meta={<><DateText value={log.date} /> · {lessonAttendanceLabel(log)}{typeLabel ? ` · ${typeLabel}` : ''}</>}
+                  note={isOff ? `Lý do: ${lessonOffReasonLabel(log)}` : (log.content || (homework && homework !== '---' ? homework : 'Chưa có nội dung'))}
                   tone={st.tone}
                   onClick={() => onViewDiary(log)}
-                  meta={[
-                    ...(typeLabel ? [{ key: 'lessonType', label: typeLabel, tone: 'info' as const }] : []),
-                    { key: 'content', label: log.content || 'Chưa nhập nội dung', tone: log.content ? 'neutral' as const : 'warning' as const },
-                    isOff
-                      ? { key: 'reason', label: `Lý do: ${lessonOffReasonLabel(log)}`, tone: 'neutral' as const }
-                      : { key: 'homework', label: homework && homework !== '---' ? homework : 'Chưa có BTVN', tone: homework && homework !== '---' ? 'info' as const : 'neutral' as const },
-                  ]}
                 />
               );
             })}
@@ -1254,18 +1244,13 @@ export default function OperationsTab({
               const rate = attendanceRate(row);
               const phone = String(row.parentPhone || '').replace(/\D/g, '');
               return (
-                <MobileCompactCard
+                <MobileOperationalCard
                   key={`${row.id}-attendance-mobile`}
                   title={row.name}
-                  subtitle={`${row.id || '—'} · ${row.classId || 'Chưa có lớp'}`}
-                  value={rate === null ? '—' : `${rate}%`}
-                  badge={<StatusBadge domain="attendance" status={warning.label} label={warning.label} tone={warning.tone} />}
+                  right={rate === null ? '—' : `${rate}%`}
+                  meta={`${row.classId || 'Chưa có lớp'} · Vắng ${row.absent} · Có phép ${row.excused}`}
+                  note={<StatusBadge domain="attendance" status={warning.label} label={warning.label} tone={warning.tone} />}
                   tone={warning.tone}
-                  meta={[
-                    { key: 'absent', label: `Vắng ${row.absent}`, tone: row.absent ? 'warning' as const : 'success' as const },
-                    { key: 'streak', label: row.streak ? `Liên tiếp ${row.streak}` : 'Không liên tiếp', tone: row.streak ? 'danger' as const : 'neutral' as const },
-                    { key: 'excused', label: `Có phép ${row.excused}`, tone: row.excused ? 'info' as const : 'neutral' as const },
-                  ]}
                   actions={phone.length >= 9 ? (
                     <a href={`https://zalo.me/${phone}`} target="_blank" rel="noopener noreferrer" style={{ minHeight: 34, borderRadius: 999, border: '1px solid #bfdbfe', background: '#eef6ff', color: '#0068FF', padding: '7px 10px', fontSize: 12, fontWeight: 900, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, marginLeft: 'auto' }}>
                       <Phone size={13} /> Zalo PH

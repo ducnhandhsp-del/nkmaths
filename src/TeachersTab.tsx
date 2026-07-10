@@ -21,7 +21,7 @@ import {
 import { parseDMY } from './helpers';
 import { getMonthlyTuitionState, getPaymentTuitionPeriod, isStudentActiveInMonth } from './measures';
 import { Button, IconButton, SearchBar, Select } from './dsComponents';
-import { DataTable, DetailMetric, EmptyState, MobileCompactCard, MoneyText, PageToolbar, StatusBadge } from './uiSystem';
+import { DataTable, DetailMetric, EmptyState, MobileOperationalCard, MoneyText, PageToolbar, StatusBadge } from './uiSystem';
 import type { ClassRecord, DeleteTarget, Payment, Student, Teacher, TeachingLog } from './types';
 
 type TeacherStatus = 'active' | 'inactive' | 'onleave' | string;
@@ -618,23 +618,24 @@ export default function TeachersTab({
             const status = teacherStatus(t.status);
             const phone = String(t.phone || '').replace(/\D/g, '');
             const classIds = r.classes.map(getClassId).filter(Boolean);
+            const attendanceText = r.attendancePct == null ? 'Chưa có CC' : `CC ${r.attendancePct}%`;
+            const tuitionText = `HP T${curMo}: ${r.paidCount}/${r.billableStudents.length}`;
             return (
-              <MobileCompactCard
+              <MobileOperationalCard
                 key={r.id}
                 title={t.name}
-                subtitle={`${t.id || '—'}${t.specialization ? ` · ${t.specialization}` : ''}`}
-                value={<MoneyText value={r.monthRevenue} compact tone={r.monthRevenue > 0 ? 'success' : 'neutral'} />}
-                badge={<StatusBadge domain="teacher" status={status} label={teacherStatusLabel(status)} />}
+                right={<StatusBadge domain="teacher" status={status} label={teacherStatusLabel(status)} />}
+                meta={`${classIds.length} lớp · ${r.activeStudents.length} HS · ${attendanceText}`}
+                note={(
+                  <span>
+                    {tuitionText}
+                    {r.monthRevenue > 0 && <> · <MoneyText value={r.monthRevenue} compact tone="success" /></>}
+                  </span>
+                )}
                 tone={status === 'active' ? 'warning' : 'neutral'}
                 muted={status !== 'active'}
                 onClick={() => setDetailId(r.id)}
                 style={{ marginBottom: 8 }}
-                meta={[
-                  { key: 'classes', label: `${classIds.length} lớp`, tone: classIds.length ? 'primary' as const : 'neutral' as const },
-                  { key: 'students', label: `${r.activeStudents.length} HS`, tone: r.activeStudents.length ? 'success' as const : 'neutral' as const },
-                  { key: 'tuition', label: `HP T${curMo}: ${r.paidCount}/${r.billableStudents.length}`, tone: r.billableStudents.length && r.paidCount >= r.billableStudents.length ? 'success' as const : 'warning' as const },
-                  { key: 'attendance', label: r.attendancePct == null ? 'Chưa có CC' : `CC ${r.attendancePct}%`, tone: r.attendancePct == null ? 'neutral' as const : r.attendancePct >= 80 ? 'success' as const : r.attendancePct >= 60 ? 'warning' as const : 'danger' as const },
-                ]}
                 actions={(
                   <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                     {phone.length >= 9 && (
