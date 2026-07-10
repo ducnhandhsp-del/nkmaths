@@ -401,31 +401,20 @@ Nghiep vu can:
 
 - Doi thang.
 - Loc nguoi chi.
-- Loc danh muc chi.
+- Xem nhanh cac phieu chi theo nguoi chi.
 
 Desktop toolbar:
 
 ```text
-Thang 108px | Nguoi chi 128px | Loc 82px
+Thang 108px | Nguoi chi 128px
 ```
 
-Trong nut `Loc`:
-
-```text
-Danh muc: Tat ca | Van hanh | In an | Trang thiet bi | Luong | Khac | custom
-```
+Khong hien nut `Loc` trong phase nay. Filter danh muc chi tam thoi khong dua vao toolbar vi so luong phieu chi hien con it va nut nay tao them tang thao tac khong can thiet.
 
 Mobile toolbar:
 
 ```text
-Thang | Loc
-```
-
-Trong mobile `Loc`:
-
-```text
-Nguoi chi
-Danh muc
+Thang | Nguoi chi
 ```
 
 Khong them search noi dung chi trong phase nay, de tranh qua tai.
@@ -487,7 +476,7 @@ Can lam:
 
 - Hoc sinh: status mot tang tren toolbar.
 - Lop hoc: status lop mot tang tren toolbar.
-- Phieu chi: danh muc vao `Loc`.
+- Phieu chi: chi giu `Thang` va `Nguoi chi`, khong hien `Loc`.
 - Mobile: period/search + `Loc`, khong hien qua 2 slot.
 
 ### Phase 3 - Search doi soat tren desktop

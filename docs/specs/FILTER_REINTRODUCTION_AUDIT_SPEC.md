@@ -60,7 +60,7 @@ Bao cao tong quan khong nen co global class filter neu KPI van la toan trung tam
 - Classes: filter tinh trang lop.
 - Teachers: search/status filter.
 - Finance phieu thu: search theo hoc sinh/so phieu.
-- Finance phieu chi: filter danh muc chi.
+- Finance phieu chi: khong dua lai filter phu trong phase nay, giu gon theo thang va nguoi chi.
 
 ### P2 - Co the them sau neu du lieu tang lon
 
@@ -373,17 +373,12 @@ Toolbar hien co:
 
 Van de:
 
-- Thuc te doi soat chi phi thuong can nhin theo danh muc chi, khong chi nguoi chi.
+- So luong phieu chi hien tai con it, them nut `Loc` chi de loc danh muc lam tang thao tac va gay cam giac cong kenh.
 
-De xuat dua lai:
+De xuat:
 
-1. `Danh muc` select:
-
-```text
-Tat ca | Van hanh | In an | Trang thiet bi | Luong | Khac | custom...
-```
-
-2. Giu month + nguoi chi.
+1. Giu month + nguoi chi.
+2. Khong hien nut `Loc` cho phieu chi trong phase nay.
 
 P2:
 
@@ -455,7 +450,7 @@ De xuat:
 - Classes: `Tinh trang lop`.
 - Teachers: search + `Trang thai`.
 - Finance cong no/phieu thu: search theo hoc sinh/so phieu.
-- Finance phieu chi: `Danh muc`.
+- Finance phieu chi: giu gon `Thang` + `Nguoi chi`.
 
 ### Phase 3 - On dinh layout
 
@@ -471,4 +466,3 @@ De xuat:
 - Chon `Da nghi` o Hoc sinh: khong anh huong cong no thang hien tai.
 - Reports khong bi loc lop ngam.
 - Reload trang giu state loc can thiet hoac reset ve mac dinh ro rang.
-

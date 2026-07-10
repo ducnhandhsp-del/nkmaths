@@ -205,9 +205,8 @@ export default function FinanceTab({
   const [pgExpense, setPgExpense] = useState(1);
   const [eFilterMo, setEFilterMo] = useState('');
   const [eFilterSpender, setEFilterSpender] = useState('');
-  const [eFilterCategory, setEFilterCategory] = useState('');
   // FIX Bug 3: reset về trang 1 khi có phiếu chi mới
-  useEffect(() => { setPgExpense(1); }, [expenses.length, eFilterMo, eFilterSpender, eFilterCategory]);
+  useEffect(() => { setPgExpense(1); }, [expenses.length, eFilterMo, eFilterSpender]);
   const filteredExpenses = useMemo(() => {
     const [eFM, eFY] = (eFilterMo || '').split('/').map(Number);
     return expenses.slice().reverse().filter(e => {
@@ -216,10 +215,9 @@ export default function FinanceTab({
         if (!r || r.m !== eFM || r.y !== eFY) return false;
       }
       if (eFilterSpender && e.spender !== eFilterSpender) return false;
-      if (eFilterCategory && e.category !== eFilterCategory) return false;
       return true;
     });
-  }, [expenses, eFilterMo, eFilterSpender, eFilterCategory]);
+  }, [expenses, eFilterMo, eFilterSpender]);
   const pagedExpense = useMemo(() => {
     return filteredExpenses.slice((pgExpense - 1) * EXPENSE_IPP, pgExpense * EXPENSE_IPP);
   }, [filteredExpenses, pgExpense]);
@@ -345,13 +343,6 @@ export default function FinanceTab({
       .sort((a, b) => a.localeCompare(b, 'vi'))
       .map(v => ({ value: v, label: v })),
   ], [expenses]);
-  const expenseCategoryOptions = useMemo(() => [
-    { value: '', label: 'Danh mục' },
-    ...[...new Set(expenses.map(e => e.category).filter(Boolean))]
-      .sort((a, b) => a.localeCompare(b, 'vi'))
-      .map(v => ({ value: v, label: v })),
-  ], [expenses]);
-
   const debtDueLabel = useCallback(() => {
     const lastDay = new Date(selectedDebtMonth.y, selectedDebtMonth.m, 0).getDate();
     const dueDay = Math.min(normalizedDueDay, lastDay);
@@ -752,7 +743,7 @@ export default function FinanceTab({
             />
           </div>
           <div className="finance-desktop-only">
-            <SearchBar value={qF} onChange={v => { setQF(v); setPgF(1); }} placeholder="Tìm HS" width={150} size="sm" />
+            <SearchBar value={qF} onChange={v => { setQF(v); setPgF(1); }} placeholder="Tìm HS" width={116} size="md" />
           </div>
           <FilterMenu label="Lọc" className="finance-mobile-only" activeCount={(fFC ? 1 : 0) + (debtStatusFilter !== 'unpaid' ? 1 : 0) + (qF ? 1 : 0)} panelWidth={260}>
             <Select value={fFC} onChange={v => { setFFC(v); setPgF(1); }} options={classOptions} size="sm" />
@@ -788,15 +779,7 @@ export default function FinanceTab({
       {finSub === 'expense' && (
         <>
           <MonthSelect value={eFilterMo} onChange={v => { setEFilterMo(v); setPgExpense(1); }} />
-          <div className="finance-desktop-only">
-            <Select value={eFilterSpender} onChange={v => { setEFilterSpender(v); setPgExpense(1); }} options={expenseSpenderOptions} size="md" style={{ width: 128, minWidth: 112 }} />
-          </div>
-          <FilterMenu label="Lọc" activeCount={(eFilterSpender ? 1 : 0) + (eFilterCategory ? 1 : 0)} panelWidth={260}>
-            <div className="finance-mobile-only">
-              <Select value={eFilterSpender} onChange={v => { setEFilterSpender(v); setPgExpense(1); }} options={expenseSpenderOptions} size="sm" />
-            </div>
-            <Select value={eFilterCategory} onChange={v => { setEFilterCategory(v); setPgExpense(1); }} options={expenseCategoryOptions} size="sm" />
-          </FilterMenu>
+          <Select value={eFilterSpender} onChange={v => { setEFilterSpender(v); setPgExpense(1); }} options={expenseSpenderOptions} size="md" style={{ width: 128, minWidth: 112 }} />
         </>
       )}
     </>
