@@ -6,7 +6,7 @@ import { ReceiptText, UserPlus } from 'lucide-react';
 import { IPP, capitalizeName, compareClassCode, fixVietnameseText, isStudentActive } from './helpers';
 import { isStudentActiveInMonth, isStudentBillableInMonth } from './measures';
 import { Pager, Button, Select } from './dsComponents';
-import { DataTable, EmptyState, MobileOperationalCard, PageToolbar, StatusBadge } from './uiSystem';
+import { DataTable, EmptyState, MobileRecordAction, MobileRecordList, MobileRecordMarker, MobileRecordRow, PageToolbar, StatusBadge } from './uiSystem';
 import type { Student, DeleteTarget } from './types';
 
 interface Props {
@@ -70,22 +70,22 @@ function ZaloMark({ size = 18 }: { size?: number }) {
       aria-hidden="true"
       style={{
         width: size,
-        height: Math.round(size * 0.72),
+        height: size,
         borderRadius: Math.max(5, Math.round(size * 0.28)),
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
         background: '#0068ff',
         color: '#fff',
-        fontSize: Math.max(9, Math.round(size * 0.42)),
+        fontSize: Math.max(8, Math.round(size * 0.48)),
         fontWeight: 950,
         lineHeight: 1,
-        letterSpacing: '-0.02em',
+        letterSpacing: 0,
         fontFamily: 'Arial, sans-serif',
         boxShadow: 'inset 0 -1px 0 rgba(0,0,0,.14)',
       }}
     >
-      Zalo
+      Z
     </span>
   );
 }
@@ -366,18 +366,21 @@ export default function StudentsTab({
         <div className="student-mobile-cards" style={{ padding: 6 }}>
           {paged.length === 0 ? (
             <div style={{ padding: '36px 16px', textAlign: 'center' }}>{emptyState}</div>
-          ) : paged.map((s) => {
+          ) : <MobileRecordList>{paged.map((s) => {
             const inactive = !isStudentActive(s);
             const zaloPhone = String(s.parentPhone || s.studentPhone || '').replace(/\D/g, '');
             const debtMonths = debtMonthsOf(s);
+            const summary = classSummary(s.classId);
+            const primaryClass = summary?.primary || 'HS';
             const parentLabel = s.parentName ? `PH: ${s.parentName}` : 'Chưa có PH';
             const phoneLabel = s.parentPhone || s.studentPhone || 'Chưa có SĐT';
             return (
-              <MobileOperationalCard
+              <MobileRecordRow
                 key={s.id}
+                marker={<MobileRecordMarker tone={inactive ? 'neutral' : 'primary'}>{primaryClass}</MobileRecordMarker>}
                 title={capitalizeName(s.name)}
                 right={<DebtMonthsState months={debtMonths} />}
-                meta={`${s.classId || 'Chưa có lớp'} · ${parentLabel}`}
+                meta={parentLabel}
                 note={(
                   <span style={{ color: zaloPhone.length >= 9 ? '#047857' : '#b45309' }}>
                     {inactive ? 'Đã nghỉ' : phoneLabel}
@@ -386,37 +389,31 @@ export default function StudentsTab({
                 tone={inactive ? 'neutral' : 'primary'}
                 muted={inactive}
                 onClick={() => onViewStudent(s)}
-                style={{ marginBottom: 8 }}
                 actions={(
                   <div onClick={e => e.stopPropagation()} className="student-mobile-actions" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     {zaloPhone.length >= 9 && (
-                      <a
+                      <MobileRecordAction
                         href={`https://zalo.me/${zaloPhone}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title="Zalo"
-                        aria-label={`Zalo ${capitalizeName(s.name)}`}
-                        className="student-action-icon student-action-icon--zalo"
+                        title={`Zalo ${capitalizeName(s.name)}`}
+                        tone="zalo"
                       >
-                        <ZaloMark size={24} />
-                      </a>
+                        <ZaloMark size={18} />
+                      </MobileRecordAction>
                     )}
                     {onCollectFee && !inactive && (
-                      <button
-                        type="button"
-                        title="Phiếu"
-                        aria-label={`Phiếu thu ${capitalizeName(s.name)}`}
-                        className="student-action-icon student-action-icon--receipt"
+                      <MobileRecordAction
+                        title={`Phiếu thu ${capitalizeName(s.name)}`}
+                        tone="success"
                         onClick={() => onCollectFee(s)}
                       >
-                        <ReceiptText size={16} aria-hidden="true" />
-                      </button>
+                        <ReceiptText size={15} aria-hidden="true" />
+                      </MobileRecordAction>
                     )}
                   </div>
                 )}
               />
             );
-          })}
+          })}</MobileRecordList>}
           <Pager page={pgS} total={displayed.length} perPage={IPP} setPage={setPgS} showTotal />
         </div>
       </div>

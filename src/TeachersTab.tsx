@@ -21,7 +21,7 @@ import {
 import { parseDMY } from './helpers';
 import { getMonthlyTuitionState, getPaymentTuitionPeriod, isStudentActiveInMonth } from './measures';
 import { Button, IconButton, SearchBar, Select } from './dsComponents';
-import { DataTable, DetailMetric, EmptyState, MobileOperationalCard, MoneyText, PageToolbar, StatusBadge } from './uiSystem';
+import { DataTable, DetailMetric, EmptyState, MobileRecordAction, MobileRecordList, MobileRecordMarker, MobileRecordRow, MoneyText, PageToolbar, StatusBadge } from './uiSystem';
 import type { ClassRecord, DeleteTarget, Payment, Student, Teacher, TeachingLog } from './types';
 
 type TeacherStatus = 'active' | 'inactive' | 'onleave' | string;
@@ -613,7 +613,7 @@ export default function TeachersTab({
             <div style={{ padding: '28px 12px' }}>
               <EmptyState text={emptyText} sub={emptySub} compact />
             </div>
-          ) : visibleRows.map(r => {
+          ) : <MobileRecordList>{visibleRows.map(r => {
             const t = r.teacher;
             const status = teacherStatus(t.status);
             const phone = String(t.phone || '').replace(/\D/g, '');
@@ -621,8 +621,9 @@ export default function TeachersTab({
             const attendanceText = r.attendancePct == null ? 'Chưa có CC' : `CC ${r.attendancePct}%`;
             const tuitionText = `HP T${curMo}: ${r.paidCount}/${r.billableStudents.length}`;
             return (
-              <MobileOperationalCard
+              <MobileRecordRow
                 key={r.id}
+                marker={<MobileRecordMarker tone={status === 'active' ? 'warning' : 'neutral'}>GV</MobileRecordMarker>}
                 title={t.name}
                 right={<StatusBadge domain="teacher" status={status} label={teacherStatusLabel(status)} />}
                 meta={`${classIds.length} lớp · ${r.activeStudents.length} HS · ${attendanceText}`}
@@ -635,19 +636,18 @@ export default function TeachersTab({
                 tone={status === 'active' ? 'warning' : 'neutral'}
                 muted={status !== 'active'}
                 onClick={() => setDetailId(r.id)}
-                style={{ marginBottom: 8 }}
                 actions={(
-                  <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                  <>
                     {phone.length >= 9 && (
-                      <a href={`tel:${phone}`} style={{ minHeight: 34, padding: '7px 10px', borderRadius: 999, background: '#eff6ff', border: '1px solid #bfdbfe', color: '#2563eb', fontWeight: 900, fontSize: 12, cursor: 'pointer', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                        <Phone size={13} /> Gọi
-                      </a>
+                      <MobileRecordAction href={`tel:${phone}`} title={`Gọi ${t.name}`} tone="info">
+                        <Phone size={15} />
+                      </MobileRecordAction>
                     )}
-                  </div>
+                  </>
                 )}
               />
             );
-          })}
+          })}</MobileRecordList>}
         </div>
       </div>
 

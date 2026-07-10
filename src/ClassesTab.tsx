@@ -7,7 +7,7 @@ import { Clock, Plus, Trash2, X, Users, MapPin, User } from 'lucide-react';
 import { compareClassCode, fixVietnameseText, isStudentActive, normalizeCaDayLabel, normalizeScheduleCaText, resolveTeacher } from './helpers';
 import { getMonthlyTuitionState, getPaymentTuitionPeriod, isStudentActiveInMonth } from './measures';
 import { SearchBar, Select, Button } from './dsComponents';
-import { DataTable, DetailMetric, EmptyState, MobileOperationalCard, MoneyText, PageToolbar, StatusBadge } from './uiSystem';
+import { DataTable, DetailMetric, EmptyState, MobileRecordList, MobileRecordMarker, MobileRecordRow, MobileRecordTextAction, MoneyText, PageToolbar, StatusBadge } from './uiSystem';
 import type { Student, ClassRecord, Payment, DeleteTarget, TeachingLog } from './types';
 
 interface Props {
@@ -624,7 +624,7 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
         </div>
 
         <div className="class-mobile-cards" style={{ padding: 6 }}>
-          {filtCls.length === 0 ? emptyState : filtCls.map((c, idx) => {
+          {filtCls.length === 0 ? emptyState : <MobileRecordList>{filtCls.map((c, idx) => {
             const classId = getClassCode(c);
             const schedule = compactScheduleLabel(getSchedule(c));
             const hasSchedule = !!schedule;
@@ -634,8 +634,9 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
             const meta = classStatusMeta(status);
             const tuitionLabel = `HP T${curMo}: ${c.paidCount || 0}/${c.billableCount || 0}`;
             return (
-              <MobileOperationalCard
+              <MobileRecordRow
                 key={classId || idx}
+                marker={<MobileRecordMarker tone={meta.tone}>{classId || 'Lớp'}</MobileRecordMarker>}
                 title={getClassTitle(c)}
                 right={`${c.studentCount || 0} HS`}
                 meta={`${schedule || 'Chưa có lịch'}${branch ? ` · ${branch}` : ''}`}
@@ -644,20 +645,18 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
                   : `${teacherName || 'Chưa phân công'} · ${tuitionLabel}`}
                 tone={meta.tone}
                 onClick={() => setDetailCls(c)}
-                style={{ marginBottom: idx === filtCls.length - 1 ? 0 : 8 }}
                 actions={(
-                  <div onClick={e => e.stopPropagation()} style={{ display:'flex',gap:6,justifyContent:'flex-end',flexWrap:'wrap' }}>
+                  <>
                     {onAddDiary && hasSchedule && (
-                      <button onClick={() => onAddDiary(classId)}
-                        style={{ minHeight:34,padding:'7px 10px',borderRadius:999,background:'#f0fdf4',border:'1px solid #bbf7d0',color:'#047857',fontWeight:900,fontSize:12,cursor:'pointer' }}>
+                      <MobileRecordTextAction title={`Ghi buổi ${classId}`} tone="success" onClick={() => onAddDiary(classId)}>
                         Ghi
-                      </button>
+                      </MobileRecordTextAction>
                     )}
-                  </div>
+                  </>
                 )}
               />
             );
-          })}
+          })}</MobileRecordList>}
         </div>
       </div>
       {detailCls && <ClassDetailModal

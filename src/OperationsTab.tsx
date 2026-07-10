@@ -8,7 +8,7 @@ import { AlertTriangle, BookOpen, CalendarX, CheckCircle, Edit3, Eye, Phone, Plu
 import { getLessonOffReason, isLessonOffLog, normalizeCaDayLabel, normalizeScheduleCaText, parseCaDayToHours, parseDMY } from './helpers';
 import { attendanceStudentId, calcStudentAbsenceStreak, getAttendanceRisk, normalizeAttendanceStatus as normalizeAttendanceStatusCore } from './measures';
 import { Button, Pager, Select } from './dsComponents';
-import { ActionableKpi, ActionableKpiGrid, DataTable, DateText, EmptyState, MobileOperationalCard, PageToolbar, StatusBadge, ToolbarTabs } from './uiSystem';
+import { ActionableKpi, ActionableKpiGrid, DataTable, DateText, EmptyState, MobileRecordAction, MobileRecordList, MobileRecordMarker, MobileRecordRow, MobileRecordTextAction, PageToolbar, StatusBadge, ToolbarTabs, ZaloMark } from './uiSystem';
 import type { Student, TeachingLog, LeaveRequest, OperationsSub } from './types';
 
 const DAYS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
@@ -1119,22 +1119,23 @@ export default function OperationsTab({
           <div className="ops-schedule-mobile" style={{ gap: 6, padding: 6 }}>
             {displayScheduleRows.length === 0 ? (
               <EmptyState text="Không có lịch dạy trong tháng này" sub="Thử đổi tháng/năm hoặc lớp." compact />
-            ) : pagedScheduleRows.map(row => {
+            ) : <MobileRecordList>{pagedScheduleRows.map(row => {
               const dayCode = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][row.slot.date.getDay()];
               const locked = row.status === 'future' || row.status === 'cancelled';
               return (
-                <MobileOperationalCard
+                <MobileRecordRow
                   key={row.id}
-                  title={`${row.slot.caDay} · ${row.slot.classId}`}
+                  marker={<MobileRecordMarker tone={scheduleStatusTone(row.status)}>{row.slot.classId || 'Lớp'}</MobileRecordMarker>}
+                  title={row.slot.caDay || 'Ca dạy'}
                   right={<ScheduleBadge status={row.status} log={row.tlog} />}
                   meta={`${DAY_FULL[dayCode]} · ${fmtWeekDate(row.slot.date)} · ${row.slot.facility || 'Chưa rõ cơ sở'}`}
                   note={row.slot.teacher || 'Chưa rõ GV'}
                   tone={scheduleStatusTone(row.status)}
                   onClick={() => openScheduleRow(row)}
                   actions={(
-                    <div onClick={event => event.stopPropagation()} style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, flexWrap: 'wrap' }}>
+                    <>
                       {row.tlog ? (
-                        <Button intent="primary" variant="outline" size="sm" onClick={() => onViewDiary(row.tlog!)}>Xem</Button>
+                        <MobileRecordTextAction title="Xem buổi" tone="primary" onClick={() => onViewDiary(row.tlog!)}>Xem</MobileRecordTextAction>
                       ) : row.status === 'cancelled' ? (
                         <span title="Buổi học đã hủy nên không thể ghi buổi." style={{ minHeight: 34, display: 'inline-flex', alignItems: 'center', padding: '7px 10px', borderRadius: 999, background: '#f8fafc', border: '1px solid #e2e8f0', color: '#64748b', fontWeight: 900, fontSize: 12 }}>
                           Không ghi
@@ -1142,20 +1143,20 @@ export default function OperationsTab({
                       ) : (
                         <>
                           {!locked && (
-                            <Button intent="success" variant="outline" size="sm" onClick={() => onAddDiary(row.slot.classId, row.slot.isoDate, row.slot.caDay)}>
+                            <MobileRecordTextAction title="Ghi buổi" tone="success" onClick={() => onAddDiary(row.slot.classId, row.slot.isoDate, row.slot.caDay)}>
                               Ghi
-                            </Button>
+                            </MobileRecordTextAction>
                           )}
-                          <Button intent="warning" variant="outline" size="sm" onClick={() => markScheduleOff(row)}>
+                          <MobileRecordTextAction title="Nghỉ buổi" tone="warning" onClick={() => markScheduleOff(row)}>
                             Nghỉ
-                          </Button>
+                          </MobileRecordTextAction>
                         </>
                       )}
-                    </div>
+                    </>
                   )}
                 />
               );
-            })}
+            })}</MobileRecordList>}
             {displayScheduleRows.length > IPP && (
               <Pager page={schedulePage} total={displayScheduleRows.length} perPage={IPP} setPage={setSchedulePage} showTotal />
             )}
@@ -1191,15 +1192,16 @@ export default function OperationsTab({
           <div className="ops-lessons-mobile" style={{ gap: 6, padding: 6 }}>
             {pagedLessons.length === 0 ? (
               <EmptyState text="Chưa có buổi học phù hợp" sub="Thử đổi tháng hoặc lớp." compact />
-            ) : pagedLessons.map(log => {
+            ) : <MobileRecordList>{pagedLessons.map(log => {
               const st = lessonStatus(log);
               const homework = String(log.homework || '').trim();
               const isOff = isLessonOffLog(log);
               const typeLabel = lessonTypeLabel(log);
               return (
-                <MobileOperationalCard
+                <MobileRecordRow
                   key={`${log.classId}-${log.rawDate || log.date}-${log.caDay}`}
-                  title={`${log.classId || '—'} · ${log.caDay || '—'}`}
+                  marker={<MobileRecordMarker tone={st.tone}>{log.classId || 'Lớp'}</MobileRecordMarker>}
+                  title={log.caDay || 'Buổi học'}
                   right={<StatusBadge domain="lesson" status={st.label} label={st.label} tone={st.tone} />}
                   meta={<><DateText value={log.date} /> · {lessonAttendanceLabel(log)}{typeLabel ? ` · ${typeLabel}` : ''}</>}
                   note={isOff ? `Lý do: ${lessonOffReasonLabel(log)}` : (log.content || (homework && homework !== '---' ? homework : 'Chưa có nội dung'))}
@@ -1207,7 +1209,7 @@ export default function OperationsTab({
                   onClick={() => onViewDiary(log)}
                 />
               );
-            })}
+            })}</MobileRecordList>}
             <Pager page={pgD} total={filteredLessons.length} perPage={IPP} setPage={setPgD} showTotal />
           </div>
         </div>
@@ -1239,26 +1241,27 @@ export default function OperationsTab({
           <div className="ops-attendance-mobile" style={{ gap: 6, padding: 6 }}>
             {filteredAttendance.length === 0 ? (
               <EmptyState text="Chưa có dữ liệu chuyên cần phù hợp" sub="Thử đổi bộ lọc chuyên cần." compact />
-            ) : filteredAttendance.map(row => {
+            ) : <MobileRecordList>{filteredAttendance.map(row => {
               const warning = attendanceWarning(row);
               const rate = attendanceRate(row);
               const phone = String(row.parentPhone || '').replace(/\D/g, '');
               return (
-                <MobileOperationalCard
+                <MobileRecordRow
                   key={`${row.id}-attendance-mobile`}
+                  marker={<MobileRecordMarker tone={warning.tone}>{row.classId || 'HS'}</MobileRecordMarker>}
                   title={row.name}
                   right={rate === null ? '—' : `${rate}%`}
-                  meta={`${row.classId || 'Chưa có lớp'} · Vắng ${row.absent} · Có phép ${row.excused}`}
+                  meta={`Vắng ${row.absent} · Có phép ${row.excused}`}
                   note={<StatusBadge domain="attendance" status={warning.label} label={warning.label} tone={warning.tone} />}
                   tone={warning.tone}
                   actions={phone.length >= 9 ? (
-                    <a href={`https://zalo.me/${phone}`} target="_blank" rel="noopener noreferrer" style={{ minHeight: 34, borderRadius: 999, border: '1px solid #bfdbfe', background: '#eef6ff', color: '#0068FF', padding: '7px 10px', fontSize: 12, fontWeight: 900, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, marginLeft: 'auto' }}>
-                      <Phone size={13} /> Zalo PH
-                    </a>
+                    <MobileRecordAction href={`https://zalo.me/${phone}`} title={`Zalo PH ${row.name}`} tone="zalo">
+                      <ZaloMark size={16} />
+                    </MobileRecordAction>
                   ) : undefined}
                 />
               );
-            })}
+            })}</MobileRecordList>}
           </div>
         </div>
       )}

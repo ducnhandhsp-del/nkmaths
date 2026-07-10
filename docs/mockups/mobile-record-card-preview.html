@@ -1,0 +1,625 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mobile Record Card Preview - Lớp Toán NK</title>
+  <style>
+    :root {
+      --bg: #eef2f8;
+      --panel: #ffffff;
+      --ink: #07142f;
+      --muted: #64748b;
+      --soft: #f8fafc;
+      --line: #e8edf5;
+      --blue: #4f46e5;
+      --blue-soft: #eef2ff;
+      --green: #059669;
+      --green-soft: #dcfce7;
+      --amber: #b45309;
+      --amber-soft: #fef3c7;
+      --red: #b91c1c;
+      --red-soft: #fee2e2;
+      --shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      display: grid;
+      place-items: start center;
+      padding: 28px 14px;
+    }
+
+    .phone {
+      width: min(400px, 100%);
+      background: #f4f7fb;
+      border: 1px solid #dbe3ef;
+      border-radius: 26px;
+      overflow: hidden;
+      box-shadow: 0 30px 70px rgba(15, 23, 42, 0.2);
+    }
+
+    .topbar {
+      height: 58px;
+      padding: 0 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(255, 255, 255, 0.9);
+      border-bottom: 1px solid var(--line);
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+
+    .menu {
+      width: 34px;
+      height: 34px;
+      border: 0;
+      border-radius: 10px;
+      background: var(--soft);
+      color: #334155;
+      font-size: 20px;
+      line-height: 1;
+    }
+
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      background: #5b4bf4;
+      color: #fff;
+      font-weight: 900;
+      font-size: 13px;
+    }
+
+    .brand {
+      font-size: 14px;
+      font-weight: 900;
+      letter-spacing: 0;
+      flex: 1;
+    }
+
+    .sync {
+      border-radius: 999px;
+      padding: 5px 9px;
+      background: var(--green-soft);
+      color: #047857;
+      font-size: 11px;
+      font-weight: 850;
+      white-space: nowrap;
+    }
+
+    main {
+      padding: 14px 14px 72px;
+    }
+
+    .toolbar {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 12px;
+      box-shadow: 0 8px 22px rgba(15, 23, 42, 0.05);
+      margin-bottom: 12px;
+    }
+
+    .toolbar h1 {
+      margin: 0 0 10px;
+      font-size: 22px;
+      line-height: 1;
+      font-weight: 950;
+      letter-spacing: 0;
+    }
+
+    .tabs,
+    .filters {
+      display: grid;
+      gap: 8px;
+    }
+
+    .tabs {
+      grid-template-columns: repeat(3, 1fr);
+      margin-bottom: 8px;
+    }
+
+    .filters {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .pill,
+    .select {
+      min-height: 36px;
+      border: 1px solid #dbe3ef;
+      border-radius: 12px;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 12px;
+      font-size: 13px;
+      font-weight: 850;
+      color: #475569;
+    }
+
+    .pill.active {
+      color: #4338ca;
+      background: var(--blue-soft);
+      border-color: #c7d2fe;
+    }
+
+    .select {
+      justify-content: space-between;
+      color: #94a3b8;
+    }
+
+    .section-title {
+      margin: 16px 2px 8px;
+      font-size: 11px;
+      line-height: 1;
+      color: #94a3b8;
+      text-transform: uppercase;
+      font-weight: 950;
+      letter-spacing: 0.08em;
+    }
+
+    .record-list {
+      overflow: hidden;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+    }
+
+    .record-row {
+      min-height: 82px;
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 11px 12px;
+      background: #fff;
+    }
+
+    .record-row + .record-row {
+      border-top: 1px solid var(--line);
+    }
+
+    .marker {
+      width: 34px;
+      height: 34px;
+      border-radius: 11px;
+      display: grid;
+      place-items: center;
+      font-size: 11px;
+      font-weight: 950;
+      color: #4338ca;
+      background: var(--blue-soft);
+      border: 1px solid #c7d2fe;
+    }
+
+    .marker.money {
+      color: #047857;
+      background: var(--green-soft);
+      border-color: #bbf7d0;
+    }
+
+    .marker.warn {
+      color: var(--amber);
+      background: var(--amber-soft);
+      border-color: #fde68a;
+    }
+
+    .marker.danger {
+      color: var(--red);
+      background: var(--red-soft);
+      border-color: #fecaca;
+    }
+
+    .content {
+      min-width: 0;
+    }
+
+    .line-one {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .title {
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      font-size: 14px;
+      line-height: 18px;
+      font-weight: 950;
+      color: var(--ink);
+    }
+
+    .meta,
+    .note {
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      line-height: 17px;
+    }
+
+    .meta {
+      margin-top: 2px;
+      color: #475569;
+      font-size: 12px;
+      font-weight: 780;
+    }
+
+    .note {
+      margin-top: 6px;
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 820;
+    }
+
+    .note.warn { color: #b45309; }
+    .note.green { color: #047857; }
+
+    .side {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 7px;
+      min-width: 78px;
+    }
+
+    .amount {
+      color: #0f2b4f;
+      font-size: 14px;
+      line-height: 18px;
+      font-weight: 950;
+      white-space: nowrap;
+    }
+
+    .amount.green { color: #047857; }
+    .amount.red { color: #991b1b; }
+
+    .badge {
+      height: 22px;
+      max-width: 104px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      padding: 0 9px;
+      font-size: 11px;
+      font-weight: 900;
+      white-space: nowrap;
+      border: 1px solid transparent;
+    }
+
+    .badge.green {
+      background: var(--green-soft);
+      color: #047857;
+      border-color: #bbf7d0;
+    }
+
+    .badge.amber {
+      background: var(--amber-soft);
+      color: #92400e;
+      border-color: #fde68a;
+    }
+
+    .badge.blue {
+      background: var(--blue-soft);
+      color: #4338ca;
+      border-color: #c7d2fe;
+    }
+
+    .badge.red {
+      background: var(--red-soft);
+      color: #991b1b;
+      border-color: #fecaca;
+    }
+
+    .action-row {
+      display: flex;
+      gap: 6px;
+      justify-content: flex-end;
+      align-items: center;
+    }
+
+    .action-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 12px;
+      border: 1px solid #dbe3ef;
+      display: grid;
+      place-items: center;
+      background: #fff;
+      color: #475569;
+      font-size: 13px;
+      font-weight: 950;
+      line-height: 1;
+    }
+
+    .action-btn.green {
+      color: #059669;
+      background: #ecfdf5;
+      border-color: #bbf7d0;
+    }
+
+    .action-btn.blue {
+      color: #4338ca;
+      background: #eef2ff;
+      border-color: #c7d2fe;
+    }
+
+    .action-btn.red {
+      color: #b91c1c;
+      background: #fff7f7;
+      border-color: #fecaca;
+    }
+
+    .action-btn.amber {
+      color: #92400e;
+      background: #fffbeb;
+      border-color: #fde68a;
+    }
+
+    .action-text {
+      height: 32px;
+      min-width: 48px;
+      border-radius: 12px;
+      border: 1px solid #dbe3ef;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 10px;
+      background: #fff;
+      color: #475569;
+      font-size: 12px;
+      font-weight: 950;
+      line-height: 1;
+    }
+
+    .action-text.green {
+      color: #047857;
+      background: #ecfdf5;
+      border-color: #bbf7d0;
+    }
+
+    .action-text.amber {
+      color: #92400e;
+      background: #fffbeb;
+      border-color: #fde68a;
+    }
+
+    .zalo-mark {
+      font-size: 12px;
+      letter-spacing: 0;
+    }
+
+    .bottom-nav {
+      height: 64px;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      background: rgba(255, 255, 255, 0.94);
+      border-top: 1px solid var(--line);
+      position: sticky;
+      bottom: 0;
+    }
+
+    .nav-item {
+      border: 0;
+      background: transparent;
+      color: #94a3b8;
+      font-size: 10px;
+      font-weight: 850;
+      display: grid;
+      place-items: center;
+      align-content: center;
+      gap: 4px;
+    }
+
+    .nav-item strong {
+      width: 28px;
+      height: 28px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      font-size: 14px;
+    }
+
+    .nav-item.active { color: #4f46e5; }
+    .nav-item.active strong { background: var(--blue-soft); }
+
+    @media (max-width: 360px) {
+      main { padding-inline: 10px; }
+      .record-row {
+        grid-template-columns: 30px minmax(0, 1fr) auto;
+        gap: 8px;
+        padding-inline: 10px;
+      }
+      .marker {
+        width: 30px;
+        height: 30px;
+        border-radius: 10px;
+      }
+      .side { min-width: 64px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="phone">
+    <header class="topbar">
+      <button class="menu">≡</button>
+      <div class="brand-mark">NK</div>
+      <div class="brand">LỚP TOÁN NK</div>
+      <div class="sync">Cập nhật 16:20</div>
+    </header>
+
+    <main>
+      <section class="toolbar">
+        <h1>HỌC PHÍ</h1>
+        <div class="tabs">
+          <div class="pill active">Công nợ</div>
+          <div class="pill">Phiếu thu</div>
+          <div class="pill">Phiếu chi</div>
+        </div>
+        <div class="filters">
+          <div class="select">T7/2026 <span>⌄</span></div>
+          <div class="select">Cần thu <span>⌄</span></div>
+        </div>
+      </section>
+
+      <div class="section-title">Mẫu 1 · Công nợ học phí</div>
+      <section class="record-list">
+        <article class="record-row">
+          <div class="marker warn">HP</div>
+          <div class="content">
+            <div class="line-one"><div class="title">Bảo Hân</div></div>
+            <div class="meta">12A · T7/2026 · 4 buổi</div>
+            <div class="note warn">Hạn đóng 15/07</div>
+          </div>
+          <div class="side">
+            <div class="amount">600 000đ</div>
+            <div class="action-row">
+              <button class="action-btn blue" title="Nhắn Zalo"><span class="zalo-mark">Z</span></button>
+              <button class="action-btn green" title="Tạo phiếu thu">▤</button>
+            </div>
+          </div>
+        </article>
+        <article class="record-row">
+          <div class="marker">HP</div>
+          <div class="content">
+            <div class="line-one"><div class="title">Bảo Văn</div></div>
+            <div class="meta">10B · T7/2026 · 0 buổi</div>
+            <div class="note warn">Hạn đóng 15/07</div>
+          </div>
+          <div class="side">
+            <div class="amount">600 000đ</div>
+            <div class="action-row">
+              <button class="action-btn blue" title="Nhắn Zalo"><span class="zalo-mark">Z</span></button>
+              <button class="action-btn green" title="Tạo phiếu thu">▤</button>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <div class="section-title">Mẫu 2 · Học sinh</div>
+      <section class="record-list">
+        <article class="record-row">
+          <div class="marker">6A</div>
+          <div class="content">
+            <div class="line-one"><div class="title">Hoàng Nhã Phương</div></div>
+            <div class="meta">Phụ huynh: Hoàng Thị Thu Hường</div>
+            <div class="note warn">Chưa có SĐT</div>
+          </div>
+          <div class="side">
+            <span class="badge amber">Chưa thu</span>
+            <div class="action-row">
+              <button class="action-btn blue" title="Nhắn Zalo"><span class="zalo-mark">Z</span></button>
+              <button class="action-btn green" title="Tạo phiếu thu">▤</button>
+            </div>
+          </div>
+        </article>
+        <article class="record-row">
+          <div class="marker">6A</div>
+          <div class="content">
+            <div class="line-one"><div class="title">Võ Nguyễn Bình An</div></div>
+            <div class="meta">Phụ huynh: Nguyễn Thị Ngân</div>
+            <div class="note green">Đang học</div>
+          </div>
+          <div class="side">
+            <span class="badge green">Đang học</span>
+            <div class="action-row">
+              <button class="action-btn blue" title="Nhắn Zalo"><span class="zalo-mark">Z</span></button>
+              <button class="action-btn green" title="Tạo phiếu thu">▤</button>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <div class="section-title">Mẫu 3 · Phiếu thu / Phiếu chi</div>
+      <section class="record-list">
+        <article class="record-row">
+          <div class="marker money">+</div>
+          <div class="content">
+            <div class="line-one"><div class="title">Trần Khánh Phong</div></div>
+            <div class="meta">09/07/2026 · T7/2026 · 10A</div>
+            <div class="note green">Lê Đức Nhân · Chuyển khoản</div>
+          </div>
+          <div class="side">
+            <div class="amount green">600 000đ</div>
+            <div class="action-row">
+              <button class="action-btn blue" title="Sửa">✎</button>
+              <button class="action-btn red" title="Xóa">×</button>
+            </div>
+          </div>
+        </article>
+        <article class="record-row">
+          <div class="marker danger">-</div>
+          <div class="content">
+            <div class="line-one"><div class="title">Tiền điện</div></div>
+            <div class="meta">09/07/2026 · Vận hành</div>
+            <div class="note warn">Nhân</div>
+          </div>
+          <div class="side">
+            <div class="amount red">2tr</div>
+            <div class="action-row">
+              <button class="action-btn blue" title="Sửa">✎</button>
+              <button class="action-btn red" title="Xóa">×</button>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <div class="section-title">Mẫu 4 · Lớp / buổi học</div>
+      <section class="record-list">
+        <article class="record-row">
+          <div class="marker">10B</div>
+          <div class="content">
+            <div class="line-one"><div class="title">17h30 · 10B</div></div>
+            <div class="meta">Thứ 4 · 08/07 · Đào Tấn</div>
+            <div class="note">Nguyễn Thị Kiều · Có thể ghi</div>
+          </div>
+          <div class="side">
+            <span class="badge amber">Có thể ghi</span>
+            <div class="action-row">
+              <button class="action-text green" title="Ghi buổi">Ghi</button>
+              <button class="action-text amber" title="Nghỉ">Nghỉ</button>
+            </div>
+          </div>
+        </article>
+        <article class="record-row">
+          <div class="marker">8A</div>
+          <div class="content">
+            <div class="line-one"><div class="title">15h30 · 8A</div></div>
+            <div class="meta">Thứ 4 · 08/07 · Đào Tấn</div>
+            <div class="note">Lê Đức Nhân · Buổi chính khóa</div>
+          </div>
+          <div class="side">
+            <span class="badge green">Đã ghi</span>
+            <button class="action-text green" title="Sửa buổi">Sửa</button>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <nav class="bottom-nav">
+      <button class="nav-item"><strong>▦</strong><span>TỔNG QUAN</span></button>
+      <button class="nav-item active"><strong>◈</strong><span>ĐÀO TẠO</span></button>
+      <button class="nav-item"><strong>⌁</strong><span>VẬN HÀNH</span></button>
+      <button class="nav-item"><strong>▤</strong><span>TÀI CHÍNH</span></button>
+      <button class="nav-item"><strong>▥</strong><span>BÁO CÁO</span></button>
+    </nav>
+  </div>
+</body>
+</html>

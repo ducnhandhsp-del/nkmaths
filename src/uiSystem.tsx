@@ -1377,6 +1377,276 @@ export function MobileOperationalCard({
   );
 }
 
+export function ZaloMark({ size = 18 }: { size?: number }) {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        width: size,
+        height: size,
+        borderRadius: Math.max(5, Math.round(size * 0.28)),
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#0068ff',
+        color: '#fff',
+        fontSize: Math.max(8, Math.round(size * 0.48)),
+        fontWeight: 950,
+        lineHeight: 1,
+        letterSpacing: 0,
+        fontFamily: 'Arial, sans-serif',
+        boxShadow: 'inset 0 -1px 0 rgba(0,0,0,.14)',
+      }}
+    >
+      Z
+    </span>
+  );
+}
+
+export function MobileRecordList({
+  children,
+  style,
+}: {
+  children: React.ReactNode;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <section
+      style={{
+        width: '100%',
+        overflow: 'hidden',
+        background: '#fff',
+        border: `1px solid ${colors.neutral[200]}`,
+        borderRadius: 16,
+        boxShadow: '0 10px 26px rgba(15,23,42,.06)',
+        fontFamily: typography.fontFamily,
+        ...style,
+      }}
+    >
+      <style>{`.ltn-mobile-record-row + .ltn-mobile-record-row{border-top:1px solid #e8edf5}`}</style>
+      {children}
+    </section>
+  );
+}
+
+export function MobileRecordMarker({
+  children,
+  tone = 'primary',
+}: {
+  children: React.ReactNode;
+  tone?: UiTone;
+}) {
+  const t = TONE[tone];
+  return (
+    <span
+      style={{
+        width: 34,
+        height: 34,
+        borderRadius: 11,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flex: '0 0 34px',
+        background: t.bg,
+        border: `1px solid ${t.border}`,
+        color: t.text,
+        fontSize: 11,
+        fontWeight: 950,
+        lineHeight: 1,
+        fontVariantNumeric: 'tabular-nums',
+        overflow: 'hidden',
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+export function MobileRecordAction({
+  children,
+  title,
+  tone = 'neutral',
+  href,
+  onClick,
+  disabled = false,
+}: {
+  children: React.ReactNode;
+  title: string;
+  tone?: UiTone | 'zalo';
+  href?: string;
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
+  const cfg = tone === 'zalo'
+    ? { bg: '#eef6ff', border: '#bfdbfe', text: '#0068ff' }
+    : { bg: TONE[tone].bg, border: TONE[tone].border, text: TONE[tone].text };
+  const baseStyle: React.CSSProperties = {
+    width: 32,
+    height: 32,
+    borderRadius: 12,
+    border: `1px solid ${cfg.border}`,
+    background: cfg.bg,
+    color: cfg.text,
+    padding: 0,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: '0 0 32px',
+    fontSize: 13,
+    fontWeight: 950,
+    lineHeight: 1,
+    textDecoration: 'none',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.48 : 1,
+  };
+  if (href && !disabled) {
+    const externalTarget = /^https?:\/\//i.test(href) ? '_blank' : undefined;
+    return (
+      <a href={href} target={externalTarget} rel={externalTarget ? 'noopener noreferrer' : undefined} title={title} aria-label={title} style={baseStyle}>
+        {children}
+      </a>
+    );
+  }
+  return (
+    <button type="button" title={title} aria-label={title} disabled={disabled} onClick={onClick} style={baseStyle}>
+      {children}
+    </button>
+  );
+}
+
+export function MobileRecordTextAction({
+  children,
+  title,
+  tone = 'neutral',
+  onClick,
+  disabled = false,
+}: {
+  children: React.ReactNode;
+  title: string;
+  tone?: UiTone;
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
+  const t = TONE[tone];
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      disabled={disabled}
+      onClick={onClick}
+      style={{
+        height: 32,
+        minWidth: 48,
+        padding: '0 10px',
+        borderRadius: 12,
+        border: `1px solid ${t.border}`,
+        background: t.bg,
+        color: t.text,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: 12,
+        fontWeight: 950,
+        lineHeight: 1,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.48 : 1,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+export function MobileRecordRow({
+  marker,
+  title,
+  right,
+  meta,
+  note,
+  actions,
+  onClick,
+  tone = 'neutral',
+  muted = false,
+  titleLines = 1,
+}: {
+  marker?: React.ReactNode;
+  title: React.ReactNode;
+  right?: React.ReactNode;
+  meta?: React.ReactNode;
+  note?: React.ReactNode;
+  actions?: React.ReactNode;
+  onClick?: () => void;
+  tone?: UiTone;
+  muted?: boolean;
+  titleLines?: 1 | 2;
+}) {
+  const t = TONE[tone];
+  return (
+    <article
+      className="ltn-mobile-record-row"
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={onClick ? (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onClick();
+        }
+      } : undefined}
+      style={{
+        minHeight: 82,
+        display: 'grid',
+        gridTemplateColumns: marker ? '34px minmax(0,1fr) auto' : 'minmax(0,1fr) auto',
+        gap: 10,
+        alignItems: 'center',
+        padding: '11px 12px',
+        background: muted ? colors.neutral[50] : '#fff',
+        opacity: muted ? 0.72 : 1,
+        cursor: onClick ? 'pointer' : 'default',
+        borderLeft: `3px solid ${tone === 'neutral' ? 'transparent' : t.border}`,
+      }}
+    >
+      {marker}
+      <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            minWidth: 0,
+            margin: 0,
+            color: colors.neutral[900],
+            fontSize: 14,
+            fontWeight: 950,
+            lineHeight: '18px',
+            overflow: 'hidden',
+            display: '-webkit-box',
+            WebkitBoxOrient: 'vertical',
+            WebkitLineClamp: titleLines,
+          }}
+        >
+          {title}
+        </div>
+        {meta && (
+          <div style={{ minWidth: 0, marginTop: 2, color: colors.neutral[600], fontSize: 12, fontWeight: 800, lineHeight: '17px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {meta}
+          </div>
+        )}
+        {note && (
+          <div style={{ minWidth: 0, marginTop: 6, color: colors.neutral[700], fontSize: 12, fontWeight: 850, lineHeight: '17px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {note}
+          </div>
+        )}
+      </div>
+      {(right || actions) && (
+        <div style={{ minWidth: 78, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center', gap: 7 }}>
+          {right && <div style={{ maxWidth: 120, fontSize: 14, fontWeight: 950, lineHeight: '18px', color: colors.neutral[900], textAlign: 'right', whiteSpace: 'nowrap' }}>{right}</div>}
+          {actions && <div onClick={event => event.stopPropagation()} style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, flexWrap: 'wrap' }}>{actions}</div>}
+        </div>
+      )}
+    </article>
+  );
+}
+
 export function ConfirmDialog({
   open,
   title,

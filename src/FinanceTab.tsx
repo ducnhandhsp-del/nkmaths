@@ -13,7 +13,7 @@
  * ✅ [v28.2] Zalo: thêm nút copy message vào clipboard
  */
 import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
-import { Plus, Check, TrendingDown, TrendingUp, Wallet, AlertTriangle, MessageCircle, ReceiptText } from 'lucide-react';
+import { Plus, Check, TrendingDown, TrendingUp, Wallet, AlertTriangle, MessageCircle, ReceiptText, Edit3, Trash2 } from 'lucide-react';
 import { fmtVND, capitalizeName, compareClassCode, normalizePaymentMethod, resolveTeacher, buildSchoolYearMonths } from './helpers';
 import {
   attendanceStudentId,
@@ -26,7 +26,7 @@ import {
   parsePeriod,
 } from './measures';
 import { Badge, Button, Pager, SearchBar, Select } from './dsComponents';
-import { ActionableKpi, ActionableKpiGrid, DataTable, DateText, EmptyState, MobileOperationalCard, MoneyText, MonthText, PageToolbar, StatusBadge, ToolbarTabs, useIsMobileViewport } from './uiSystem';
+import { ActionableKpi, ActionableKpiGrid, DataTable, DateText, EmptyState, MobileRecordAction, MobileRecordList, MobileRecordMarker, MobileRecordRow, MobileRecordTextAction, MoneyText, MonthText, PageToolbar, StatusBadge, ToolbarTabs, ZaloMark, useIsMobileViewport } from './uiSystem';
 import type { Payment, Expense, Student, FinanceSub, TeachingLog } from './types';
 
 interface Props {
@@ -897,10 +897,11 @@ export default function FinanceTab({
           <div className="fin-debt-mobile" style={{ padding: 6 }}>
             {pagedDebtRows.length === 0 ? (
               <EmptyState text="Không có học sinh phù hợp" sub="Thử đổi bộ lọc công nợ." compact />
-            ) : pagedDebtRows.map(row => {
+            ) : <MobileRecordList>{pagedDebtRows.map(row => {
               const s = row.student;
               const ph = String(s.parentPhone || '').replace(/\D/g, '');
               const sh = String(s.studentPhone || '').replace(/\D/g, '');
+              const zaloPhone = ph || sh;
               const periodStatus = getDebtPeriodStatus(row);
               const meta = debtStatusMeta(periodStatus);
               const receipt = getDebtPeriodPayment(row);
@@ -908,42 +909,41 @@ export default function FinanceTab({
               const actionAmount = amount || row.debtAmount || baseTuition;
               const audit = attendanceAuditByStudent.get(row.id);
               const sessionLabel = audit?.totalSessions ? `${audit.totalSessions} buổi${audit.extraSessions ? ` · ${audit.extraSessions} thêm vào buổi` : ''}` : '0 buổi';
+              const classId = s.classId || 'HS';
               return (
-                <MobileOperationalCard
+                <MobileRecordRow
                   key={`${s.id}-debt-card`}
+                  marker={<MobileRecordMarker tone={meta.tone}>{classId}</MobileRecordMarker>}
                   title={capitalizeName(s.name)}
                   right={<MoneyText value={amount} compact tone={periodStatus === 'paid' ? 'success' : periodStatus === 'overdue' ? 'danger' : undefined} />}
-                  meta={`${s.classId || 'Chưa có lớp'} · T${selectedDebtMonth.m}/${selectedDebtMonth.y} · ${sessionLabel}`}
+                  meta={`T${selectedDebtMonth.m}/${selectedDebtMonth.y} · ${sessionLabel}`}
                   note={<StatusBadge domain="tuition" status={periodStatus} label={meta.label} tone={meta.tone} />}
                   tone={meta.tone}
                   muted={row.isInactive}
                   onClick={() => onViewFinance(s)}
-                  style={{ marginBottom: 8 }}
                   actions={(
-                    <div className="ltn-mobile-action-row" onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                    <>
                       {periodStatus === 'paid' && receipt ? (
-                        <button onClick={() => onViewInvoice(receipt)} style={{ minHeight: 34, padding: '7px 10px', borderRadius: 999, background: '#eef2ff', border: '1px solid #c7d2fe', color: '#4f46e5', fontWeight: 900, fontSize: 11, cursor: 'pointer' }}>
+                        <MobileRecordTextAction title="Biên lai" tone="primary" onClick={() => onViewInvoice(receipt)}>
                           Biên lai
-                        </button>
-                      ) : periodStatus === 'overdue' && (ph.length >= 9 || sh.length >= 9) ? (
-                        <>
-                          <button aria-label="Thu phí" title="Thu phí" onClick={() => onShowFAB('income', makePaymentDraft(row))} style={{ minHeight: 34, minWidth: 34, padding: 0, borderRadius: 999, background: '#ecfdf5', border: '1px solid #bbf7d0', color: '#047857', fontWeight: 900, fontSize: 12, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <ReceiptText size={15} />
-                          </button>
-                          <button className="ltn-zalo-action" aria-label={copiedId === s.id ? 'Đã copy tin nhắn' : 'Nhắc phí'} title={copiedId === s.id ? 'Đã copy tin nhắn' : 'Nhắc phí'} onClick={() => copyMsg(s.id, makeZaloMsg(s, actionAmount))} style={{ minHeight: 34, minWidth: 34, padding: 0, borderRadius: 999, background: copiedId === s.id ? '#ecfdf5' : '#f0fdf4', border: `1px solid ${copiedId === s.id ? '#a7f3d0' : '#bbf7d0'}`, color: copiedId === s.id ? '#059669' : '#16a34a', fontWeight: 900, fontSize: 12, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
-                            {copiedId === s.id ? <Check size={15} /> : <MessageCircle size={15} />}
-                          </button>
-                        </>
+                        </MobileRecordTextAction>
                       ) : periodStatus === 'unpaid' || periodStatus === 'overdue' ? (
-                        <button aria-label="Thu phí" title="Thu phí" onClick={() => onShowFAB('income', makePaymentDraft(row))} style={{ minHeight: 34, minWidth: 34, padding: 0, borderRadius: 999, background: '#ecfdf5', border: '1px solid #bbf7d0', color: '#047857', fontWeight: 900, fontSize: 12, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <ReceiptText size={15} />
-                        </button>
+                        <>
+                          <MobileRecordAction title="Thu phí" tone="success" onClick={() => onShowFAB('income', makePaymentDraft(row))}>
+                            <ReceiptText size={15} />
+                          </MobileRecordAction>
+                          {zaloPhone.length >= 9 && (
+                            <MobileRecordAction title={copiedId === s.id ? 'Đã copy tin nhắn' : 'Nhắc phí Zalo'} tone={copiedId === s.id ? 'success' : 'zalo'} onClick={() => copyMsg(s.id, makeZaloMsg(s, actionAmount))}>
+                              {copiedId === s.id ? <Check size={15} /> : <ZaloMark size={18} />}
+                            </MobileRecordAction>
+                          )}
+                        </>
                       ) : null}
-                    </div>
+                    </>
                   )}
                 />
               );
-            })}
+            })}</MobileRecordList>}
             <Pager page={pgF} total={debtTableRows.length} perPage={IPP} setPage={setPgF} showTotal />
           </div>
           </section>
@@ -976,12 +976,13 @@ export default function FinanceTab({
             <div className="fin-ledger-mobile" style={{ gap: 6, padding: 6 }}>
             {pagedLedger.length === 0 ? (
                 <EmptyState text="Chưa có phiếu thu phù hợp" sub="Thử đổi tháng hoặc lớp." compact />
-              ) : pagedLedger.map(p => {
+              ) : <MobileRecordList>{pagedLedger.map(p => {
                 const period = getPaymentTuitionPeriod(p);
                 const cls = paymentClassId(p, students);
                 return (
-                  <MobileOperationalCard
+                  <MobileRecordRow
                     key={p.id || p.docNum || `${p.studentId}-${p.date}-${p.amount}`}
+                    marker={<MobileRecordMarker tone="success">+</MobileRecordMarker>}
                     title={capitalizeName(p.studentName) || p.docNum || 'Phiếu thu'}
                     right={<MoneyText value={p.amount} compact tone="success" />}
                     meta={(
@@ -993,14 +994,14 @@ export default function FinanceTab({
                     tone="success"
                     onClick={() => onViewInvoice(p)}
                     actions={(
-                      <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                        <Button intent="primary" variant="outline" size="sm" onClick={() => onEditPayment(p)}>Sửa</Button>
-                        <Button intent="danger" variant="outline" size="sm" onClick={() => onDeletePayment(p)}>Xóa</Button>
-                      </div>
+                      <>
+                        <MobileRecordAction title="Sửa phiếu thu" tone="primary" onClick={() => onEditPayment(p)}><Edit3 size={15} /></MobileRecordAction>
+                        <MobileRecordAction title="Xóa phiếu thu" tone="danger" onClick={() => onDeletePayment(p)}><Trash2 size={15} /></MobileRecordAction>
+                      </>
                     )}
                   />
                 );
-              })}
+              })}</MobileRecordList>}
               <Pager page={pgLedger} total={filteredLedger.length} perPage={LEDGER_IPP} setPage={setPgLedger} showTotal />
             </div>
           </section>
@@ -1028,9 +1029,10 @@ export default function FinanceTab({
           <div className="fin-expense-mobile" style={{ gap: 6, padding: 6 }}>
             {pagedExpense.length === 0 ? (
               <EmptyState text="Chưa có phiếu chi phù hợp" sub="Thử đổi tháng hoặc người chi." compact />
-            ) : pagedExpense.map(e => (
-                <MobileOperationalCard
+            ) : <MobileRecordList>{pagedExpense.map(e => (
+                <MobileRecordRow
                   key={e.id || e.docNum || `${e.date}-${e.description}-${e.amount}`}
+                  marker={<MobileRecordMarker tone="danger">-</MobileRecordMarker>}
                   title={e.description || e.docNum || 'Phiếu chi'}
                   right={<MoneyText value={e.amount} compact tone="danger" />}
                   meta={<><DateText value={e.date} /> · {e.category || 'Chưa phân loại'}</>}
@@ -1038,13 +1040,13 @@ export default function FinanceTab({
                   tone="danger"
                   onClick={() => onViewExpense(e)}
                   actions={(
-                    <div onClick={event => event.stopPropagation()} style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                      <Button intent="primary" variant="outline" size="sm" onClick={() => onEditExpense(e)}>Sửa</Button>
-                      <Button intent="danger" variant="outline" size="sm" onClick={() => onDeleteExpense(e)}>Xóa</Button>
-                    </div>
+                    <>
+                      <MobileRecordAction title="Sửa phiếu chi" tone="primary" onClick={() => onEditExpense(e)}><Edit3 size={15} /></MobileRecordAction>
+                      <MobileRecordAction title="Xóa phiếu chi" tone="danger" onClick={() => onDeleteExpense(e)}><Trash2 size={15} /></MobileRecordAction>
+                    </>
                   )}
                 />
-            ))}
+            ))}</MobileRecordList>}
             <Pager page={pgExpense} total={filteredExpenses.length} perPage={EXPENSE_IPP} setPage={setPgExpense} showTotal />
           </div>
         </div>
