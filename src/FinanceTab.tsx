@@ -27,7 +27,6 @@ import {
 } from './measures';
 import { Badge, Button, Pager, SearchBar, Select } from './dsComponents';
 import { ActionableKpi, ActionableKpiGrid, DataTable, DateText, EmptyState, MobileCompactCard, MoneyText, MonthText, PageToolbar, StatusBadge, ToolbarTabs, useIsMobileViewport } from './uiSystem';
-import FilterMenu from './FilterMenu';
 import type { Payment, Expense, Student, FinanceSub, TeachingLog } from './types';
 
 interface Props {
@@ -746,8 +745,7 @@ export default function FinanceTab({
           <div className="finance-desktop-only">
             <SearchBar value={qF} onChange={v => { setQF(v); setPgF(1); }} placeholder="Tìm HS" width={116} size="md" />
           </div>
-          <FilterMenu label="Lọc" className="finance-mobile-only" activeCount={(fFC ? 1 : 0) + (debtStatusFilter !== 'unpaid' ? 1 : 0)} panelWidth={260}>
-            <Select value={fFC} onChange={v => { setFFC(v); setPgF(1); }} options={classOptions} size="sm" />
+          <div className="finance-mobile-only">
             <Select
               value={debtStatusFilter}
               onChange={v => { setFSt(v); setPgF(1); }}
@@ -756,9 +754,9 @@ export default function FinanceTab({
                 { value: 'all', label: 'Tất cả' },
                 { value: 'paid', label: 'Đã thu' },
               ]}
-              size="sm"
+              size="md"
             />
-          </FilterMenu>
+          </div>
         </>
       )}
       {finSub === 'ledger' && (
@@ -770,9 +768,9 @@ export default function FinanceTab({
           <div className="finance-desktop-only">
             <SearchBar value={ledgerQuery} onChange={v => { setLedgerQuery(v); setPgLedger(1); }} placeholder="Tìm HS / số phiếu" width={188} size="sm" />
           </div>
-          <FilterMenu label="Lọc" className="finance-mobile-only" activeCount={lFilterCls ? 1 : 0} panelWidth={260}>
-            <Select value={lFilterCls} onChange={v => { setLFilterCls(v); setPgLedger(1); }} options={classOptions} size="sm" />
-          </FilterMenu>
+          <div className="finance-mobile-only">
+            <Select value={lFilterCls} onChange={v => { setLFilterCls(v); setPgLedger(1); }} options={classOptions} size="md" />
+          </div>
         </>
       )}
       {finSub === 'expense' && (
@@ -815,7 +813,7 @@ export default function FinanceTab({
           .finance-toolbar-filters > *{width:100%!important;min-width:0!important}
           .finance-toolbar-filters select{width:100%!important;min-width:0!important}
           .finance-desktop-only{display:none!important}
-          .finance-mobile-only{display:block}
+          .finance-mobile-only{display:block!important}
         }
       `}</style>
       <PageToolbar

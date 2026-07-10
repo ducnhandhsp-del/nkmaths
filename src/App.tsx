@@ -13,14 +13,14 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { CalendarCheck, FilePlus2, LockKeyhole, MessageCircle, ReceiptText, School, UserPlus } from 'lucide-react';
+import { LockKeyhole } from 'lucide-react';
 
 import { loadSettings, saveSettings, parseDMY, SCRIPT_URL_DEFAULT, FEE_DEFAULT, CA_DAY_DEFAULT, TEACHER_LIST_DEFAULT, normalizeCaDayOptions, LESSON_OFF_NOTE_TAG } from './helpers';
 import { RULES } from './rules';
 import type { Screen, Student, DeleteTarget, TrainingSub, OperationsSub, FinanceSub, ReportsSub } from './types';
 
 import { Sidebar, MobileHeader, BottomNav, useIsDesktop } from './Layout';
-import { ErrorBoundary, MobileActionFab, type MobileActionFabAction } from './AppComponents';
+import { ErrorBoundary } from './AppComponents';
 import CommandPalette from './CommandPalette';
 import { useCommands } from './useCommands';
 import { useAppData } from './useAppData';
@@ -320,58 +320,6 @@ function AdminApp({ adminToken, onChangeAdminAccess }: { adminToken: string; onC
     onAddPayment: () => { goFinance('ledger'); d.setEditPayment(null); d.setEditExpense(null); setPaymentDraft(null); setShowPayment(true); },
   });
 
-  const openStudentModal = useCallback(() => {
-    goTraining('students');
-    d.setEditStudent(null);
-    setShowStudent(true);
-  }, [d.setEditStudent, goTraining]);
-
-  const openClassModal = useCallback(() => {
-    goTraining('classes');
-    d.setEditClass(null);
-    setShowClass(true);
-  }, [d.setEditClass, goTraining]);
-
-  const openIncomeModal = useCallback(() => {
-    goFinance('ledger');
-    d.setEditPayment(null);
-    d.setEditExpense(null);
-    setPaymentDraft(null);
-    setShowPayment(true);
-  }, [d.setEditExpense, d.setEditPayment, goFinance]);
-
-  const openExpenseModal = useCallback(() => {
-    goFinance('expense');
-    d.setEditPayment(null);
-    d.setEditExpense(null);
-    setPaymentDraft(null);
-    setShowExpense(true);
-  }, [d.setEditExpense, d.setEditPayment, goFinance]);
-
-  const mobileActions = useMemo<MobileActionFabAction[]>(() => {
-    if (screen === 'overview') {
-      return [
-        { key: 'diary', label: 'Điểm danh', icon: <CalendarCheck size={15} />, tone: 'primary', onClick: () => { goOperations('schedule'); handleAddDiary(); } },
-        { key: 'income', label: 'Thu học phí', icon: <ReceiptText size={15} />, tone: 'success', onClick: openIncomeModal },
-        { key: 'student', label: 'Thêm học sinh', icon: <UserPlus size={15} />, tone: 'neutral', onClick: openStudentModal },
-        { key: 'zalo', label: 'Nhắc phí Zalo', icon: <MessageCircle size={15} />, tone: 'zalo', onClick: () => goFinance('debt') },
-      ];
-    }
-    if (screen === 'training') {
-      if (trainingSubtab === 'classes') {
-        return [{ key: 'class', label: 'Thêm lớp', icon: <School size={15} />, tone: 'success', onClick: openClassModal }];
-      }
-      return [];
-    }
-    if (screen === 'finance') {
-      if (financeSubtab === 'expense') {
-        return [{ key: 'expense', label: 'Thêm phiếu chi', icon: <FilePlus2 size={15} />, tone: 'danger', onClick: openExpenseModal }];
-      }
-      return [];
-    }
-    return [];
-  }, [financeSubtab, goFinance, goOperations, handleAddDiary, openClassModal, openExpenseModal, openIncomeModal, openStudentModal, screen, trainingSubtab]);
-
   useEffect(() => {
     const routeKey = `${screen}:${trainingSubtab}:${operationsSubtab}:${financeSubtab}:${reportsSubtab}`;
     if (lastRouteRef.current === routeKey) return;
@@ -487,10 +435,6 @@ function AdminApp({ adminToken, onChangeAdminAccess }: { adminToken: string; onC
             style={{ flex: 1, width: '100%', padding: isDesktop ? '24px 28px 32px' : '14px 16px 24px', boxSizing: 'border-box' }}
             className="print:p-0 mobile-main-content"
           >
-            {!isDesktop && screen !== 'overview' && (
-              <MobileActionFab actions={mobileActions} variant="inline" />
-            )}
-
             {screen === 'overview' && (
               <ErrorBoundary fallbackLabel="Tổng quan">
                 <OverviewTab
@@ -650,7 +594,6 @@ function AdminApp({ adminToken, onChangeAdminAccess }: { adminToken: string; onC
       </div>
 
       <BottomNav active={screen} set={goScreen} isDesktop={isDesktop} />
-      <MobileActionFab actions={screen === 'overview' ? mobileActions : []} />
       <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} commands={commands} />
 
       <StudentModal

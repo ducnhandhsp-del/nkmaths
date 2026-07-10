@@ -565,9 +565,7 @@ export default function TeachersTab({
         .teacher-toolbar-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
         .teacher-desktop-table{display:block}.teacher-mobile-cards{display:none}
         @media(max-width:767px){
-          .teacher-toolbar-filters{width:100%;display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
-          .teacher-toolbar-filters > div:first-child{display:none!important}
-          .teacher-toolbar-filters > *{width:100%!important;min-width:0!important}
+          .teacher-toolbar-filters{display:none!important}
           .teacher-desktop-table{display:none!important}.teacher-mobile-cards{display:block!important}
         }
       `}</style>

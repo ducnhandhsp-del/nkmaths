@@ -54,14 +54,14 @@ Desktop hep/tablet:
 
 ```text
 Toi da 2 filter control hien truc tiep.
-Control con lai vao nut Loc.
+Control con lai chi dua vao desktop hoac bo qua tren mobile neu khong phai thao tac hang ngay.
 ```
 
 Mobile:
 
 ```text
 Toi da 2 slot filter tren toolbar.
-Neu co period/month thi slot 1 la period/month, slot 2 la nut Loc.
+Neu co period/month thi slot 1 la period/month, slot 2 la select nghiep vu chinh.
 Neu khong co period/month thi uu tien cac select nghiep vu chinh, khong hien search.
 ```
 
@@ -80,7 +80,9 @@ Dung cho filter dung nhieu nhat:
 
 ### Nut `Loc`
 
-Dung cho filter phu hoac filter chi thinh thoang dung:
+Khong dung `Loc` tren mobile trong phase hien tai vi tang them mot cap thao tac va lam cam giac UI cong kenh. Tren desktop/tablet hep, chi can dung `Loc` neu thuc su khong con cach sap xep truc tiep gon.
+
+Neu co filter phu hoac filter chi thinh thoang dung:
 
 - trang thai phu
 - giao vien
@@ -89,21 +91,7 @@ Dung cho filter phu hoac filter chi thinh thoang dung:
 - chua co lop/thieu GV
 - filter duoc bat tu KPI nhung khong du cho hien inline tren mobile
 
-Nut `Loc` phai hien active count:
-
-```text
-Loc
-Loc 1
-Loc 2
-```
-
-Ben trong panel/menu `Loc` co:
-
-- cac select/input phu
-- nut `Xoa loc`
-- khong lam toolbar thay doi kich thuoc khi filter active/inactive
-
-Neu chua lam panel `Loc` trong phase dau, khong nen them qua 2 filter tren mobile.
+Mobile uu tien an cac filter nay; KPI hoac desktop co the mo/filter cac trang thai phu khi can.
 
 ### Section-level filter
 
@@ -232,13 +220,7 @@ Period 148px | Lop 108px
 Mobile:
 
 ```text
-Period | Loc
-```
-
-Trong mobile `Loc`:
-
-```text
-Lop
+Period | Lop
 ```
 
 Khong them status filter trong phase nay vi danh sach lich da duoc rank theo viec can lam. Nut `Thang nay` khong nen la control rieng conditional; nen nam trong period control co slot co dinh.
@@ -266,17 +248,10 @@ Tat ca | Chua diem danh
 Mobile:
 
 ```text
-Thang | Loc
+Thang | Lop
 ```
 
-Trong mobile `Loc`:
-
-```text
-Lop
-Trang thai
-```
-
-Khong them `Loai buoi` vao phase nay. `Chinh khoa/Tang cuong` dang quan trong cho tinh so buoi, nhung khong phai filter dung hang ngay trong bang buoi hoc.
+Mobile an `Trang thai`; KPI `Chua diem danh` co the dua nguoi dung vao danh sach can xu ly. Khong them `Loai buoi` vao phase nay. `Chinh khoa/Tang cuong` dang quan trong cho tinh so buoi, nhung khong phai filter dung hang ngay trong bang buoi hoc.
 
 ## Van hanh - Chuyen can
 
@@ -301,17 +276,10 @@ Tat ca | Can theo doi
 Mobile:
 
 ```text
-Thang | Loc
+Thang | Lop
 ```
 
-Trong mobile `Loc`:
-
-```text
-Lop
-Muc do
-```
-
-Khong them filter `Co mat/Vang/Co phep`, vi man nay la tong hop canh bao, khong phai log diem danh chi tiet.
+Mobile an `Muc do`; KPI canh bao co the dua nguoi dung vao nhom can theo doi. Khong them filter `Co mat/Vang/Co phep`, vi man nay la tong hop canh bao, khong phai log diem danh chi tiet.
 
 ## Tai chinh - Cong no
 
@@ -343,15 +311,10 @@ Search `Tim HS`:
 Mobile toolbar:
 
 ```text
-Thang | Loc
+Thang | Trang thai
 ```
 
-Trong mobile `Loc`:
-
-```text
-Lop
-Trang thai
-```
+Mobile an loc lop va search de tranh toolbar 3-4 control.
 
 Nghiep vu:
 
@@ -382,13 +345,7 @@ Search `Tim HS / so phieu`:
 Mobile toolbar:
 
 ```text
-Thang | Loc
-```
-
-Trong mobile `Loc`:
-
-```text
-Lop
+Thang | Lop
 ```
 
 Khong them status filter cho phieu thu.
@@ -470,12 +427,12 @@ Can lam:
 - Operations buoi hoc: `Trang thai Tat ca/Chua diem danh`.
 - Operations chuyen can: `Muc do Tat ca/Can theo doi`.
 
-### Phase 2 - Them nut `Loc` va secondary filters
+### Phase 2 - Chon loc mobile filters
 
 - Hoc sinh: status mot tang tren toolbar.
 - Lop hoc: status lop mot tang tren toolbar.
 - Phieu chi: chi giu `Thang` va `Nguoi chi`, khong hien `Loc`.
-- Mobile: period/select + `Loc`, khong hien search.
+- Mobile: period/month + mot select nghiep vu chinh, khong hien search va khong dung panel `Loc`.
 
 ### Phase 3 - Search doi soat tren desktop
 
@@ -496,7 +453,7 @@ Checklist:
 
 - Toolbar khong co filter row bi wrap bat ngo.
 - Mobile moi subtab toi da 2 slot filter.
-- Khi KPI bat filter, toolbar/panel `Loc` phai the hien active count.
+- Khi KPI bat filter phu tren mobile, uu tien doi subtab/list truc tiep; khong bat buoc chen filter phu vao toolbar.
 - Reset filter khong lam toolbar doi chieu cao.
 - Reports khong bi loc lop ngam.
 - Cong no `Can thu/Da thu` dung voi logic billable theo thang.

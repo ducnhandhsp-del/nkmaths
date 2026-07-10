@@ -9,7 +9,6 @@ import { getLessonOffReason, isLessonOffLog, normalizeCaDayLabel, normalizeSched
 import { attendanceStudentId, calcStudentAbsenceStreak, getAttendanceRisk, normalizeAttendanceStatus as normalizeAttendanceStatusCore } from './measures';
 import { Button, Pager, Select } from './dsComponents';
 import { ActionableKpi, ActionableKpiGrid, DataTable, DateText, EmptyState, MobileCompactCard, PageToolbar, StatusBadge, ToolbarTabs } from './uiSystem';
-import FilterMenu from './FilterMenu';
 import type { Student, TeachingLog, LeaveRequest, OperationsSub } from './types';
 
 const DAYS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
@@ -955,9 +954,9 @@ export default function OperationsTab({
           <div className="ops-desktop-only">
             <Select value={scheduleClass} onChange={setScheduleClass} options={classOptions} size="md" style={{ width: 108, minWidth: 96 }} />
           </div>
-          <FilterMenu label="Lọc" activeCount={scheduleClass ? 1 : 0} className="ops-mobile-only">
-            <Select value={scheduleClass} onChange={setScheduleClass} options={classOptions} size="sm" />
-          </FilterMenu>
+          <div className="ops-mobile-only">
+            <Select value={scheduleClass} onChange={setScheduleClass} options={classOptions} size="md" />
+          </div>
         </>
       )}
       {sub === 'lessons' && (
@@ -990,18 +989,9 @@ export default function OperationsTab({
               style={{ width: 124, minWidth: 116 }}
             />
           </div>
-          <FilterMenu label="Lọc" activeCount={(dCls ? 1 : 0) + (lessonFocus !== 'all' ? 1 : 0)} className="ops-mobile-only">
-            <Select value={dCls} onChange={value => { setDCls(value); setPgD(1); }} options={classOptions} size="sm" />
-            <Select
-              value={lessonFocus}
-              onChange={value => { setLessonFocus(value as typeof lessonFocus); setPgD(1); }}
-              options={[
-                { value: 'all', label: 'Tất cả' },
-                { value: 'noAttendance', label: 'Chưa điểm danh' },
-              ]}
-              size="sm"
-            />
-          </FilterMenu>
+          <div className="ops-mobile-only">
+            <Select value={dCls} onChange={value => { setDCls(value); setPgD(1); }} options={classOptions} size="md" />
+          </div>
         </>
       )}
       {sub === 'attendance' && (
@@ -1028,18 +1018,9 @@ export default function OperationsTab({
               style={{ width: 124, minWidth: 116 }}
             />
           </div>
-          <FilterMenu label="Lọc" activeCount={(attendanceClass ? 1 : 0) + (attendanceFocus !== 'all' ? 1 : 0)} className="ops-mobile-only">
-            <Select value={attendanceClass} onChange={setAttendanceClass} options={attendanceClassOptions} size="sm" />
-            <Select
-              value={attendanceFocus}
-              onChange={value => setAttendanceFocus(value as typeof attendanceFocus)}
-              options={[
-                { value: 'all', label: 'Tất cả' },
-                { value: 'warning', label: 'Cần theo dõi' },
-              ]}
-              size="sm"
-            />
-          </FilterMenu>
+          <div className="ops-mobile-only">
+            <Select value={attendanceClass} onChange={setAttendanceClass} options={attendanceClassOptions} size="md" />
+          </div>
         </>
       )}
     </div>
@@ -1059,7 +1040,7 @@ export default function OperationsTab({
           .ops-period-control{justify-content:space-between}
           .ops-toolbar-filters > *{width:100%!important;min-width:0!important}
           .ops-desktop-only{display:none!important}
-          .ops-mobile-only{display:block}
+          .ops-mobile-only{display:block!important}
         }
       `}</style>
       <PageToolbar
