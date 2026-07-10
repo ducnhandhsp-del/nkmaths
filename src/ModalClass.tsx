@@ -3,7 +3,7 @@ import { AlertTriangle, Save, X } from 'lucide-react';
 import { Button, IconButton, Input, Select } from './dsComponents';
 import type { ClassRecord, Student } from './types';
 import toast from 'react-hot-toast';
-import { normalizeScheduleCaText } from './helpers';
+import { compareClassCode, normalizeScheduleCaText } from './helpers';
 
 const FS_WRAP: React.CSSProperties = { position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 12, overflowY: 'auto', background: 'rgba(15,23,42,0.65)', backdropFilter: 'blur(5px)' };
 const FS_DLG: React.CSSProperties = { background: 'white', width: '100%', maxWidth: 640, maxHeight: '92vh', borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 80px rgba(0,0,0,0.28)' };
@@ -178,14 +178,14 @@ export function BulkTransferModal({
 
   if (!open) return null;
 
-  const fromClasses = [...new Set(selectedStudents.map(s => s.classId))];
+  const fromClasses = [...new Set(selectedStudents.map(s => s.classId).filter(Boolean))].sort(compareClassCode);
   const isSameClass = fromClasses.length === 1 && newClass === fromClasses[0];
   const classOptions = [
     { value: '', label: '— Chọn lớp mới —' },
     ...uniqueClasses.map(c => {
       const classId = classIdOf(c);
       return { value: classId, label: `Lớp ${classId}` };
-    }).filter(o => o.value),
+    }).filter(o => o.value).sort((a, b) => compareClassCode(a.value, b.value)),
   ];
 
   return (
@@ -200,7 +200,7 @@ export function BulkTransferModal({
             Đã chọn <span style={{ fontWeight: 700, color: '#0d9488' }}>{selectedStudents.length}</span> học sinh{fromClasses.length > 0 && <span style={{ color: '#94a3b8' }}> từ lớp {fromClasses.join(', ')}</span>}:
           </p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 100, overflowY: 'auto', marginBottom: 16 }}>
-            {selectedStudents.map(s => <span key={s.id} style={{ background: '#f0fdfa', border: '1px solid #99f6e4', color: '#0f766e', fontSize: 12, fontWeight: 700, padding: '3px 9px', borderRadius: 7 }}>{s.name}</span>)}
+            {[...selectedStudents].sort((a, b) => compareClassCode(a.classId, b.classId) || a.name.localeCompare(b.name, 'vi')).map(s => <span key={s.id} style={{ background: '#f0fdfa', border: '1px solid #99f6e4', color: '#0f766e', fontSize: 12, fontWeight: 700, padding: '3px 9px', borderRadius: 7 }}>{s.name}</span>)}
           </div>
           <div className="ltn-form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <Select label="Chuyển sang lớp *" value={newClass} onChange={setNewClass} options={classOptions} />

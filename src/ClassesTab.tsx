@@ -4,11 +4,10 @@
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Clock, Plus, Trash2, X, Users, MapPin, User } from 'lucide-react';
-import { fixVietnameseText, isStudentActive, normalizeCaDayLabel, normalizeScheduleCaText, resolveTeacher } from './helpers';
+import { compareClassCode, fixVietnameseText, isStudentActive, normalizeCaDayLabel, normalizeScheduleCaText, resolveTeacher } from './helpers';
 import { getMonthlyTuitionState, getPaymentTuitionPeriod, isStudentActiveInMonth } from './measures';
 import { SearchBar, Select, Button } from './dsComponents';
 import { DataTable, DetailMetric, EmptyState, MobileCompactCard, MoneyText, PageToolbar, StatusBadge } from './uiSystem';
-import FilterMenu from './FilterMenu';
 import type { Student, ClassRecord, Payment, DeleteTarget, TeachingLog } from './types';
 
 interface Props {
@@ -424,7 +423,7 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
       })
       .reduce((sum, p) => sum + (p.amount || 0), 0);
     return { ...c, studentCount: cls.length, billableCount: billable.length, paidCount, pct, paidAmount };
-  }).sort((a, b) => getClassCode(a).localeCompare(getClassCode(b), 'vi')),
+  }).sort((a, b) => compareClassCode(getClassCode(a), getClassCode(b))),
   [uClasses, students, payments, curMo, curYr]);
 
   // FIX C4: memoize teacher list (uses resolveTeacher per class)
@@ -585,12 +584,9 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
       <style>{`
         .class-toolbar-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
         .class-desktop-table{display:block}.class-mobile-cards{display:none}
-        .class-mobile-only{display:none}
         @media(max-width:767px){
           .class-toolbar-filters{width:100%;display:grid;grid-template-columns:minmax(0,1fr) minmax(112px,1fr);gap:8px}
           .class-toolbar-filters > *{width:100%!important;min-width:0!important}
-          .class-desktop-only{display:none!important}
-          .class-mobile-only{display:block}
           .class-desktop-table{display:none!important}.class-mobile-cards{display:block!important}
         }
       `}</style>
@@ -605,15 +601,8 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
         {toolbarPrefix}
         <div className="class-toolbar-filters">
           <SearchBar value={qCls} onChange={setQCls} placeholder="Tìm" width={126}/>
-          <div className="class-desktop-only">
-            <Select value={fClsTeacher} onChange={setFClsTeacher} options={teacherOptions} style={{ width: 136, minWidth: 118 }}/>
-          </div>
-          <FilterMenu label="Lọc" activeCount={(fClsTeacher ? 1 : 0) + (classStatusFilter !== 'all' ? 1 : 0)}>
-            <div className="class-mobile-only">
-              <Select value={fClsTeacher} onChange={setFClsTeacher} options={teacherOptions} size="sm" />
-            </div>
-            <Select value={classStatusFilter} onChange={v => setClassStatusFilter(v as typeof classStatusFilter)} options={classStatusOptions} size="sm" />
-          </FilterMenu>
+          <Select value={fClsTeacher} onChange={setFClsTeacher} options={teacherOptions} style={{ width: 136, minWidth: 118 }}/>
+          <Select value={classStatusFilter} onChange={v => setClassStatusFilter(v as typeof classStatusFilter)} options={classStatusOptions} style={{ width: 124, minWidth: 112 }} />
         </div>
       </PageToolbar>
 

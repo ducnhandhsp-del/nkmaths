@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { X, Save, BookOpen, Edit3 } from 'lucide-react';
-import { formatDate, toInputDate, localDateStr, normalizeCaDayLabel, normalizeCaDayOptions, getLessonOffReason, isLessonOffLog } from './helpers';
+import { compareClassCode, formatDate, toInputDate, localDateStr, normalizeCaDayLabel, normalizeCaDayOptions, getLessonOffReason, isLessonOffLog } from './helpers';
 
 import { Button, AttendancePicker } from './dsComponents';
 import type { AttendanceStudent } from './dsComponents';
@@ -165,7 +165,7 @@ export function DiaryModal({
       (!s.endDate || s.endDate === '---' || s.endDate === '') &&
       !attendanceStudentIds.has(s.id)
     )
-    .sort((a, b) => a.name.localeCompare(b.name, 'vi')),
+    .sort((a, b) => compareClassCode(a.classId, b.classId) || a.name.localeCompare(b.name, 'vi')),
   [attendanceStudentIds, students]);
   const filteredExtraStudents = useMemo(() => {
     const q = normalizeSearchText(extraQuery);
@@ -203,7 +203,13 @@ export function DiaryModal({
     toInputDate(req.date || '') === date
   ), [classId, date, leaveRequests]);
   const caList=normalizeCaDayOptions(caDayOptions);
-  const classOptions=[{value:'',label:'-- Không gắn lớp --'},...uniqueClasses.map(c=>({value:classCode(c),label:`Lớp ${classCode(c)}`})).filter(o=>o.value)];
+  const classOptions=[
+    {value:'',label:'-- Không gắn lớp --'},
+    ...uniqueClasses
+      .map(c=>({value:classCode(c),label:`Lớp ${classCode(c)}`}))
+      .filter(o=>o.value)
+      .sort((a,b)=>compareClassCode(a.value,b.value))
+  ];
   const caSelectList = caDay && !caList.includes(caDay) ? [...caList, caDay] : caList;
   const caOptions=[{value:'',label:'-- Chọn ca dạy --'},...caSelectList.map(ca=>({value:ca,label:`⏰ ${ca}`}))];
   const suggestedCaDay = clsRecord ? extractScheduleTimes(clsRecord)[0] || '' : '';

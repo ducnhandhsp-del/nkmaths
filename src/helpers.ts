@@ -108,6 +108,25 @@ export function debounce<T extends (...args: any[]) => any>(
 export const cn = (...args: (string | false | undefined | null)[]) =>
   args.filter(Boolean).join(' ');
 
+export function compareClassCode(a: any, b: any): number {
+  const parse = (raw: any) => {
+    const value = String(raw || '').trim().toUpperCase();
+    const match = value.match(/^(\d+)\s*([A-Z].*)?$/);
+    return {
+      empty: value ? 0 : 1,
+      grade: match ? Number(match[1]) : Number.MAX_SAFE_INTEGER,
+      suffix: match ? (match[2] || '') : value,
+      value,
+    };
+  };
+  const left = parse(a);
+  const right = parse(b);
+  return left.empty - right.empty
+    || left.grade - right.grade
+    || left.suffix.localeCompare(right.suffix, 'vi')
+    || left.value.localeCompare(right.value, 'vi');
+}
+
 export const card     = 'bg-white rounded-2xl border border-slate-200/80 shadow-sm';
 export const TH       = 'px-4 py-3 text-left text-sm font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap';
 export const TD       = 'px-4 py-4 text-[15px] text-slate-700 font-medium';

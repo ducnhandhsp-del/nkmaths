@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import { X, Save, DollarSign, Printer, Check, TrendingDown, MessageCircle, Wallet } from 'lucide-react';
-import { fmtVND, formatDate, makeVietQR, BANK_DEFAULT, toInputDate, localDateStr, normalizePaymentMethod, buildSchoolYearMonths, fixVietnameseText } from './helpers';
+import { fmtVND, formatDate, makeVietQR, BANK_DEFAULT, toInputDate, localDateStr, normalizePaymentMethod, buildSchoolYearMonths, fixVietnameseText, compareClassCode } from './helpers';
 import { getPaymentTuitionPeriod, isStudentBillableInMonth } from './measures';
 import { Button, FilterTabs } from './dsComponents';
 import type { Student, Payment, Expense, ClassRecord, TeachingLog } from './types';
@@ -191,7 +191,9 @@ export function PaymentFormModal({
 
   if (!open) return null;
 
-  const activeStudents = students.filter(s => s.status !== 'inactive' && (!s.endDate || s.endDate === '---' || s.endDate === ''));
+  const activeStudents = students
+    .filter(s => s.status !== 'inactive' && (!s.endDate || s.endDate === '---' || s.endDate === ''))
+    .sort((a, b) => compareClassCode(a.classId, b.classId) || a.name.localeCompare(b.name, 'vi'));
   const tuitionPeriodValue = form.thangHP && form.namHP ? `${Number(form.thangHP)}/${Number(form.namHP)}` : '';
   const tuitionPeriodOptions = yearOptions(curYr).flatMap(year =>
     monthOptions().map(month => ({
@@ -594,7 +596,10 @@ export function FABModal({
                       autoComplete="off"
                     />
                     <datalist id="fab-hs-v5">
-                      {students.filter(s => s.status !== 'inactive' && (!s.endDate || s.endDate === '---' || s.endDate === '')).map(s => <option key={s.id} value={`${s.id} - ${s.name}`} />)}
+                      {students
+                        .filter(s => s.status !== 'inactive' && (!s.endDate || s.endDate === '---' || s.endDate === ''))
+                        .sort((a, b) => compareClassCode(a.classId, b.classId) || a.name.localeCompare(b.name, 'vi'))
+                        .map(s => <option key={s.id} value={`${s.id} - ${s.name}`} />)}
                     </datalist>
                   </div>
                   <div className="ltn-quick-field">

@@ -3,11 +3,10 @@
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ReceiptText, UserPlus } from 'lucide-react';
-import { IPP, capitalizeName, fixVietnameseText, isStudentActive } from './helpers';
+import { IPP, capitalizeName, compareClassCode, fixVietnameseText, isStudentActive } from './helpers';
 import { isStudentActiveInMonth, isStudentBillableInMonth } from './measures';
 import { Pager, Button, Select } from './dsComponents';
 import { DataTable, EmptyState, MobileCompactCard, PageToolbar, StatusBadge } from './uiSystem';
-import FilterMenu from './FilterMenu';
 import type { Student, DeleteTarget } from './types';
 
 interface Props {
@@ -129,6 +128,7 @@ export default function StudentsTab({
         return { value: code, label: code || '---' };
       })
       .filter(o => o.value);
+    rows.sort((a, b) => compareClassCode(a.value, b.value));
     return [{ value: '', label: 'Lớp' }, ...rows];
   }, [uClasses]);
 
@@ -308,14 +308,11 @@ export default function StudentsTab({
         .student-action-icon--empty:hover{box-shadow:none;transform:none}
         .student-mobile-actions .student-action-icon{width:34px;height:34px;flex-basis:34px}
         .student-desktop-table{display:block}.student-mobile-cards{display:none}
-        .student-mobile-only{display:none}
         @media(max-width:767px){
           .student-toolbar-filters{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
           .student-toolbar-search{width:100%;min-width:0}
           .student-toolbar-filters > *{width:100%!important;min-width:0!important}
           .student-toolbar-filters select{width:100%!important;min-width:0!important}
-          .student-desktop-only{display:none!important}
-          .student-mobile-only{display:block}
           .student-toolbar-reset{grid-column:1/-1}
           .student-desktop-table{display:none!important}.student-mobile-cards{display:block!important}
         }
@@ -340,20 +337,13 @@ export default function StudentsTab({
             placeholder="Tìm"
             aria-label="Tìm học sinh"
           />
-          <div className="student-desktop-only">
-            <Select value={fCls} onChange={v => { setFCls(v); setPgS(1); }} options={classOptions} style={{ width: 104, minWidth: 96 }} />
-          </div>
-          <FilterMenu label="Lọc" activeCount={(statusFilter !== 'active' ? 1 : 0) + (fCls ? 1 : 0)} className="student-toolbar-menu">
-            <div className="student-mobile-only">
-              <Select value={fCls} onChange={v => { setFCls(v); setPgS(1); }} options={classOptions} size="sm" />
-            </div>
-            <Select value={statusFilter} onChange={setStudentStatusFilter} options={statusOptions} size="sm" />
-            {hasActiveFilter && (
-              <button type="button" className="student-toolbar-reset" onClick={resetFilters}>
-                Xóa lọc
-              </button>
-            )}
-          </FilterMenu>
+          <Select value={fCls} onChange={v => { setFCls(v); setPgS(1); }} options={classOptions} style={{ width: 104, minWidth: 96 }} />
+          <Select value={statusFilter} onChange={setStudentStatusFilter} options={statusOptions} style={{ width: 122, minWidth: 112 }} />
+          {hasActiveFilter && (
+            <button type="button" className="student-toolbar-reset" onClick={resetFilters}>
+              Xóa lọc
+            </button>
+          )}
         </div>
       </PageToolbar>
 

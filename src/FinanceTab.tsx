@@ -14,7 +14,7 @@
  */
 import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { Plus, Check, TrendingDown, TrendingUp, Wallet, AlertTriangle, MessageCircle, ReceiptText } from 'lucide-react';
-import { fmtVND, capitalizeName, normalizePaymentMethod, resolveTeacher, buildSchoolYearMonths } from './helpers';
+import { fmtVND, capitalizeName, compareClassCode, normalizePaymentMethod, resolveTeacher, buildSchoolYearMonths } from './helpers';
 import {
   attendanceStudentId,
   classIdOf,
@@ -334,7 +334,10 @@ export default function FinanceTab({
   const pagedDebtRows = useMemo(() => debtTableRows.slice((pgF - 1) * IPP, pgF * IPP), [debtTableRows, pgF]);
   const classOptions = useMemo(() => [
     { value: '', label: 'Lớp' },
-    ...uClasses.map(c => ({ value: c['Mã Lớp'], label: c['Mã Lớp'] })),
+    ...uClasses
+      .map(c => ({ value: c['Mã Lớp'], label: c['Mã Lớp'] }))
+      .filter(o => o.value)
+      .sort((a, b) => compareClassCode(a.value, b.value)),
   ], [uClasses]);
   const expenseSpenderOptions = useMemo(() => [
     { value: '', label: 'Người chi' },
@@ -748,6 +751,9 @@ export default function FinanceTab({
               style={{ width: 116, minWidth: 108 }}
             />
           </div>
+          <div className="finance-desktop-only">
+            <SearchBar value={qF} onChange={v => { setQF(v); setPgF(1); }} placeholder="Tìm HS" width={150} size="sm" />
+          </div>
           <FilterMenu label="Lọc" className="finance-mobile-only" activeCount={(fFC ? 1 : 0) + (debtStatusFilter !== 'unpaid' ? 1 : 0) + (qF ? 1 : 0)} panelWidth={260}>
             <Select value={fFC} onChange={v => { setFFC(v); setPgF(1); }} options={classOptions} size="sm" />
             <Select
@@ -769,6 +775,9 @@ export default function FinanceTab({
           <MonthSelect value={lFilterMo} onChange={v => { setLFilterMo(v); setPgLedger(1); }} />
           <div className="finance-desktop-only">
             <Select value={lFilterCls} onChange={v => { setLFilterCls(v); setPgLedger(1); }} options={classOptions} size="md" style={{ width: 108, minWidth: 96 }} />
+          </div>
+          <div className="finance-desktop-only">
+            <SearchBar value={ledgerQuery} onChange={v => { setLedgerQuery(v); setPgLedger(1); }} placeholder="Tìm HS / số phiếu" width={188} size="sm" />
           </div>
           <FilterMenu label="Lọc" className="finance-mobile-only" activeCount={(lFilterCls ? 1 : 0) + (ledgerQuery ? 1 : 0)} panelWidth={260}>
             <Select value={lFilterCls} onChange={v => { setLFilterCls(v); setPgLedger(1); }} options={classOptions} size="sm" />
@@ -819,14 +828,12 @@ export default function FinanceTab({
         .finance-toolbar-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
         .finance-toolbar-filters select{min-width:96px}
         .finance-mobile-only{display:none}
-        .finance-section-tools{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:8px}
         @media(max-width:767px){
           .finance-toolbar-filters{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
           .finance-toolbar-filters > *{width:100%!important;min-width:0!important}
           .finance-toolbar-filters select{width:100%!important;min-width:0!important}
           .finance-desktop-only{display:none!important}
           .finance-mobile-only{display:block}
-          .finance-section-tools{display:none}
         }
       `}</style>
       <PageToolbar
@@ -893,9 +900,6 @@ export default function FinanceTab({
             @media(max-width:767px){.fin-debt-desktop{display:none!important}.fin-debt-mobile{display:block!important}}
           `}</style>
           <section>
-          <div className="finance-section-tools">
-            <SearchBar value={qF} onChange={v => { setQF(v); setPgF(1); }} placeholder="Tìm HS" width={170} size="sm" />
-          </div>
           <div className="fin-debt-desktop">
             <DataTable
               columns={debtColumns}
@@ -980,9 +984,6 @@ export default function FinanceTab({
             @media(max-width:767px){.fin-ledger-desktop,.fin-expense-desktop{display:none!important}.fin-ledger-mobile,.fin-expense-mobile{display:grid!important}}
           `}</style>
           <section className="finance-transaction-section">
-            <div className="finance-section-tools">
-              <SearchBar value={ledgerQuery} onChange={v => { setLedgerQuery(v); setPgLedger(1); }} placeholder="Tìm HS / số phiếu" width={190} size="sm" />
-            </div>
             <div className="fin-ledger-desktop">
               <DataTable
                 columns={ledgerColumns}

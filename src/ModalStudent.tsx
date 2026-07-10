@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, UserCheck, Activity, UserX, Phone, MessageCircle, Trash2, ExternalLink } from 'lucide-react';
-import { fmtVND, formatDate, capitalizeName, isValidPhone, isValidDateDMY, toInputDate } from './helpers';
+import { fmtVND, formatDate, capitalizeName, compareClassCode, isValidPhone, isValidDateDMY, toInputDate } from './helpers';
 import { Button, IconButton, Input, Select } from './dsComponents';
 import { DetailMetric } from './uiSystem';
 import { calcStudentAttendance } from './measures';
@@ -71,7 +71,13 @@ export function StudentModal({
     setErrors(err); return Object.keys(err).length===0;
   };
 
-  const classOptions=[{value:'',label:'Chọn lớp'},...uniqueClasses.map(c=>({value:c['Mã Lớp'],label:c['Mã Lớp']}))];
+  const classOptions=[
+    {value:'',label:'Chọn lớp'},
+    ...uniqueClasses
+      .map(c=>({value:c['Mã Lớp'],label:c['Mã Lớp']}))
+      .filter(o=>o.value)
+      .sort((a,b)=>compareClassCode(a.value,b.value))
+  ];
   const academicOptions=['Xuất sắc','Giỏi','Khá','Trung bình','Yếu'].map(v=>({value:v,label:v}));
   const branchValues=[defaultBranch,...(uniqueBranches.length>0?uniqueBranches:['Nguyễn Quang Bích'])].filter((b,i,arr)=>b&&arr.indexOf(b)===i);
   const branchOptions=branchValues.map(b=>({value:b,label:b}));

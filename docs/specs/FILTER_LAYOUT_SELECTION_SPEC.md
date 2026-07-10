@@ -10,8 +10,8 @@ Nguyen tac chinh:
 
 - Toolbar chi chua filter tac dong truc tiep va dung thuong xuyen.
 - Moi active subtab chi nen co 2-3 control filter hien tren desktop.
-- Mobile chi hien toi da 2 slot filter; filter phu nam trong nut `Loc`.
-- Search dai khong nen chen vao toolbar neu man da co tab + nhieu filter.
+- Mobile uu tien toi da 2 slot filter, nhung cac filter nghiep vu chinh duoc phep hien mot tang neu thao tac hang ngay can nhanh hon.
+- Search dai khong nen chen vao toolbar neu man da co tab + nhieu filter, tru khi desktop con du cho va search la thao tac doi soat chinh.
 - Reset filter khong duoc la mot nut conditional lam thay doi width toolbar.
 
 ## Ngan sach kich thuoc toolbar
@@ -139,27 +139,22 @@ Nghiep vu can:
 Desktop:
 
 ```text
-Search 136px | Lop 104px | Loc 82px
+Search 136px | Lop 104px | Trang thai 122px
 ```
 
-Trong nut `Loc`:
+`Trang thai` la filter mot tang:
 
 ```text
-Trang thai: Dang hoc | Tat ca | Da nghi | Chua co lop
+Dang hoc | Tat ca | Da nghi | Chua co lop
 ```
 
 Mobile:
 
 ```text
-Search | Loc
+Search | Lop | Trang thai
 ```
 
-Trong mobile `Loc` gom:
-
-```text
-Lop
-Trang thai
-```
+Mobile duoc phep xuong 2 hang trong rieng man nay de tranh them tang thao tac.
 
 Khong dua filter hoc phi vao man Hoc sinh. Cong no da co man Hoc phi rieng.
 
@@ -174,10 +169,10 @@ Nghiep vu can:
 Desktop:
 
 ```text
-Search 126px | Giao vien 136px | Loc 82px
+Search 126px | Giao vien 136px | Trang thai 124px
 ```
 
-Trong nut `Loc`:
+`Trang thai lop` la filter mot tang:
 
 ```text
 Trang thai lop: Tat ca | Dang mo | Thieu GV | Chua lich | Da dong
@@ -186,15 +181,10 @@ Trang thai lop: Tat ca | Dang mo | Thieu GV | Chua lich | Da dong
 Mobile:
 
 ```text
-Search | Loc
+Search | Giao vien | Trang thai
 ```
 
-Trong mobile `Loc` gom:
-
-```text
-Giao vien
-Trang thai lop
-```
+Mobile duoc phep xuong 2 hang trong rieng man nay de tranh them tang thao tac.
 
 Khong them filter co so/chi nhanh trong phase nay, tru khi du lieu co nhieu co so that su.
 
@@ -335,7 +325,7 @@ Nghiep vu can:
 Desktop toolbar:
 
 ```text
-Thang 108px | Lop 108px | Trang thai 116px
+Thang 108px | Lop 108px | Trang thai 116px | Search 150px
 ```
 
 Option `Trang thai`:
@@ -346,10 +336,9 @@ Can thu | Tat ca | Da thu
 
 Search `Tim HS`:
 
-- Khong dat trong toolbar de tranh qua tai.
-- Dat trong header bang cong no hoac row filter rieng cua bang.
-- Width desktop 160-180px.
-- Mobile dat trong panel `Loc` hoac header list neu khong lam card bi day.
+- Dat truc tiep tren toolbar desktop vi con du cho va day la thao tac doi soat chinh.
+- Width desktop 140-160px.
+- Mobile giu trong panel `Loc` de khong vo layout.
 
 Mobile toolbar:
 
@@ -383,13 +372,13 @@ Nghiep vu can:
 Desktop toolbar:
 
 ```text
-Thang 108px | Lop 108px
+Thang 108px | Lop 108px | Search 188px
 ```
 
 Search `Tim HS / so phieu`:
 
-- Section-level trong header bang phieu thu.
-- Width 180px desktop.
+- Dat truc tiep tren toolbar desktop.
+- Width 180-190px.
 
 Mobile toolbar:
 
@@ -496,15 +485,15 @@ Can lam:
 
 ### Phase 2 - Them nut `Loc` va secondary filters
 
-- Hoc sinh: status vao `Loc`.
-- Lop hoc: status lop vao `Loc`.
+- Hoc sinh: status mot tang tren toolbar.
+- Lop hoc: status lop mot tang tren toolbar.
 - Phieu chi: danh muc vao `Loc`.
 - Mobile: period/search + `Loc`, khong hien qua 2 slot.
 
-### Phase 3 - Search section-level
+### Phase 3 - Search doi soat tren desktop
 
-- Cong no: `Tim HS` trong header bang.
-- Phieu thu: `Tim HS / so phieu` trong header bang.
+- Cong no: `Tim HS` tren toolbar desktop, trong `Loc` tren mobile.
+- Phieu thu: `Tim HS / so phieu` tren toolbar desktop, trong `Loc` tren mobile.
 
 ### Phase 4 - QA layout
 
@@ -524,4 +513,3 @@ Checklist:
 - Reset filter khong lam toolbar doi chieu cao.
 - Reports khong bi loc lop ngam.
 - Cong no `Can thu/Da thu` dung voi logic billable theo thang.
-
