@@ -19,6 +19,7 @@ import {
   isStudentBillableInMonth,
   lessonCountByClassPeriod,
   normalizeAttendanceStatus,
+  summarizeTuitionAccounts,
 } from '../src/measures';
 import type { Payment, Student, TeachingLog } from '../src/types';
 
@@ -352,6 +353,22 @@ assert.deepEqual(
 assert.equal(oneReceiptTwentyAttendanceAccount.currentCycle.cycleIndex, 3, 'attendance position selects the current cycle');
 assert.equal(oneReceiptTwentyAttendanceAccount.oldestUnpaidCollectibleCycle?.cycleIndex, 2, 'oldest unpaid completed cycle is collected first');
 assert.equal(oneReceiptTwentyAttendanceAccount.totalOutstandingAmount, 1200000, 'multiple unpaid cycles contribute to total debt');
+assert.deepEqual(
+  summarizeTuitionAccounts([oneReceiptTwentyAttendanceAccount]),
+  {
+    dueAmount: 600000,
+    overdueAmount: 600000,
+    totalOutstandingAmount: 1200000,
+    dueCycleCount: 1,
+    overdueCycleCount: 1,
+    collectibleCycleCount: 2,
+    dueStudentCount: 1,
+    overdueStudentCount: 1,
+    collectibleStudentCount: 1,
+    reviewStudentCount: 0,
+  },
+  'cycle summary separates due and overdue amounts while counting one student once',
+);
 
 const lateReceiptAccount = getTuitionAccountState({
   student: cycleStudent,

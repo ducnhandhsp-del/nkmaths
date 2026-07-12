@@ -20,6 +20,7 @@ import {
   getPaymentReceiptPeriod,
   getUniquePaidStudentIdsByReceiptPeriod,
   getTuitionAccountState,
+  summarizeTuitionAccounts,
   isStudentActive,
   isStudentActiveInMonth,
   parsePeriod,
@@ -257,13 +258,9 @@ export default function ReportsTab({
     baseTuition,
     asOfTs: reportAsOfTs,
   })), [baseTuition, payments, reportAsOfTs, students, tlogs, uClasses]);
-  const tuitionCollectionStates = useMemo(
-    () => tuitionCycleStates.filter(state => state.status === 'due' || state.status === 'overdue'),
-    [tuitionCycleStates],
-  );
-  const tuitionDebtAmount = tuitionCollectionStates.reduce((sum, state) => sum + state.totalOutstandingAmount, 0);
-  const overdueTuitionStates = tuitionCycleStates.filter(state => state.status === 'overdue');
-  const overdueTuitionAmount = overdueTuitionStates.reduce((sum, state) => sum + state.totalOutstandingAmount, 0);
+  const tuitionSummary = useMemo(() => summarizeTuitionAccounts(tuitionCycleStates), [tuitionCycleStates]);
+  const tuitionDebtAmount = tuitionSummary.totalOutstandingAmount;
+  const overdueTuitionAmount = tuitionSummary.overdueAmount;
   const reviewTuitionStates = tuitionCycleStates.filter(state => state.status === 'needs_review' || state.reviewReasons.length > 0);
   const tuitionExportRows = tuitionCycleStates
     .filter(state => state.status === 'due' || state.status === 'overdue' || state.status === 'needs_review' || state.reviewReasons.length > 0)
@@ -279,8 +276,9 @@ export default function ReportsTab({
       `bao-cao-thong-ke-${filterYr}`,
       ['Nhóm', 'Chỉ tiêu', 'Giá trị', 'Ghi chú'],
       [
-        [`Công nợ ${reportSnapshotLabel}`, 'Cần thu theo chu kỳ', tuitionDebtAmount, `${tuitionCollectionStates.length} học sinh`],
-        [`Công nợ ${reportSnapshotLabel}`, 'Quá hạn', overdueTuitionAmount, `${overdueTuitionStates.length} học sinh`],
+        [`Công nợ ${reportSnapshotLabel}`, 'Tổng cần thu', tuitionDebtAmount, `${tuitionSummary.collectibleStudentCount} học sinh | ${tuitionSummary.collectibleCycleCount} chu kỳ`],
+        [`Công nợ ${reportSnapshotLabel}`, 'Đến hạn', tuitionSummary.dueAmount, `${tuitionSummary.dueStudentCount} học sinh | ${tuitionSummary.dueCycleCount} chu kỳ`],
+        [`Công nợ ${reportSnapshotLabel}`, 'Quá hạn', overdueTuitionAmount, `${tuitionSummary.overdueStudentCount} học sinh | ${tuitionSummary.overdueCycleCount} chu kỳ`],
         [`Công nợ ${reportSnapshotLabel}`, 'Cần kiểm tra', reviewTuitionStates.length, 'Không tự động cộng vào phải thu'],
         ...tuitionExportRows,
         ['KPI', 'Doanh thu năm', yearRevenue, `${paymentsWithPeriod.filter(({ period }) => period?.y === filterYr).length} phiếu thu`],
@@ -419,6 +417,7 @@ export default function ReportsTab({
         <div className="report-summary-grid">
           {[
             { label: `Cần thu ${reportSnapshotLabel}`, value: <MoneyText value={tuitionDebtAmount} compact tone={tuitionDebtAmount > 0 ? 'danger' : 'success'} /> },
+            { label: `Đến hạn ${reportSnapshotLabel}`, value: <MoneyText value={tuitionSummary.dueAmount} compact tone={tuitionSummary.dueAmount > 0 ? 'warning' : 'success'} /> },
             { label: `Quá hạn ${reportSnapshotLabel}`, value: <MoneyText value={overdueTuitionAmount} compact tone={overdueTuitionAmount > 0 ? 'danger' : 'success'} /> },
             { label: 'Hồ sơ cần kiểm tra', value: reviewTuitionStates.length },
             { label: 'Thu tháng này', value: <MoneyText value={monthRevenue} compact tone="success" /> },

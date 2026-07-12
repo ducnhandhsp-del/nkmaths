@@ -167,6 +167,24 @@ export function PaymentFormModal({
   const rawStudentId = extractStudentId(form.maHS);
   const selectedStudent = students.find(s => s.id === rawStudentId);
   const selectedClass = classes.find(c => classIdOf(c) === String(form.maLop || selectedStudent?.classId || '').trim());
+  const selectedAccount = useMemo(() => (
+    selectedStudent
+      ? getTuitionAccountState({ student: selectedStudent, classes, payments, tlogs, baseTuition })
+      : null
+  ), [baseTuition, classes, payments, selectedStudent, tlogs]);
+  const intendedCycle = useMemo(() => {
+    if (!selectedAccount || selectedAccount.target <= 0) return null;
+    const unpaid = selectedAccount.cycles.find(cycle => !cycle.paid);
+    const cycleIndex = unpaid?.cycleIndex || selectedAccount.paidCycleCount + 1;
+    const done = cycleIndex === selectedAccount.currentCycle.cycleIndex ? selectedAccount.currentCycle.done : 0;
+    return {
+      cycleIndex,
+      done,
+      target: selectedAccount.target,
+      startAttendanceIndex: (cycleIndex - 1) * selectedAccount.target + 1,
+      endAttendanceIndex: cycleIndex * selectedAccount.target,
+    };
+  }, [selectedAccount]);
   const duplicatePayment = useMemo(() => {
     if (!selectedStudent || editingPayment) return null;
     const state = getTuitionAccountState({ student: selectedStudent, classes, payments, tlogs, baseTuition });
@@ -235,6 +253,13 @@ export function PaymentFormModal({
       )}
     >
       <section className="ltn-quick-card">
+        {!editingPayment && intendedCycle && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: 8, padding: '10px 12px', marginBottom: 12, borderRadius: 12, border: '1px solid #c7d2fe', background: '#eef2ff' }}>
+            <div><span style={{ display: 'block', color: '#64748b', fontSize: 10, fontWeight: 900, textTransform: 'uppercase' }}>Thanh toán</span><strong style={{ color: '#3730a3', fontSize: 13 }}>Chu kỳ {intendedCycle.cycleIndex}</strong></div>
+            <div><span style={{ display: 'block', color: '#64748b', fontSize: 10, fontWeight: 900, textTransform: 'uppercase' }}>Phạm vi</span><strong style={{ color: '#3730a3', fontSize: 13 }}>Buổi {intendedCycle.startAttendanceIndex}–{intendedCycle.endAttendanceIndex}</strong></div>
+            <div><span style={{ display: 'block', color: '#64748b', fontSize: 10, fontWeight: 900, textTransform: 'uppercase' }}>Tiến độ</span><strong style={{ color: '#3730a3', fontSize: 13 }}>{intendedCycle.done}/{intendedCycle.target} buổi</strong></div>
+          </div>
+        )}
         <div className="ltn-grid-12">
           <div className="ltn-quick-field span-4">
             <label>Mã học sinh</label>
@@ -942,7 +967,7 @@ export function FinanceDetailModal({ student, classes, payments, tlogs, baseTuit
                   <div key={p.id || p.docNum || i} style={{ display: 'grid', gridTemplateColumns: 'minmax(86px,105px) minmax(0,1fr) auto', gap: 10, alignItems: 'center', padding: '11px 14px', borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? 'white' : '#fafafa' }}>
                     <div>
                       <p style={{ fontSize: 13, fontWeight: 900, color: '#0f172a', margin: 0 }}>{formatDate(p.date)}</p>
-                      <p style={{ fontSize: 11, color: '#64748b', margin: '2px 0 0', fontWeight: 800 }}>{(() => { const period = getPaymentTuitionPeriod(p); const cycleIndex = paymentCycleByKey.get(String(p.id || p.docNum || '').trim()); return `${cycleIndex ? `Chu kỳ ${cycleIndex}` : 'Chưa gán chu kỳ'} · ${period ? `T${period.m}/${period.y}` : 'Kỳ phí —'}`; })()}</p>
+                      <p style={{ fontSize: 11, color: Number(p.amount || 0) !== baseTuition ? '#b45309' : '#64748b', margin: '2px 0 0', fontWeight: 800 }}>{(() => { const period = getPaymentTuitionPeriod(p); const cycleIndex = paymentCycleByKey.get(String(p.id || p.docNum || '').trim()); return `${cycleIndex ? `Chu kỳ ${cycleIndex}` : 'Chưa gán chu kỳ'} · ${period ? `T${period.m}/${period.y}` : 'Kỳ phí —'}${Number(p.amount || 0) !== baseTuition ? ' · Số tiền điều chỉnh' : ''}`; })()}</p>
                     </div>
                     <div style={{ minWidth: 0 }}>
                       <p style={{ fontSize: 13, fontWeight: 800, color: '#334155', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.description || p.docNum || 'Phiếu thu'}</p>

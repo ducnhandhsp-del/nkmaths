@@ -575,6 +575,57 @@ export interface TuitionAccountState {
   asOfTs?: number;
 }
 
+export interface TuitionAccountSummary {
+  dueAmount: number;
+  overdueAmount: number;
+  totalOutstandingAmount: number;
+  dueCycleCount: number;
+  overdueCycleCount: number;
+  collectibleCycleCount: number;
+  dueStudentCount: number;
+  overdueStudentCount: number;
+  collectibleStudentCount: number;
+  reviewStudentCount: number;
+}
+
+export const summarizeTuitionAccounts = (accounts: TuitionAccountState[]): TuitionAccountSummary => {
+  const dueStudents = new Set<string>();
+  const overdueStudents = new Set<string>();
+  const collectibleStudents = new Set<string>();
+  const reviewStudents = new Set<string>();
+  let dueAmount = 0;
+  let overdueAmount = 0;
+  let dueCycleCount = 0;
+  let overdueCycleCount = 0;
+  accounts.forEach(account => {
+    const studentId = String(account.student.id || '').trim();
+    account.dueCycles.forEach(cycle => {
+      dueAmount += cycle.outstandingAmount;
+      dueCycleCount += 1;
+    });
+    account.overdueCycles.forEach(cycle => {
+      overdueAmount += cycle.outstandingAmount;
+      overdueCycleCount += 1;
+    });
+    if (studentId && account.dueCycles.length > 0) dueStudents.add(studentId);
+    if (studentId && account.overdueCycles.length > 0) overdueStudents.add(studentId);
+    if (studentId && account.unpaidCollectibleCycles.length > 0) collectibleStudents.add(studentId);
+    if (studentId && (account.status === 'needs_review' || account.reviewReasons.length > 0)) reviewStudents.add(studentId);
+  });
+  return {
+    dueAmount,
+    overdueAmount,
+    totalOutstandingAmount: dueAmount + overdueAmount,
+    dueCycleCount,
+    overdueCycleCount,
+    collectibleCycleCount: dueCycleCount + overdueCycleCount,
+    dueStudentCount: dueStudents.size,
+    overdueStudentCount: overdueStudents.size,
+    collectibleStudentCount: collectibleStudents.size,
+    reviewStudentCount: reviewStudents.size,
+  };
+};
+
 const paymentOrderTs = (payment: Payment): number =>
   parseDMY(payment.createdAt || payment.updatedAt || '') || 0;
 

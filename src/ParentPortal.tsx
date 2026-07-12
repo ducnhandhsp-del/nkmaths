@@ -314,12 +314,13 @@ export default function ParentPortal({ scriptUrl, centerName, baseTuition, phone
                 <div className="portal-table">
                   {sortedPayments.map(payment => {
                     const p = paymentPeriodOf(payment, period.y);
+                    const adjusted = Number(payment.amount || 0) !== (Number(result.tuitionAmount) || baseTuition);
                     return (
                       <div className="portal-row" key={payment.id || payment.docNum}>
                         <strong className="portal-row-date">{payment.date || '---'}</strong>
                         <div className="portal-row-main">
                           <p className="portal-row-title">{p ? `Học phí T${p.m}/${p.y}` : 'Phiếu thu học phí'}</p>
-                          <p className="portal-row-sub">{payment.method || '---'}{payment.note ? ` · ${payment.note}` : ''}</p>
+                          <p className="portal-row-sub">{payment.method || '---'}{adjusted ? ' · Số tiền điều chỉnh' : ''}{payment.note ? ` · ${payment.note}` : ''}</p>
                         </div>
                         <span className="portal-badge good">{fmtVND(Number(payment.amount) || 0)}</span>
                       </div>

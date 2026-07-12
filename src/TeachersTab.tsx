@@ -391,7 +391,7 @@ export default function TeachersTab({
       const paidStudentIds = getUniquePaidStudentIdsByReceiptPeriod(teacherPayments, { m: curMo, y: curYr });
       const paidCount = activeStudents.filter(student => paidStudentIds.has(student.id)).length;
       const unpaidCount = tuitionStates.filter(state => state.status === 'due' || state.status === 'overdue').length;
-      const reviewCount = tuitionStates.filter(state => state.status === 'needs_review').length;
+      const reviewCount = tuitionStates.filter(state => state.status === 'needs_review' || state.reviewReasons.length > 0).length;
       const attendanceTotal = monthLogs.reduce((s, l) => s + (l.present || 0) + (l.absent || 0) + (l.late || 0) + (l.excused || 0), 0);
       const attendancePresent = monthLogs.reduce((s, l) => s + (l.present || 0) + (l.late || 0), 0);
       const attendancePct = attendanceTotal > 0 ? Math.round((attendancePresent / attendanceTotal) * 100) : null;

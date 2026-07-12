@@ -20,11 +20,12 @@ import {
   getPaymentReceiptPeriod,
   getTuitionAccountState,
   parsePeriod,
+  summarizeTuitionAccounts,
 } from './measures';
 import { Badge, Button, Pager, SearchBar, Select } from './dsComponents';
 import { ActionableKpi, ActionableKpiGrid, DataTable, DateText, EmptyState, MobileRecordAction, MobileRecordList, MobileRecordMarker, MobileRecordRow, MobileRecordTextAction, MoneyText, MonthText, PageToolbar, StatusBadge, ToolbarTabs, ZaloMark, useIsMobileViewport } from './uiSystem';
 import type { Payment, Expense, Student, FinanceSub, TeachingLog } from './types';
-import type { TuitionStatus } from './measures';
+import type { TuitionAccountState, TuitionStatus } from './measures';
 
 interface Props {
   financeSubtab?: FinanceSub;
@@ -54,10 +55,15 @@ type DebtStatus = TuitionStatus;
 interface DebtTableRow {
   id: string;
   student: Student;
+  account: TuitionAccountState;
   target: number;
   done: number;
   currentCycleIndex: number;
   unpaidCycleCount: number;
+  dueCycleCount: number;
+  overdueCycleCount: number;
+  dueAmount: number;
+  overdueAmount: number;
   hasReview: boolean;
   debtAmount: number;
   paidAmount: number;
@@ -278,10 +284,15 @@ export default function FinanceTab({
     return {
       id: s.id,
       student: s,
+      account: cycleState,
       target: cycleState.target,
       done: cycleState.currentCycle.done,
       currentCycleIndex: cycleState.currentCycle.cycleIndex,
       unpaidCycleCount: cycleState.unpaidCollectibleCycles.length,
+      dueCycleCount: cycleState.dueCycles.length,
+      overdueCycleCount: cycleState.overdueCycles.length,
+      dueAmount: cycleState.dueCycles.reduce((sum, cycle) => sum + cycle.outstandingAmount, 0),
+      overdueAmount: cycleState.overdueCycles.reduce((sum, cycle) => sum + cycle.outstandingAmount, 0),
       hasReview: cycleState.reviewReasons.length > 0 || status === 'needs_review',
       debtAmount,
       paidAmount: periodPaidAmount,
@@ -306,8 +317,8 @@ export default function FinanceTab({
   const debtTableRows = useMemo(() => financeCycleRows
     .filter(row => {
       if (debtStatusFilter === 'review' && !row.hasReview) return false;
-      if (debtStatusFilter === 'due' && row.status !== 'due') return false;
-      if (debtStatusFilter === 'overdue' && row.status !== 'overdue') return false;
+      if (debtStatusFilter === 'due' && row.dueCycleCount === 0) return false;
+      if (debtStatusFilter === 'overdue' && row.overdueCycleCount === 0) return false;
       if (debtStatusFilter === 'collected') {
         if (!row.periodPayment) return false;
       }
@@ -343,11 +354,23 @@ export default function FinanceTab({
     return 0;
   }, [baseTuition]);
   const getDebtDisplayAmount = useCallback(
-    (row: DebtTableRow) => debtStatusFilter === 'collected' ? row.paidAmount : getDebtPeriodAmount(row),
+    (row: DebtTableRow) => debtStatusFilter === 'collected'
+      ? row.paidAmount
+      : debtStatusFilter === 'due'
+        ? row.dueAmount
+        : debtStatusFilter === 'overdue'
+          ? row.overdueAmount
+          : getDebtPeriodAmount(row),
     [debtStatusFilter, getDebtPeriodAmount],
   );
   const getDebtPeriodStatus = useCallback((row: DebtTableRow): DebtStatus => (
-    debtStatusFilter === 'review' && row.hasReview ? 'needs_review' : row.status
+    debtStatusFilter === 'due' && row.dueCycleCount > 0
+      ? 'due'
+      : debtStatusFilter === 'overdue' && row.overdueCycleCount > 0
+        ? 'overdue'
+        : debtStatusFilter === 'review' && row.hasReview
+          ? 'needs_review'
+          : row.status
   ), [debtStatusFilter]);
   const makePaymentDraft = useCallback((row: DebtTableRow) => {
     const s = row.student;
@@ -371,14 +394,10 @@ export default function FinanceTab({
   }, [fFC, payments, selectedDebtMonth, students]);
 
   const collectedAmount = selectedMonthPayments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
-  const collectionRows = financeCycleRows.filter(row => row.status === 'due' || row.status === 'overdue');
-  const reviewRows = financeCycleRows.filter(row => row.hasReview);
-  const dueAmount = financeCycleRows
-    .filter(row => row.status === 'due')
-    .reduce((sum, row) => sum + getDebtPeriodAmount(row), 0);
-  const overdueAmount = financeCycleRows
-    .filter(row => row.status === 'overdue')
-    .reduce((sum, row) => sum + getDebtPeriodAmount(row), 0);
+  const financeSummary = useMemo(
+    () => summarizeTuitionAccounts(financeCycleRows.map(row => row.account)),
+    [financeCycleRows],
+  );
 
   const debtColumns = useMemo(() => [
     {
@@ -765,10 +784,10 @@ export default function FinanceTab({
         <ActionableKpiGrid>
           <ActionableKpi
             icon={AlertTriangle}
-            value={reviewRows.length}
-            label="Cần kiểm tra"
-            sub="Không tự động tính công nợ"
-            tone={reviewRows.length > 0 ? 'warning' : 'success'}
+            value={financeSummary.reviewStudentCount}
+            label="Cần đối soát"
+            sub={`${financeSummary.reviewStudentCount} học sinh cần kiểm tra`}
+            tone={financeSummary.reviewStudentCount > 0 ? 'warning' : 'success'}
             onClick={() => focusDebtStatus('review')}
             actionLabel="Rà soát"
           />
@@ -783,19 +802,26 @@ export default function FinanceTab({
           />
           <ActionableKpi
             icon={Wallet}
-            value={<MoneyText value={dueAmount} compact tone={dueAmount > 0 ? 'danger' : 'success'} />}
-            label="Cần thu"
-            sub={`${collectionRows.filter(row => row.status === 'due').length} học sinh`}
-            tone={dueAmount > 0 ? 'danger' : 'success'}
+            value={<MoneyText value={financeSummary.totalOutstandingAmount} compact tone={financeSummary.totalOutstandingAmount > 0 ? 'danger' : 'success'} />}
+            label="Tổng cần thu"
+            sub={`${financeSummary.collectibleStudentCount} học sinh · ${financeSummary.collectibleCycleCount} chu kỳ`}
+            tone={financeSummary.totalOutstandingAmount > 0 ? 'danger' : 'success'}
+          />
+          <ActionableKpi
+            icon={Wallet}
+            value={<MoneyText value={financeSummary.dueAmount} compact tone={financeSummary.dueAmount > 0 ? 'warning' : 'success'} />}
+            label="Đến hạn"
+            sub={`${financeSummary.dueStudentCount} học sinh · ${financeSummary.dueCycleCount} chu kỳ`}
+            tone={financeSummary.dueAmount > 0 ? 'warning' : 'success'}
             onClick={() => focusDebtStatus('due')}
-            actionLabel="Lọc cần thu"
+            actionLabel="Lọc đến hạn"
           />
           <ActionableKpi
             icon={TrendingDown}
-            value={<MoneyText value={overdueAmount} compact tone={overdueAmount > 0 ? 'danger' : 'success'} />}
+            value={<MoneyText value={financeSummary.overdueAmount} compact tone={financeSummary.overdueAmount > 0 ? 'danger' : 'success'} />}
             label="Quá hạn"
-            sub={`${financeCycleRows.filter(row => row.status === 'overdue').length} học sinh`}
-            tone={overdueAmount > 0 ? 'danger' : 'success'}
+            sub={`${financeSummary.overdueStudentCount} học sinh · ${financeSummary.overdueCycleCount} chu kỳ`}
+            tone={financeSummary.overdueAmount > 0 ? 'danger' : 'success'}
             onClick={() => focusDebtStatus('overdue')}
             actionLabel="Lọc quá hạn"
           />

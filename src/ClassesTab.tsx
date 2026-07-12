@@ -183,7 +183,7 @@ function ClassDetailModal({ cls, curMo, curYr, students, classes, payments = [],
   const paidIds = getUniquePaidStudentIdsByReceiptPeriod(payments, { m: curMo, y: curYr });
   const paid = clsStudents.filter(student => paidIds.has(student.id));
   const unpaid = tuitionStates.filter(state => state.status === 'due' || state.status === 'overdue').map(state => state.student);
-  const reviewCount = tuitionStates.filter(state => state.status === 'needs_review').length;
+  const reviewCount = tuitionStates.filter(state => state.status === 'needs_review' || state.reviewReasons.length > 0).length;
   const pct = clsStudents.length > 0 ? Math.round(paid.length / clsStudents.length * 100) : 0;
   const feeTone = tuitionTone(clsStudents.length, pct);
   const feeBg = feeTone === 'emerald' ? '#ecfdf5' : feeTone === 'amber' ? '#fefce8' : feeTone === 'rose' ? '#fff1f2' : '#f8fafc';
@@ -427,7 +427,7 @@ export default function ClassesTab({ uClasses,students,payments=[],tlogs=[],base
     const billable = tuitionStates.filter(state => state.billable);
     const paidCount = cls.filter(student => paidStudentIds.has(student.id)).length;
     const collectionCount = tuitionStates.filter(state => state.status === 'due' || state.status === 'overdue').length;
-    const reviewCount = tuitionStates.filter(state => state.status === 'needs_review').length;
+    const reviewCount = tuitionStates.filter(state => state.status === 'needs_review' || state.reviewReasons.length > 0).length;
     const pct = billable.length > 0 ? Math.round(paidCount / billable.length * 100) : 0;
     const classId = getClassCode(c);
     const paidAmount = payments
