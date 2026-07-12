@@ -61,6 +61,16 @@ const makeWriteRequestId = (action = 'write') => {
 const isRequestTimeout = (err: any) =>
   String(err?.message || err || '').toLowerCase().includes('timeout');
 
+export type SaveScope =
+  | 'student'
+  | 'class'
+  | 'payment'
+  | 'expense'
+  | 'lesson'
+  | 'teacher'
+  | 'material'
+  | 'delete';
+
 export function useDomains(cfg: DomainConfig) {
   const {
     scriptUrl, adminToken, schoolYear, students, payments, expenses, tlogs, uClasses,
@@ -71,13 +81,16 @@ export function useDomains(cfg: DomainConfig) {
   } = cfg;
 
   const [saving,      setSaving]      = useState(false);
+  const [savingScopes, setSavingScopes] = useState<ReadonlySet<SaveScope>>(() => new Set());
   const [editStudent, setEditStudent] = useState<Student | null>(null);
   const [editClass,   setEditClass]   = useState<any>(null);
   const [editPayment, setEditPayment] = useState<Payment | null>(null);
   const [editExpense, setEditExpense] = useState<any | null>(null);
   const [editDiary,   setEditDiary]   = useState<any>(null);
 
-  const savingRef = useRef(false);
+  const savingScopesRef = useRef<Set<SaveScope>>(new Set());
+  const activeSaveCountRef = useRef(0);
+  const reloadAfterSaveRef = useRef(false);
 
   /* ── api helper — kiểm tra HTTP status lẫn GAS response body ── */
   const api = useCallback(async (body: object): Promise<any> => {
@@ -104,9 +117,11 @@ export function useDomains(cfg: DomainConfig) {
   }, [adminToken, scriptUrl]);
 
   /* ── withSave ── */
-  const withSave = useCallback(async (fn: () => Promise<void>, successMsg?: string) => {
-    if (savingRef.current) return;
-    savingRef.current = true;
+  const withSave = useCallback(async (scope: SaveScope, fn: () => Promise<void>, successMsg?: string) => {
+    if (savingScopesRef.current.has(scope)) return;
+    savingScopesRef.current.add(scope);
+    activeSaveCountRef.current += 1;
+    setSavingScopes(new Set(savingScopesRef.current));
     setSaving(true);
     try {
       isSavingRef.current = true; // chặn auto-reload trong khi save
@@ -124,11 +139,19 @@ export function useDomains(cfg: DomainConfig) {
       silentRef.current = true;
       try { loadData(); } catch {}
     } finally {
-      savingRef.current = false;
-      isSavingRef.current = false;
-      setSaving(false);
+      savingScopesRef.current.delete(scope);
+      activeSaveCountRef.current = Math.max(0, activeSaveCountRef.current - 1);
+      setSavingScopes(new Set(savingScopesRef.current));
+      isSavingRef.current = activeSaveCountRef.current > 0;
+      setSaving(activeSaveCountRef.current > 0);
+      if (activeSaveCountRef.current === 0 && reloadAfterSaveRef.current) {
+        reloadAfterSaveRef.current = false;
+        void loadData();
+      }
     }
   }, [isSavingRef, silentRef, loadData]);
+
+  const isSaving = useCallback((scope: SaveScope) => savingScopes.has(scope), [savingScopes]);
 
   /* FIX S1: setSilent set trực tiếp vào silentRef — không còn hack qua __setSilent
      FIX D4: reset lastLoadTimeRef về 0 → visibility event sẽ force reload ngay */
@@ -136,6 +159,11 @@ export function useDomains(cfg: DomainConfig) {
     silentRef.current = true;
     lastLoadTimeRef.current = 0;
   }, [silentRef, lastLoadTimeRef]);
+
+  const requestReloadAfterSave = useCallback(() => {
+    setSilent();
+    reloadAfterSaveRef.current = true;
+  }, [setSilent]);
 
   const classCodeOf = (c: any): string =>
     String(c?.['Mã Lớp'] || c?.['Mã lớp'] || c?.MaLop || c?.['Ma Lop'] || c?.classId || c?.id || '').trim().toUpperCase();
@@ -149,7 +177,7 @@ export function useDomains(cfg: DomainConfig) {
      STUDENTS DOMAIN
   ════════════════════════════════════════════ */
   const handleSaveStudent = useCallback(async (form: any) =>
-    withSave(async () => {
+    withSave('student', async () => {
       if (!form.id?.trim() || !form.name?.trim())
         throw new Error('⚠️ Mã HS và Tên là bắt buộc!');
       const normalizedId = form.id.trim().replace(/\s+/g, '').toUpperCase();
@@ -190,13 +218,13 @@ export function useDomains(cfg: DomainConfig) {
         action: editStudent ? 'updateHS' : 'saveHS',
         ...sanitizeObject({ ...form, startDate: form.startDate ? formatDate(form.startDate) : '' }),
       });
-      setSilent(); loadData();
+      requestReloadAfterSave();
     }, editStudent ? '✅ Đã cập nhật học sinh!' : '✅ Đã thêm học sinh mới!')
   , [withSave, editStudent, students, api, setStudents, setSilent, loadData]);
 
   const handleToggleStudentStatus = useCallback(async (s: Student, chosenEndDate?: string) => {
     const isInactive = s.status === 'inactive' || (s.endDate && s.endDate !== '---' && s.endDate !== '');
-    return withSave(async () => {
+    return withSave('student', async () => {
       let endDateStr = '';
       if (!isInactive) {
         if (chosenEndDate) {
@@ -222,12 +250,12 @@ export function useDomains(cfg: DomainConfig) {
         endDate: isInactive ? '' : endDateStr,
         status:  isInactive ? 'active' : 'inactive',
       });
-      setSilent(); loadData();
+      requestReloadAfterSave();
     }, isInactive ? '✅ Đã kích hoạt lại!' : '✅ Đã đánh dấu nghỉ học!');
   }, [withSave, api, setStudents, setSilent, loadData]);
 
   const handleSaveFacebook = useCallback(async (s: Student, facebookUrl: string) =>
-    withSave(async () => {
+    withSave('student', async () => {
       setStudents(prev => prev.map(st => st.id === s.id ? { ...st, facebookUrl } : st));
       await api({
         action: 'updateHS', id: s.id, name: s.name, dob: s.dob, branch: s.branch,
@@ -237,12 +265,12 @@ export function useDomains(cfg: DomainConfig) {
         notes: s.notes || '', facebookUrl,
         classId: s.classId, startDate: s.startDate, endDate: s.endDate || '', status: s.status,
       });
-      setSilent(); loadData();
+      requestReloadAfterSave();
     }, '✅ Đã lưu Facebook URL!')
   , [withSave, api, setStudents, setSilent, loadData]);
 
   const handleSaveNote = useCallback(async (s: Student, notes: string) =>
-    withSave(async () => {
+    withSave('student', async () => {
       setStudents(prev => prev.map(st => st.id === s.id ? { ...st, notes } : st));
       await api({
         action: 'updateHS', id: s.id, name: s.name, dob: s.dob, branch: s.branch,
@@ -251,7 +279,7 @@ export function useDomains(cfg: DomainConfig) {
         academicLevel: s.academicLevel, goal: s.goal, supportNeeded: s.supportNeeded,
         notes, classId: s.classId, startDate: s.startDate, endDate: s.endDate || '', status: s.status,
       });
-      setSilent(); loadData();
+      requestReloadAfterSave();
     }, '✅ Đã lưu nhận xét!')
   , [withSave, api, setStudents, setSilent, loadData]);
 
@@ -259,7 +287,7 @@ export function useDomains(cfg: DomainConfig) {
      CLASSES DOMAIN
   ════════════════════════════════════════════ */
   const handleSaveClass = useCallback(async (form: any) =>
-    withSave(async () => {
+    withSave('class', async () => {
       const classCode = classCodeOf(form);
       const originalCode = classCodeOf({ ...editClass, ...(form.__editingId ? { MaLop: form.__editingId } : {}) }) || classCode;
       if (!classCode) throw new Error('⚠️ Lớp là bắt buộc!');
@@ -314,15 +342,14 @@ export function useDomains(cfg: DomainConfig) {
         Buoi2:    normalizedForm.Buoi2,
         Buoi3:    normalizedForm.Buoi3,
       });
-      setSilent();
-      void loadData();
+      requestReloadAfterSave();
     }, editClass ? '✅ Đã cập nhật lớp!' : '✅ Đã thêm lớp mới!')
   , [withSave, editClass, api, setUClasses, setSilent, loadData]);
 
   const [bulkStudents, setBulkStudents] = useState<Student[]>([]);
 
   const handleConfirmBulkTransfer = useCallback(async (newClassId: string, transferDate: string) =>
-    withSave(async () => {
+    withSave('student', async () => {
       const [ty, tm, td] = transferDate.split('-');
       const dateStr = `${td}/${tm}/${ty}`;
       /* Optimistic bulk update */
@@ -333,7 +360,7 @@ export function useDomains(cfg: DomainConfig) {
         api({ action: 'updateHS', ...s, classId: newClassId, fromClassId: s.classId, transferDate: dateStr })
       ));
       setBulkStudents([]);
-      setSilent(); loadData();
+      requestReloadAfterSave();
     }, `✅ Đã chuyển ${bulkStudents.length} học sinh!`)
   , [withSave, bulkStudents, api, setStudents, setSilent, loadData]);
 
@@ -343,7 +370,7 @@ export function useDomains(cfg: DomainConfig) {
   const [vInvoice, setVInvoice] = useState<Payment | null>(null);
 
   const handleSaveFee = useCallback(async (form: any) =>
-    withSave(async () => {
+    withSave('payment', async () => {
       const rawId = (form.maHS || '').trim();
       const maHS  = rawId.includes(' - ') ? rawId.split(' - ')[0].trim() : rawId;
       if (!maHS)                              throw new Error('⚠️ Vui lòng nhập mã HS!');
@@ -387,12 +414,12 @@ export function useDomains(cfg: DomainConfig) {
       setVInvoice(previewPayment);
 
       await api({ action: editPayment ? 'updatePayment' : 'savePayment', timeStamp: t, soCT, ...clean });
-      setSilent(); loadData();
+      requestReloadAfterSave();
     }, editPayment ? '✅ Đã cập nhật phiếu thu!' : '✅ Đã ghi phiếu thu!')
   , [withSave, editPayment, students, api, setPayments, setSilent, loadData]);
 
   const handleSaveExpense = useCallback(async (form: any) =>
-    withSave(async () => {
+    withSave('expense', async () => {
       if (!form.description?.trim()) throw new Error('⚠️ Vui lòng nhập lý do!');
       if (!form.amount || Number(form.amount) <= 0) throw new Error('⚠️ Số tiền không hợp lệ!');
       if (!form.date) throw new Error('⚠️ Vui lòng chọn ngày chi!');
@@ -426,7 +453,7 @@ export function useDomains(cfg: DomainConfig) {
         timeStamp: t, soCT,
         ...sanitizeObject({ ...form, amount: Number(form.amount), date: dateFormatted }),
       });
-      setSilent(); loadData();
+      requestReloadAfterSave();
     }, editExpense ? '✅ Đã cập nhật phiếu chi!' : '✅ Đã ghi phiếu chi!')
   , [withSave, editExpense, api, setExpenses, setSilent, loadData]);
 
@@ -442,7 +469,7 @@ export function useDomains(cfg: DomainConfig) {
       return;
     }
 
-    return withSave(async () => {
+    return withSave('lesson', async () => {
       /* ── Optimistic update: chỉ chạy sau khi withSave đã lấy khóa lưu ── */
       const attList = sanitizeAttendance(form.attendance || []);
       const present = attList.filter((a: any) => (a.trangThai || a['Trạng thái']) === 'Có mặt').length;
@@ -502,7 +529,7 @@ export function useDomains(cfg: DomainConfig) {
           originalCaDay:    form.originalCaDay || '',
         }),
       });
-      setSilent(); loadData();
+      requestReloadAfterSave();
     }, isEdit ? '✅ Đã cập nhật buổi dạy!' : isLessonOffLog(form) ? '✅ Đã lưu nghỉ buổi!' : '✅ Đã ghi buổi dạy!');
   }, [withSave, api, setTlogs, setSilent, loadData]);
 
@@ -515,25 +542,25 @@ export function useDomains(cfg: DomainConfig) {
     if (delTarget.type === 'teacher') {
       /* Optimistic cho teacher */
       setTeachers(prev => prev.filter(t => t.id !== delTarget.id));
-      await withSave(async () => {
+      await withSave('delete', async () => {
         await api({ action: 'deleteTeacher', id: delTarget.id });
-        setSilent(); loadData();
+        requestReloadAfterSave();
       }, '✅ Đã xóa giáo viên!');
       return;
     }
     if (delTarget.type === 'class') {
       setUClasses(prev => prev.filter(c => String(c['Mã Lớp'] || c.MaLop || c.classId || '') !== delTarget.id));
-      await withSave(async () => {
+      await withSave('delete', async () => {
         await api({ action: 'deleteClass', id: delTarget.id });
-        setSilent(); loadData();
+        requestReloadAfterSave();
       }, '✅ Đã xóa lớp!');
       return;
     }
     if (delTarget.type === 'material') {
       setMaterials(prev => prev.filter(m => m.id !== delTarget.id));
-      await withSave(async () => {
+      await withSave('delete', async () => {
         await api({ action: 'deleteMaterial', id: delTarget.id });
-        setSilent(); loadData();
+        requestReloadAfterSave();
       }, '✅ Đã xóa học liệu!');
       return;
     }
@@ -550,12 +577,12 @@ export function useDomains(cfg: DomainConfig) {
     const actionMap: Record<string, string> = {
       student: 'deleteHS', payment: 'deletePayment', expense: 'deleteExpense',
     };
-    await withSave(async () => {
+    await withSave('delete', async () => {
       await api({
         action: actionMap[delTarget.type],
         [delTarget.type === 'student' ? 'id' : 'docNum']: delTarget.id,
       });
-      setSilent(); loadData();
+      requestReloadAfterSave();
     }, '✅ Đã xóa thành công!');
   }, [withSave, api, setStudents, setPayments, setExpenses, setTeachers, setMaterials, setSilent, loadData]);
 
@@ -614,7 +641,7 @@ export function useDomains(cfg: DomainConfig) {
       status:    form.status   || 'active',
       createdAt: targetTeacher?.createdAt || form.createdAt || new Date().toISOString(),
     };
-    await withSave(async () => {
+    await withSave('teacher', async () => {
       if (isEdit) {
         setTeachers(prev => prev.map(t => String(t.id || '').trim() === teacherId ? { ...t, ...payload } : t));
       } else {
@@ -638,7 +665,7 @@ export function useDomains(cfg: DomainConfig) {
         degree:     payload.qualification  || '',
         salary:     payload.baseSalary     || 0,
       });
-      setSilent(); loadData();
+      requestReloadAfterSave();
     }, '✅ Đã lưu giáo viên!');
   }, [teachers, withSave, api, setTeachers, setSilent, loadData]);
 
@@ -660,22 +687,22 @@ export function useDomains(cfg: DomainConfig) {
       uploadDate: form.uploadDate || new Date().toISOString(),
     };
     const optimistic = { ...form, id: optimisticId, tags: tagsArr, uploadedAt: form.uploadedAt || new Date().toISOString(), uploadedBy: form.uploadedBy || '' };
-    await withSave(async () => {
+    await withSave('material', async () => {
       if (isEdit) {
         setMaterials(prev => prev.map(m => m.id === optimisticId ? { ...m, ...optimistic } : m));
       } else {
         setMaterials(prev => [optimistic, ...prev]);
       }
       await api({ action: isEdit ? 'updateMaterial' : 'saveMaterial', ...payload });
-      setSilent(); loadData();
+      requestReloadAfterSave();
     }, '✅ Đã lưu học liệu!');
   }, [materials, withSave, api, setMaterials, setSilent, loadData]);
 
   const handleDeleteMaterial = useCallback(async (id: string) => {
     setMaterials(prev => prev.filter(m => m.id !== id));
-    await withSave(async () => {
+    await withSave('material', async () => {
       await api({ action: 'deleteMaterial', id });
-      setSilent(); loadData();
+      requestReloadAfterSave();
     }, '✅ Đã xóa học liệu!');
   }, [withSave, api, setMaterials, setSilent, loadData]);
 
@@ -803,7 +830,7 @@ export function useDomains(cfg: DomainConfig) {
   const [fClsTeacher, setFClsTeacher] = useState('');
 
   return {
-    saving,
+    saving, isSaving,
     editStudent, setEditStudent,
     editClass,   setEditClass,
     editPayment, setEditPayment,

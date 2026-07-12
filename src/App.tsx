@@ -545,7 +545,7 @@ function AdminApp({ adminToken, onChangeAdminAccess }: { adminToken: string; onC
                   onBulkTransfer={ss => { d.setBulkStudents(ss); setShowBulkXfer(true); }}
                   onSaveTeacher={d.handleSaveTeacher}
                   onDeleteTeacher={t => setDelTarget(t)}
-                  isSaving={d.saving}
+                  isSaving={d.isSaving('teacher')}
                   onAddDiary={handleAddDiary}
                 />
               </ErrorBoundary>
@@ -652,20 +652,20 @@ function AdminApp({ adminToken, onChangeAdminAccess }: { adminToken: string; onC
         open={showStudent}
         onClose={() => { setShowStudent(false); d.setEditStudent(null); }}
         editing={d.editStudent} uniqueClasses={uClasses} uniqueBranches={d.uniqueBranches}
-        isSaving={d.saving} onSave={(f) => { setShowStudent(false); d.setEditStudent(null); return d.handleSaveStudent(f); }}
+        isSaving={d.isSaving('student')} onSave={(f) => { setShowStudent(false); d.setEditStudent(null); return d.handleSaveStudent(f); }}
         existingIds={students.map(s => s.id)}
       />
       <ClassModal
         open={showClass}
         onClose={() => { setShowClass(false); d.setEditClass(null); }}
-        editing={d.editClass} isSaving={d.saving}
+        editing={d.editClass} isSaving={d.isSaving('class')}
         onSave={(f) => d.handleSaveClass(f).then(() => { setShowClass(false); d.setEditClass(null); })}
         uniqueBranches={d.uniqueBranches} teacherList={teacherList}
       />
       <PaymentFormModal
         open={showPayment}
         onClose={() => { setShowPayment(false); d.setEditPayment(null); setPaymentDraft(null); }}
-        students={students} classes={uClasses} baseTuition={baseTuition} isSaving={d.saving}
+        students={students} classes={uClasses} baseTuition={baseTuition} isSaving={d.isSaving('payment')}
         teacherList={teacherList}
         payments={payments}
         tlogs={tlogs}
@@ -677,14 +677,14 @@ function AdminApp({ adminToken, onChangeAdminAccess }: { adminToken: string; onC
         open={showExpense}
         onClose={() => { setShowExpense(false); d.setEditExpense(null); }}
         expenses={expenses}
-        isSaving={d.saving}
+        isSaving={d.isSaving('expense')}
         onSave={d.handleSaveExpense}
         editingExpense={d.editExpense}
       />
       <DiaryModal
         open={showDiary}
         onClose={() => { setShowDiary(false); d.setEditDiary(null); setPreselectedDiaryClass(''); setPreselectedDiaryDate(''); setPreselectedDiaryCaDay(''); }}
-        uniqueClasses={uClasses} students={students} isSaving={d.saving}
+        uniqueClasses={uClasses} students={students} isSaving={d.isSaving('lesson')}
         leaveRequests={leaveRequests}
         onSave={(f) => {
           // Đóng modal ngay lập tức — save chạy background, toast báo kết quả
@@ -704,7 +704,7 @@ function AdminApp({ adminToken, onChangeAdminAccess }: { adminToken: string; onC
         open={showBulkXfer}
         onClose={() => { setShowBulkXfer(false); d.setBulkStudents([]); }}
         selectedStudents={d.bulkStudents} uniqueClasses={uClasses}
-        isSaving={d.saving} onConfirm={d.handleConfirmBulkTransfer}
+        isSaving={d.isSaving('student')} onConfirm={d.handleConfirmBulkTransfer}
       />
 
       {vStudent   && <StudentDetailModal student={vStudent} onClose={() => setVStudent(null)} tlogs={tlogs} payments={payments} onToggleStatus={d.handleToggleStudentStatus} onSaveNote={d.handleSaveNote} onSaveFacebook={d.handleSaveFacebook} onEdit={(s) => { setVStudent(null); d.setEditStudent(s); setShowStudent(true); }} onDelete={(target) => { setVStudent(null); setDelTarget(target); }} />}
@@ -712,7 +712,7 @@ function AdminApp({ adminToken, onChangeAdminAccess }: { adminToken: string; onC
       {d.vInvoice && <InvoiceModal payment={d.vInvoice} onClose={() => d.setVInvoice(null)} centerName={centerName} bankId={bankId} accountNo={accountNo} accountName={accountName} students={students} classes={uClasses} />}
       {vExpense   && <ExpenseModal expense={vExpense} onClose={() => setVExpense(null)} centerName={centerName} />}
       {vFinance   && <FinanceDetailModal student={vFinance} classes={uClasses} payments={payments} tlogs={tlogs} baseTuition={baseTuition} onClose={() => setVFinance(null)} />}
-      {delTarget  && <DeleteModal target={delTarget} onClose={() => setDelTarget(null)} onConfirm={() => { d.handleDelete(delTarget!); setDelTarget(null); }} isSaving={d.saving} />}
+      {delTarget  && <DeleteModal target={delTarget} onClose={() => setDelTarget(null)} onConfirm={() => { d.handleDelete(delTarget!); setDelTarget(null); }} isSaving={d.isSaving('delete')} />}
     </div>
   );
 }

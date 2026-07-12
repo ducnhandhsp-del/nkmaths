@@ -187,6 +187,16 @@ function cleanupIdempotencyKeys(props) {
   });
 }
 
+function maybeCleanupIdempotencyKeys(props) {
+  var cleanupIntervalMs = 60 * 60 * 1000;
+  var now = Date.now();
+  var lastCleanupAt = Number(props.getProperty('IDEMPOTENCY_LAST_CLEANUP_AT') || 0);
+  if (lastCleanupAt && now - lastCleanupAt < cleanupIntervalMs) return;
+
+  cleanupIdempotencyKeys(props);
+  props.setProperty('IDEMPOTENCY_LAST_CLEANUP_AT', String(now));
+}
+
 function runIdempotentWrite(d, fn) {
   var requestId = requestIdOf(d);
   if (!requestId || !isWriteAction(d.action)) return fn(d);
@@ -213,7 +223,7 @@ function runIdempotentWrite(d, fn) {
         action: str(d.action),
         result: result
       }));
-      cleanupIdempotencyKeys(props);
+      maybeCleanupIdempotencyKeys(props);
     }
     return result;
   } finally {
