@@ -61,6 +61,7 @@ interface DebtTableRow {
   hasReview: boolean;
   debtAmount: number;
   paidAmount: number;
+  periodPayment?: Payment;
   lastPayment?: Payment;
   adjustedPayment: boolean;
   isInactive: boolean;
@@ -262,6 +263,15 @@ export default function FinanceTab({
     });
     const status = cycleState.status;
     const debtAmount = cycleState.totalOutstandingAmount;
+    const periodPayments = payments.filter(payment => {
+      if (payment.studentId !== s.id || Number(payment.amount) <= 0) return false;
+      const period = getPaymentReceiptPeriod(payment);
+      return period?.m === selectedDebtMonth.m && period?.y === selectedDebtMonth.y;
+    });
+    const periodPayment = periodPayments
+      .slice()
+      .sort((a, b) => parseDMY(b.date || '') - parseDMY(a.date || ''))[0];
+    const periodPaidAmount = periodPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
     const isInactive = status === 'inactive';
     const isProblem = status === 'overdue';
     const isWarning = status === 'due' || status === 'needs_review';
@@ -274,7 +284,8 @@ export default function FinanceTab({
       unpaidCycleCount: cycleState.unpaidCollectibleCycles.length,
       hasReview: cycleState.reviewReasons.length > 0 || status === 'needs_review',
       debtAmount,
-      paidAmount: Number(cycleState.lastPayment?.amount || 0),
+      paidAmount: periodPaidAmount,
+      periodPayment,
       lastPayment: cycleState.lastPayment,
       adjustedPayment: !!cycleState.lastPayment && baseTuition > 0 && Number(cycleState.lastPayment.amount || 0) !== baseTuition,
       isInactive,
@@ -282,7 +293,7 @@ export default function FinanceTab({
       isWarning,
       status,
     };
-  }, [baseTuition, debtAsOfTs, payments, tlogs, uClasses]);
+  }, [baseTuition, debtAsOfTs, payments, selectedDebtMonth, tlogs, uClasses]);
   const financeStudents = useMemo(() => {
     return students.filter(s => {
       if (fFC && s.classId !== fFC) return false;
@@ -298,8 +309,7 @@ export default function FinanceTab({
       if (debtStatusFilter === 'due' && row.status !== 'due') return false;
       if (debtStatusFilter === 'overdue' && row.status !== 'overdue') return false;
       if (debtStatusFilter === 'collected') {
-        const receiptPeriod = row.lastPayment ? getPaymentReceiptPeriod(row.lastPayment) : null;
-        if (receiptPeriod?.m !== selectedDebtMonth.m || receiptPeriod?.y !== selectedDebtMonth.y) return false;
+        if (!row.periodPayment) return false;
       }
       const q = isMobileViewport ? '' : qF.trim().toLowerCase();
       if (!q) return true;
@@ -326,7 +336,7 @@ export default function FinanceTab({
       .sort((a, b) => a.localeCompare(b, 'vi'))
       .map(v => ({ value: v, label: v })),
   ], [expenses]);
-  const getDebtPeriodPayment = useCallback((row: DebtTableRow) => row.lastPayment, []);
+  const getDebtPeriodPayment = useCallback((row: DebtTableRow) => row.periodPayment || row.lastPayment, []);
   const getDebtPeriodAmount = useCallback((row: DebtTableRow) => {
     if (row.status === 'paid') return row.paidAmount;
     if (row.status === 'due' || row.status === 'overdue') return row.debtAmount || baseTuition;
