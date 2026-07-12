@@ -16,6 +16,7 @@ import {
   getTuitionCycleState,
   getTuitionSessionProgress,
   isPaidFn,
+  isStudentActiveOnDate,
   isStudentBillableInMonth,
   lessonCountByClassPeriod,
   normalizeAttendanceStatus,
@@ -45,6 +46,16 @@ const baseStudent: Student = {
 };
 
 assert.equal(isStudentBillableInMonth(baseStudent, { m: 5, y: 2026 }), false, 'before start month is not billable');
+assert.equal(
+  isStudentActiveOnDate({ ...baseStudent, status: 'inactive', endDate: '10/07/2026' }, '05/07/2026'),
+  true,
+  'a student remains active for historical lessons before their end date',
+);
+assert.equal(
+  isStudentActiveOnDate({ ...baseStudent, status: 'inactive', endDate: '10/07/2026' }, '11/07/2026'),
+  false,
+  'a student is inactive for lessons after their end date',
+);
 assert.equal(isStudentBillableInMonth(baseStudent, { m: 6, y: 2026 }), true, 'start month is billable');
 assert.equal(isStudentBillableInMonth({ ...baseStudent, endDate: '10/08/2026' }, { m: 8, y: 2026 }), true, 'leave month is still billable');
 assert.equal(isStudentBillableInMonth({ ...baseStudent, endDate: '10/08/2026' }, { m: 9, y: 2026 }), false, 'months after leave month are not billable');

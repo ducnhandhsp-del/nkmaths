@@ -6,7 +6,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, BookOpen, CalendarX, CheckCircle, Edit3, Eye, Phone, Plus } from 'lucide-react';
 import { getLessonOffReason, isLessonOffLog, normalizeCaDayLabel, normalizeScheduleCaText, parseCaDayToHours, parseDMY } from './helpers';
-import { attendanceStudentId, calcStudentAbsenceStreak, getAttendanceRisk, normalizeAttendanceStatus as normalizeAttendanceStatusCore } from './measures';
+import { attendanceStudentId, calcStudentAbsenceStreak, getAttendanceRisk, isStudentActiveInMonth, normalizeAttendanceStatus as normalizeAttendanceStatusCore } from './measures';
 import { Button, Pager, Select } from './dsComponents';
 import { ActionableKpi, ActionableKpiGrid, DataTable, DateText, EmptyState, MobileRecordAction, MobileRecordList, MobileRecordMarker, MobileRecordRow, MobileRecordTextAction, PageToolbar, StatusBadge, ToolbarTabs, ZaloMark } from './uiSystem';
 import type { Student, TeachingLog, LeaveRequest, OperationsSub } from './types';
@@ -494,8 +494,9 @@ export default function OperationsTab({
 
   const attendanceStats = useMemo<AttendanceRow[]>(() => {
     const map = new Map<string, AttendanceRow>();
+    const [m, y] = attendanceMonth.split('/').map(Number);
     students
-      .filter(s => s.status !== 'inactive' && (!s.endDate || s.endDate === '---' || s.endDate === ''))
+      .filter(s => isStudentActiveInMonth(s, { m, y }))
       .forEach(s => map.set(s.id, {
         id: s.id,
         name: s.name,
@@ -521,7 +522,6 @@ export default function OperationsTab({
       });
     });
 
-    const [m, y] = attendanceMonth.split('/').map(Number);
     students.forEach(student => {
       const row = map.get(student.id);
       if (!row) return;

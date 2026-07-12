@@ -6,6 +6,7 @@ import { compareClassCode, formatDate, toInputDate, localDateStr, normalizeCaDay
 import { Button, AttendancePicker } from './dsComponents';
 import type { AttendanceStudent } from './dsComponents';
 import type { LeaveRequest, Student } from './types';
+import { isStudentActiveOnDate } from './measures';
 
 const FS_WRAP: React.CSSProperties = { position:'fixed',inset:0,zIndex:200,display:'flex',alignItems:'flex-end',justifyContent:'center',background:'rgba(15,23,42,0.65)',backdropFilter:'blur(5px)' };
 const FS_DLG: React.CSSProperties  = { background:'white',width:'100%',maxWidth:900,maxHeight:'95dvh',borderRadius:'12px 12px 0 0',overflow:'hidden',display:'flex',flexDirection:'column',boxShadow:'0 -8px 40px rgba(0,0,0,0.28)' };
@@ -151,22 +152,27 @@ export function DiaryModal({
   },[open,editingLog,preselectedClassId,preselectedDate,preselectedCaDay]);
 
   // Chỉ lấy học sinh đang học (chưa nghỉ) trong lớp
-  const cls=useMemo(() => students.filter(s=>
-    s.classId===classId &&
-    s.status!=='inactive' &&
-    (!s.endDate || s.endDate==='---' || s.endDate==='')
-  ), [classId, students]);
+  const existingRegularAttendanceIds = useMemo(() => new Set(
+    (editingLog?.attendanceList || [])
+      .filter((entry: any) => normalizeAttendanceType(entry.LoaiDiemDanh || entry.loaiDiemDanh || entry.attendanceType || entry.type) !== 'extra')
+      .map((entry: any) => String(entry.maHS || entry['MÃ£ HS'] || entry.MaHS || '').trim())
+      .filter(Boolean),
+  ), [editingLog]);
+
+  const cls=useMemo(() => students.filter(s =>
+    s.classId === classId &&
+    (isStudentActiveOnDate(s, date) || existingRegularAttendanceIds.has(s.id))
+  ), [classId, date, existingRegularAttendanceIds, students]);
   const extraStudents = useMemo(() => students.filter(s => extraIds.includes(s.id)), [extraIds, students]);
   const attendanceStudentIds = useMemo(() => new Set([...cls.map(s => s.id), ...extraIds]), [cls, extraIds]);
   const eligibleExtraStudents = useMemo(() => students
     .filter(s =>
       s.id &&
-      s.status !== 'inactive' &&
-      (!s.endDate || s.endDate === '---' || s.endDate === '') &&
+      isStudentActiveOnDate(s, date) &&
       !attendanceStudentIds.has(s.id)
     )
     .sort((a, b) => compareClassCode(a.classId, b.classId) || a.name.localeCompare(b.name, 'vi')),
-  [attendanceStudentIds, students]);
+  [attendanceStudentIds, date, students]);
   const filteredExtraStudents = useMemo(() => {
     const q = normalizeSearchText(extraQuery);
     if (!q) return [];

@@ -289,8 +289,8 @@ export default function StudentsTab({
       <style>{`
         .student-toolbar-title{display:flex;align-items:center;gap:12px}
         .student-mobile-add{display:none}
-        .student-toolbar-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-        .student-toolbar-search{width:104px;min-width:96px;height:34px;border:1px solid #dbe3ef;border-radius:8px;background:#fff;padding:0 10px;font-size:13px;font-weight:800;color:#0f172a;outline:none}
+        .student-toolbar-filters{width:234px;display:grid;grid-template-columns:66px 70px minmax(0,1fr);align-items:center;gap:8px}
+        .student-toolbar-search{width:100%;min-width:0;height:34px;border:1px solid #dbe3ef;border-radius:8px;background:#fff;padding:0 8px;font-size:12px;font-weight:800;color:#0f172a;outline:none}
         .student-toolbar-search::placeholder{color:#94a3b8;font-weight:800}
         .student-toolbar-reset{height:32px;padding:0 9px;border-radius:999px;border:1px solid #e2e8f0;background:#fff;color:#475569;font-size:12px;font-weight:900;cursor:pointer}
         .student-toolbar-reset:hover{border-color:#cbd5e1;background:#f8fafc}
@@ -308,8 +308,7 @@ export default function StudentsTab({
         @media(max-width:767px){
           .student-toolbar-title{width:calc(100vw - 84px);justify-content:space-between}
           .student-mobile-add{display:none!important}
-          .student-toolbar-filters{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-          .student-toolbar-search{display:none}
+          .student-toolbar-filters{width:100%;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
           .student-toolbar-filters > *{width:100%!important;min-width:0!important}
           .student-toolbar-filters select{width:100%!important;min-width:0!important}
           .student-toolbar-reset{grid-column:1/-1}
@@ -343,8 +342,8 @@ export default function StudentsTab({
             placeholder="Tìm"
             aria-label="Tìm học sinh"
           />
-          <Select value={fCls} onChange={v => { setFCls(v); setPgS(1); }} options={classOptions} style={{ width: 104, minWidth: 96 }} />
-          <Select value={statusFilter} onChange={setStudentStatusFilter} options={statusOptions} style={{ width: 122, minWidth: 112 }} />
+          <Select value={fCls} onChange={v => { setFCls(v); setPgS(1); }} options={classOptions} style={{ width: '100%', minWidth: 0 }} />
+          <Select value={statusFilter} onChange={setStudentStatusFilter} options={statusOptions} style={{ width: '100%', minWidth: 0 }} />
           {hasActiveFilter && (
             <button type="button" className="student-toolbar-reset" onClick={resetFilters}>
               Xóa lọc

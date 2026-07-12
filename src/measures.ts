@@ -51,6 +51,23 @@ export const isStudentActive = (s: Pick<Student, 'status' | 'endDate'>): boolean
 export const getActiveStudents = (students: Student[]): Student[] =>
   students.filter(isStudentActive);
 
+/** Historical activity must use the lesson date, not today's inactive status. */
+export const isStudentActiveOnDate = (
+  student: Pick<Student, 'status' | 'startDate' | 'endDate'>,
+  rawDate: string,
+): boolean => {
+  const dateTs = parseDMY(rawDate || '');
+  if (!dateTs) return isStudentActive(student as Pick<Student, 'status' | 'endDate'>);
+
+  const startTs = parseDMY(student.startDate || '');
+  const endTs = parseDMY(student.endDate || '');
+  const endRaw = String(student.endDate || '').trim();
+
+  if (startTs && dateTs < startTs) return false;
+  if (endTs && endRaw && endRaw !== '---') return dateTs <= endTs;
+  return student.status !== 'inactive';
+};
+
 export interface Period {
   m: number;
   y: number;
