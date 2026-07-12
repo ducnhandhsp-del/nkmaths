@@ -2,8 +2,8 @@ import React, { useMemo, useState, type FormEvent } from 'react';
 import { AlertTriangle, CalendarCheck, CheckCircle2, Loader2, Phone, Search, ShieldCheck, WalletCards } from 'lucide-react';
 
 import { fetchWithTimeout, fmtVND, parseDMY } from './helpers';
-import { getPaymentTuitionPeriod, isStudentBillableInMonth, type Period } from './measures';
-import type { Payment, Student } from './types';
+import { getPaymentTuitionPeriod, getTuitionCycleState, type Period } from './measures';
+import type { ClassRecord, Payment, Student, TeachingLog } from './types';
 
 type PortalStudent = Pick<Student, 'id' | 'name' | 'classId' | 'grade' | 'school' | 'parentName' | 'status' | 'startDate' | 'endDate'>;
 
@@ -30,6 +30,10 @@ interface PortalResult {
   tuitionAmount?: number;
   payments: PortalPayment[];
   attendance: PortalAttendance[];
+  tuitionCycle?: {
+    target: number;
+    collectionThreshold: number;
+  };
   generatedAt?: string;
 }
 
@@ -104,6 +108,10 @@ export default function ParentPortal({ scriptUrl, centerName, baseTuition, phone
         tuitionAmount: Number(data.tuitionAmount) || undefined,
         payments: Array.isArray(data.payments) ? data.payments : [],
         attendance: Array.isArray(data.attendance) ? data.attendance : [],
+        tuitionCycle: data.tuitionCycle && typeof data.tuitionCycle === 'object' ? {
+          target: Number(data.tuitionCycle.target) || 0,
+          collectionThreshold: Number(data.tuitionCycle.collectionThreshold) || 0,
+        } : undefined,
         generatedAt: data.generatedAt,
       });
     } catch {
@@ -116,16 +124,34 @@ export default function ParentPortal({ scriptUrl, centerName, baseTuition, phone
 
   const tuition = useMemo(() => {
     if (!result?.student) return null;
-    const payments = result.payments.filter(payment => {
-      const p = paymentPeriodOf(payment, period.y);
-      return p?.m === period.m && p?.y === period.y;
+    const target = Number(result.tuitionCycle?.target) || 0;
+    const slotCount = target >= 12 ? 3 : target >= 8 ? 2 : target >= 4 ? 1 : 0;
+    const classRecord = {
+      MaLop: result.student.classId,
+      Buoi1: slotCount >= 1 ? 'slot-1' : '',
+      Buoi2: slotCount >= 2 ? 'slot-2' : '',
+      Buoi3: slotCount >= 3 ? 'slot-3' : '',
+    } as unknown as ClassRecord;
+    const cyclePayments = result.payments.map(payment => ({
+      ...payment,
+      studentId: result.student.id,
+    })) as Payment[];
+    const cycleLogs = result.attendance.map(row => ({
+      id: row.lessonId,
+      maBuoi: row.lessonId,
+      rawDate: row.date,
+      date: row.date,
+      classId: row.classId,
+      attendanceList: [{ maHS: result.student.id, trangThai: row.status }],
+    })) as TeachingLog[];
+    const state = getTuitionCycleState({
+      student: result.student as Student,
+      classes: [classRecord],
+      payments: cyclePayments,
+      tlogs: cycleLogs,
+      baseTuition: Number(result.tuitionAmount) || baseTuition,
     });
-    const paid = payments.reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
-    const billable = isStudentBillableInMonth(result.student, period);
-    const tuitionAmount = Number(result.tuitionAmount) || baseTuition;
-    const expected = billable ? tuitionAmount : 0;
-    const remaining = Math.max(0, expected - paid);
-    return { payments, paid, expected, remaining, billable };
+    return state;
   }, [baseTuition, period, result]);
 
   const attendance = useMemo(() => {
@@ -139,6 +165,21 @@ export default function ParentPortal({ scriptUrl, centerName, baseTuition, phone
   }, [result]);
 
   const sortedPayments = useMemo(() => sortByDateDesc(result?.payments || []).slice(0, 8), [result]);
+  const tuitionMeta = tuition?.status === 'overdue'
+    ? { label: 'Quá hạn', tone: 'bad', message: 'Chu kỳ đã vượt số buổi dự kiến. Vui lòng liên hệ trung tâm để đối soát học phí.' }
+    : tuition?.status === 'due'
+      ? { label: 'Cần thu', tone: 'warn', message: 'Học sinh đã đến ngưỡng thu học phí của chu kỳ hiện tại.' }
+      : tuition?.status === 'paid'
+        ? { label: 'Đã thu', tone: 'good', message: 'Phiếu thu gần nhất đã được ghi nhận và chu kỳ mới chưa đến ngưỡng thu.' }
+        : tuition?.status === 'needs_review'
+          ? { label: 'Cần kiểm tra', tone: 'warn', message: 'Dữ liệu chu kỳ cần được trung tâm kiểm tra trước khi kết luận học phí.' }
+          : tuition?.status === 'not_due'
+            ? { label: 'Chưa đến hạn', tone: 'good', message: 'Chu kỳ hiện tại chưa đến ngưỡng cần thu học phí.' }
+            : tuition?.status === 'no_schedule'
+              ? { label: 'Chưa có lịch', tone: 'warn', message: 'Lớp chưa có lịch học để xác định chu kỳ học phí.' }
+              : tuition?.status === 'not_started'
+                ? { label: 'Chưa nhập học', tone: 'warn', message: 'Học sinh chưa bắt đầu học tại thời điểm hiện tại.' }
+                : { label: 'Đã nghỉ', tone: 'warn', message: 'Học sinh hiện không còn trong kỳ học đang hoạt động.' };
 
   return (
     <div className="portal-page">
@@ -231,29 +272,24 @@ export default function ParentPortal({ scriptUrl, centerName, baseTuition, phone
           <div className="portal-grid">
             <section className="portal-card portal-section">
               <div className="portal-section-head">
-                <h2 className="portal-section-title"><WalletCards size={18} /> Học phí tháng {period.m}/{period.y}</h2>
+                <h2 className="portal-section-title"><WalletCards size={18} /> Trạng thái học phí hiện tại</h2>
                 <span className="portal-pill">{result.student.classId || 'Chưa có lớp'}</span>
+              </div>
+              <div className="portal-kpis">
+                <div className={`portal-kpi ${tuitionMeta.tone}`}><span>Trạng thái</span><strong>{tuitionMeta.label}</strong></div>
+                <div className="portal-kpi"><span>Tiến độ chu kỳ</span><strong>{tuition.target > 0 ? `${tuition.done}/${tuition.target}` : '—'}</strong></div>
+                <div className={tuition.outstandingAmount > 0 ? 'portal-kpi bad' : 'portal-kpi good'}><span>Cần thu</span><strong>{fmtVND(tuition.outstandingAmount)}</strong></div>
               </div>
               <div className="portal-lines">
                 <div className="portal-line"><span>Học sinh</span><strong>{result.student.name}</strong></div>
                 <div className="portal-line"><span>Mã học sinh</span><strong>{result.student.id}</strong></div>
-                <div className="portal-line"><span>Học phí dự kiến</span><strong>{fmtVND(tuition.expected)}</strong></div>
-                <div className="portal-line"><span>Đã ghi nhận</span><strong>{fmtVND(tuition.paid)}</strong></div>
-                <div className="portal-line"><span>Còn cần đối soát</span><strong>{fmtVND(tuition.remaining)}</strong></div>
+                <div className="portal-line"><span>Bắt đầu cần thu</span><strong>{tuition.collectionThreshold > 0 ? `${tuition.collectionThreshold}/${tuition.target} buổi` : '—'}</strong></div>
+                <div className="portal-line"><span>Phiếu gần nhất</span><strong>{tuition.lastPayment ? `${tuition.lastPayment.date} · ${fmtVND(tuition.paidAmount)}` : 'Chưa có'}</strong></div>
               </div>
-              {!tuition.billable ? (
-                <div className="portal-empty">Tháng này chưa thuộc kỳ tính học phí của học sinh.</div>
-              ) : tuition.remaining <= 0 ? (
-                <div className="portal-note" style={{ borderTop: 0, borderRadius: 8, background: '#ecfdf5', color: '#047857' }}>
-                  <CheckCircle2 size={16} />
-                  <span>Học phí tháng này đã được ghi nhận đủ trên hệ thống.</span>
-                </div>
-              ) : (
-                <div className="portal-note" style={{ borderTop: 0, borderRadius: 8, background: '#fff7ed', color: '#9a3412' }}>
-                  <AlertTriangle size={16} />
-                  <span>Nếu phụ huynh vừa thanh toán, vui lòng chờ lớp cập nhật phiếu thu hoặc liên hệ trung tâm để đối soát.</span>
-                </div>
-              )}
+              <div className="portal-note" style={{ borderTop: 0, borderRadius: 8, background: tuitionMeta.tone === 'good' ? '#ecfdf5' : tuitionMeta.tone === 'bad' ? '#fff1f2' : '#fff7ed', color: tuitionMeta.tone === 'good' ? '#047857' : tuitionMeta.tone === 'bad' ? '#be123c' : '#9a3412' }}>
+                {tuitionMeta.tone === 'good' ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+                <span>{tuitionMeta.message}</span>
+              </div>
             </section>
 
             <section className="portal-card portal-section">

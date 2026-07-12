@@ -173,7 +173,7 @@ export function StatBlock({ icon:Icon, value, label, sub, gradient, onClick, act
   const accent = accentMatch ? accentMatch[0] : '#4F46E5';
 
   return (
-    <div onClick={onClick} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+    <div className="ltn-stat-block" onClick={onClick} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
       style={{
         background: 'white',
         border: `1.5px solid ${hov&&clickable ? accent+'44' : '#E8EAF3'}`,
@@ -187,14 +187,14 @@ export function StatBlock({ icon:Icon, value, label, sub, gradient, onClick, act
         minWidth: 0, overflow: 'hidden',
       }}>
       {/* Icon circle với màu accent */}
-      <div style={{ width:42,height:42,borderRadius:12,background:`${accent}15`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0 }}>
+      <div className="ltn-stat-block-icon" style={{ width:42,height:42,borderRadius:12,background:`${accent}15`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0 }}>
         <Icon size={19} color={accent} />
       </div>
       {/* Số và label */}
       <div style={{ flex:1, minWidth:0 }}>
-        <div style={{ fontSize:22,fontWeight:800,color:'#0F172A',lineHeight:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{value}</div>
-        <div style={{ fontSize:12,fontWeight:600,color:'#64748B',marginTop:3,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{label}</div>
-        {sub&&<div style={{ fontSize:11,color:'#94A3B8',marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{sub}</div>}
+        <div className="ltn-stat-block-value" style={{ fontSize:22,fontWeight:800,color:'#0F172A',lineHeight:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{value}</div>
+        <div className="ltn-stat-block-label" style={{ fontSize:12,fontWeight:600,color:'#64748B',marginTop:3,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{label}</div>
+        {sub&&<div className="ltn-stat-block-sub" style={{ fontSize:11,color:'#94A3B8',marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{sub}</div>}
       </div>
       {/* Delta badge */}
       {delta!=null&&<span style={{ fontSize:11,fontWeight:700,padding:'3px 7px',borderRadius:999,background:delta>0?'#DCFCE7':delta<0?'#FEE2E2':'#F1F5F9',color:delta>0?'#16A34A':delta<0?'#DC2626':'#64748B',flexShrink:0 }}>{delta>0?`↑${delta}`:delta<0?`↓${Math.abs(delta)}`:'→'}</span>}

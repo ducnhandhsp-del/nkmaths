@@ -1,5 +1,9 @@
 # Monthly Tuition Debt With Attendance Audit Spec
 
+> Superseded on 2026-07-11 by `TUITION_CYCLE_BUSINESS_DECISION_SPEC.md` for
+> tuition due/overdue decisions. Keep this document only as historical context
+> for attendance audit and the existing monthly implementation.
+
 ## Goal
 
 Chuan hoa nghiep vu hoc phi cho Lop Toan NK theo huong de van hanh hang ngay:

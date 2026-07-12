@@ -95,6 +95,10 @@ Response thanh cong:
     "endDate": ""
   },
   "tuitionAmount": 600000,
+  "tuitionCycle": {
+    "target": 12,
+    "collectionThreshold": 6
+  },
   "payments": [],
   "attendance": [],
   "generatedAt": "12:00:00 - 09/07/2026"
@@ -142,6 +146,8 @@ loi noi bo.
 - `tuitionAmount` uu tien tu `LopHoc.HocPhiMacDinh`.
 - Neu lop khong co hoc phi mac dinh, fallback `Config.baseTuition`.
 - Frontend chi fallback `FEE_DEFAULT` khi response khong co `tuitionAmount`.
+- `tuitionCycle` chi tra `target` va `collectionThreshold`; khong mo rong du lieu quan tri.
+- Trang thai cong no frontend dung chu ky buoi hoc, khong dung thang hien tai de ket luan da thu/chua thu.
 - Thang hien tai duoc tinh theo may nguoi dung.
 - `startDate` va `endDate` van dung helper `isStudentBillableInMonth`.
 

@@ -49,6 +49,18 @@ interface DomainConfig {
   isSavingRef:      MutableRefObject<boolean>;
 }
 
+const makeWriteRequestId = (action = 'write') => {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
+  const actionKey = String(action || 'write').replace(/[^a-z0-9]/gi, '').slice(0, 16).toUpperCase() || 'WRITE';
+  return `REQ_${stamp}_${actionKey}_${rand}`;
+};
+
+const isRequestTimeout = (err: any) =>
+  String(err?.message || err || '').toLowerCase().includes('timeout');
+
 export function useDomains(cfg: DomainConfig) {
   const {
     scriptUrl, adminToken, schoolYear, students, payments, expenses, tlogs, uClasses,
@@ -69,13 +81,18 @@ export function useDomains(cfg: DomainConfig) {
 
   /* ── api helper — kiểm tra HTTP status lẫn GAS response body ── */
   const api = useCallback(async (body: object): Promise<any> => {
-    const requestBody = { ...body, adminToken };
+    const action = String((body as any).action || 'write');
+    const requestBody = {
+      ...body,
+      requestId: (body as any).requestId || makeWriteRequestId(action),
+      adminToken,
+    };
     const res = await fetchWithTimeout(scriptUrl, {
       method:   'POST',
       redirect: 'follow',
       headers:  { 'Content-Type': 'text/plain' },
       body:     JSON.stringify(requestBody),
-      timeout:  RULES.network.fetchTimeout,
+      timeout:  RULES.network.writeTimeout,
     });
     if (!res.ok) throw new Error(`Server lỗi HTTP ${res.status}`);
     const data = await res.json().catch(() => null);
@@ -96,6 +113,12 @@ export function useDomains(cfg: DomainConfig) {
       await fn();
       if (successMsg) toast.success(successMsg);
     } catch (err: any) {
+      if (isRequestTimeout(err)) {
+        silentRef.current = true;
+        toast('Yêu cầu phản hồi chậm. Đang kiểm tra lại dữ liệu...', { icon: 'i' });
+        try { await loadData(); } catch {}
+        return;
+      }
       toast.error('❌ ' + (err.message || 'Lỗi khi lưu'));
       // FIX: silentRef=true → không hiện LoadingScreen khi lỗi save
       silentRef.current = true;
@@ -733,7 +756,7 @@ export function useDomains(cfg: DomainConfig) {
   const [fMo, setFMo] = useState(`${(new Date().getMonth()+1).toString().padStart(2,'0')}/${new Date().getFullYear()}`);
   const [fTch, setFTch] = useState('');
   const [fFC, setFFC] = useState('');
-  const [fSt, setFSt] = useState('unpaid');
+  const [fSt, setFSt] = useState('all');
   const [pgF, setPgF] = useState(1);
 
   const [fM, fY] = (fMo || '01/2026').split('/').map(Number);

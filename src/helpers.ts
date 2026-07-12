@@ -10,7 +10,7 @@
  */
 
 export const SCRIPT_URL_DEFAULT =
-  'https://script.google.com/macros/s/AKfycbwN9Fvcm8GVz7WZmGcYG4oiLM5hmOmlislu0w4OqS0Sr1QT2ttUZ0CbTIGN4J1Xz1BslQ/exec';
+  'https://script.google.com/macros/s/AKfycbyy01Rm_1gPNG-HABlHki-RzACtWFJskwcLCP-qqbkc6yoJRzkY9kaa4EBH14vu1X4EOg/exec';
 
 export const FEE_DEFAULT    = 600_000;
 export const IPP            = 25;

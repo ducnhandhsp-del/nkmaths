@@ -18,6 +18,8 @@ import { exportCSV, fixVietnameseText, fmtVND, isLessonOffLog, parseDMY } from '
 import {
   buildDataHealthReport,
   getPaymentReceiptPeriod,
+  getUniquePaidStudentIdsByReceiptPeriod,
+  getTuitionCycleState,
   isStudentActive,
   isStudentActiveInMonth,
   parsePeriod,
@@ -44,6 +46,7 @@ interface Props {
   curMo: number;
   curYr: number;
   isPaid: (sid: string, mo: number, yr: number) => boolean;
+  baseTuition: number;
 }
 
 interface MonthlyRevenue {
@@ -100,6 +103,7 @@ export default function ReportsTab({
   curMo,
   curYr,
   isPaid,
+  baseTuition,
 }: Props) {
   const [filterMo, setFilterMo] = useState(curMo);
   const [filterYr, setFilterYr] = useState(curYr);
@@ -212,6 +216,11 @@ export default function ReportsTab({
     return d.getMonth() + 1 === filterMo && d.getFullYear() === filterYr;
   }).length, [students, filterMo, filterYr]);
 
+  const paidStudentIdsInReceiptMonth = useMemo(
+    () => getUniquePaidStudentIdsByReceiptPeriod(payments, { m: filterMo, y: filterYr }),
+    [filterMo, filterYr, payments],
+  );
+
   const classStudentRows = useMemo<ClassStudentRow[]>(() => uClasses.map(cls => {
     const classId = classIdOf(cls);
     const period = { m: filterMo, y: filterYr };
@@ -221,11 +230,11 @@ export default function ReportsTab({
       className: classNameOf(cls),
       teacher: teacherOf(cls),
       students: classStudents.length,
-      paidThisMonth: classStudents.filter(student => isPaid(student.id, filterMo, filterYr)).length,
+      paidThisMonth: classStudents.filter(student => paidStudentIdsInReceiptMonth.has(student.id)).length,
     };
   }).filter(row => row.classId || row.students > 0)
     .sort((a, b) => b.students - a.students || a.className.localeCompare(b.className, 'vi')),
-  [filterMo, filterYr, isPaid, students, uClasses]);
+  [filterMo, filterYr, paidStudentIdsInReceiptMonth, students, uClasses]);
 
   const maxRevenue = Math.max(...monthlyRevenue.map(row => row.revenue), 0);
   const yearlyReceiptCount = monthlyRevenue.reduce((sum, row) => sum + row.count, 0);
@@ -235,12 +244,45 @@ export default function ReportsTab({
     [students, uClasses, payments, tlogs],
   );
   const visibleHealthIssues = dataHealth.issues.filter(issue => issue.count > 0);
+  const reportAsOfTs = useMemo(() => {
+    const endOfSelectedMonth = new Date(filterYr, filterMo, 0, 23, 59, 59, 999).getTime();
+    return Math.min(endOfSelectedMonth, Date.now());
+  }, [filterMo, filterYr]);
+  const reportSnapshotLabel = `cuối T${filterMo}/${filterYr}`;
+  const tuitionCycleStates = useMemo(() => students.map(student => getTuitionCycleState({
+    student,
+    classes: uClasses,
+    payments,
+    tlogs,
+    baseTuition,
+    asOfTs: reportAsOfTs,
+  })), [baseTuition, payments, reportAsOfTs, students, tlogs, uClasses]);
+  const tuitionCollectionStates = useMemo(
+    () => tuitionCycleStates.filter(state => state.status === 'due' || state.status === 'overdue'),
+    [tuitionCycleStates],
+  );
+  const tuitionDebtAmount = tuitionCollectionStates.reduce((sum, state) => sum + state.outstandingAmount, 0);
+  const overdueTuitionStates = tuitionCycleStates.filter(state => state.status === 'overdue');
+  const overdueTuitionAmount = overdueTuitionStates.reduce((sum, state) => sum + state.outstandingAmount, 0);
+  const reviewTuitionStates = tuitionCycleStates.filter(state => state.status === 'needs_review');
+  const tuitionExportRows = tuitionCycleStates
+    .filter(state => state.status === 'due' || state.status === 'overdue' || state.status === 'needs_review')
+    .map(state => [
+      `Đối soát công nợ ${reportSnapshotLabel}`,
+      `${state.student.id} - ${state.student.name}`,
+      state.outstandingAmount,
+      `${state.student.classId || 'Chưa xếp lớp'} | ${state.status} | ${state.done}/${state.target} buổi | từ ${state.cycleStartDate || '—'}`,
+    ]);
 
   const handleExport = () => {
     exportCSV(
       `bao-cao-thong-ke-${filterYr}`,
       ['Nhóm', 'Chỉ tiêu', 'Giá trị', 'Ghi chú'],
       [
+        [`Công nợ ${reportSnapshotLabel}`, 'Cần thu theo chu kỳ', tuitionDebtAmount, `${tuitionCollectionStates.length} học sinh`],
+        [`Công nợ ${reportSnapshotLabel}`, 'Quá hạn', overdueTuitionAmount, `${overdueTuitionStates.length} học sinh`],
+        [`Công nợ ${reportSnapshotLabel}`, 'Cần kiểm tra', reviewTuitionStates.length, 'Không tự động cộng vào phải thu'],
+        ...tuitionExportRows,
         ['KPI', 'Doanh thu năm', yearRevenue, `${paymentsWithPeriod.filter(({ period }) => period?.y === filterYr).length} phiếu thu`],
         ['KPI', 'HS trung bình/tháng', avgStudentsPerMonth, 'Tính theo startDate/endDate hiện có'],
         ['KPI', 'Tỷ lệ chuyên cần', attendanceTotals.rate ?? '', `T${filterMo}/${filterYr}`],
@@ -285,10 +327,12 @@ export default function ReportsTab({
         .report-health-detail{margin:0;font-size:11px;line-height:1.35;color:#94a3b8;font-weight:750}
         .report-health-ok{margin:14px;padding:14px 16px;border:1px solid #bbf7d0;border-radius:12px;background:#ecfdf5;display:flex;align-items:center;justify-content:space-between;gap:12px}
         .report-summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;padding:14px}
-        .report-mobile-actions{display:none}
+        .report-toolbar-actions{display:inline-flex;align-items:center;gap:6px;flex-shrink:0}
+        .report-toolbar-actions button{min-width:54px;justify-content:center}
         @media(max-width:767px){
-          .report-mobile-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:-6px}
-          .report-mobile-actions button{width:100%;justify-content:center}
+          .report-toolbar-row{width:100%;display:flex!important;align-items:center!important;gap:6px!important;flex-wrap:nowrap!important}
+          .report-period-picker{flex:1 1 auto;min-width:0}
+          .report-toolbar-actions button{min-width:50px;padding-left:9px!important;padding-right:9px!important}
           .report-dashboard-grid{grid-template-columns:1fr}
           .report-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:10px}
           .report-revenue-list{padding:10px}
@@ -302,36 +346,31 @@ export default function ReportsTab({
 
       <PageToolbar
         title="Báo cáo"
-        actions={(
-          <>
-            <Button intent="success" size="sm" icon={<Download size={13} />} onClick={handleExport}>Xuất CSV</Button>
+        controlsStyle={{ flexWrap: 'nowrap' }}
+      >
+        <div className="report-toolbar-row" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'nowrap' }}>
+          <div className="report-period-picker" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'white', border: '1px solid #e2e8f0', padding: '4px 8px', borderRadius: 10 }}>
+            <button type="button" onClick={prevMonth} style={{ width: 26, height: 26, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, flexShrink: 0 }}>
+              <ChevronLeft size={13} color="#64748b" />
+            </button>
+            <span style={{ fontSize: 12, fontWeight: 800, color: '#0f172a', minWidth: 78, textAlign: 'center', whiteSpace: 'nowrap' }}>T{filterMo}/{filterYr}</span>
+            <button type="button" onClick={nextMonth} style={{ width: 26, height: 26, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, flexShrink: 0 }}>
+              <ChevronRight size={13} color="#64748b" />
+            </button>
+            {!isCurrentPeriod && (
+              <button type="button" onClick={() => { setFilterMo(curMo); setFilterYr(curYr); }} style={{ padding: '3px 8px', border: 'none', background: '#eef2ff', color: '#4f46e5', fontSize: 10, fontWeight: 900, cursor: 'pointer', borderRadius: 999, flexShrink: 0 }}>
+                Hiện tại
+              </button>
+            )}
+          </div>
+          <div className="report-toolbar-actions">
+            <Button intent="success" size="sm" icon={<Download size={13} />} onClick={handleExport}>CSV</Button>
             <Button intent="danger" size="sm" icon={<Printer size={13} />} onClick={() => window.print()}>
               In T{filterMo}
             </Button>
-          </>
-        )}
-      >
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'white', border: '1px solid #e2e8f0', padding: '4px 8px', borderRadius: 10 }}>
-          <button type="button" onClick={prevMonth} style={{ width: 26, height: 26, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6 }}>
-            <ChevronLeft size={13} color="#64748b" />
-          </button>
-          <span style={{ fontSize: 12, fontWeight: 800, color: '#0f172a', minWidth: 78, textAlign: 'center', whiteSpace: 'nowrap' }}>T{filterMo}/{filterYr}</span>
-          <button type="button" onClick={nextMonth} style={{ width: 26, height: 26, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6 }}>
-            <ChevronRight size={13} color="#64748b" />
-          </button>
-          {!isCurrentPeriod && (
-            <button type="button" onClick={() => { setFilterMo(curMo); setFilterYr(curYr); }} style={{ padding: '3px 8px', border: 'none', background: '#eef2ff', color: '#4f46e5', fontSize: 10, fontWeight: 900, cursor: 'pointer', borderRadius: 999 }}>
-              Hiện tại
-            </button>
-          )}
+          </div>
         </div>
       </PageToolbar>
-      <div className="report-mobile-actions" aria-label="Thao tác báo cáo">
-        <Button intent="success" size="sm" icon={<Download size={13} />} onClick={handleExport}>Xuất CSV</Button>
-        <Button intent="danger" size="sm" icon={<Printer size={13} />} onClick={() => window.print()}>
-          In T{filterMo}
-        </Button>
-      </div>
 
       <ActionableKpiGrid>
         <ActionableKpi
@@ -379,6 +418,9 @@ export default function ReportsTab({
         </div>
         <div className="report-summary-grid">
           {[
+            { label: `Cần thu ${reportSnapshotLabel}`, value: <MoneyText value={tuitionDebtAmount} compact tone={tuitionDebtAmount > 0 ? 'danger' : 'success'} /> },
+            { label: `Quá hạn ${reportSnapshotLabel}`, value: <MoneyText value={overdueTuitionAmount} compact tone={overdueTuitionAmount > 0 ? 'danger' : 'success'} /> },
+            { label: 'Hồ sơ cần kiểm tra', value: reviewTuitionStates.length },
             { label: 'Thu tháng này', value: <MoneyText value={monthRevenue} compact tone="success" /> },
             { label: 'Phiếu chi trong tháng', value: monthExpenseCount },
             { label: 'Có mặt', value: attendanceTotals.present },

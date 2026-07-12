@@ -53,6 +53,7 @@ interface Props {
   fClsTeacher: string;
   setFClsTeacher: (v: string) => void;
   isPaid: (sid: string, mo: number, yr: number) => boolean;
+  baseTuition: number;
   onEditClass: (c: ClassRecord) => void;
   onDeleteClass?: (t: DeleteTarget) => void;
   onAddClass: () => void;
@@ -128,7 +129,9 @@ export default function LearningTab(props: Props) {
           onBulkTransfer={props.onBulkTransfer}
           curMo={props.curMo}
           curYr={props.curYr}
-          isPaid={props.isPaid}
+          payments={props.payments}
+          tlogs={props.tlogs}
+          baseTuition={props.baseTuition}
           toolbarPrefix={toolbarTabs}
         />
       ) : sub === 'classes' ? (
@@ -140,6 +143,7 @@ export default function LearningTab(props: Props) {
           tlogs={props.tlogs}
           curMo={props.curMo}
           curYr={props.curYr}
+          baseTuition={props.baseTuition}
           qCls={props.qCls}
           setQCls={props.setQCls}
           fClsTeacher={props.fClsTeacher}
@@ -162,6 +166,7 @@ export default function LearningTab(props: Props) {
           tlogs={props.tlogs}
           curMo={props.curMo}
           curYr={props.curYr}
+          baseTuition={props.baseTuition}
           onSave={props.onSaveTeacher}
           onDeleteTeacher={props.onDeleteTeacher}
           isSaving={props.isSaving}

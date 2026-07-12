@@ -94,6 +94,8 @@ export const RULES = {
     initialFetchTimeout: 25_000,
     /** Timeout fetch silent/background khi da co cache/data (ms) */
     fetchTimeout: 30_000,
+    /** Timeout rieng cho thao tac ghi Google Sheets/GAS (ms) */
+    writeTimeout: 60_000,
     /** Sau nguong nay loading lan dau hien thong bao GAS cham (ms) */
     initialLoadRetryAfter: 8_000,
     /** Backoff huu han cho loading lan dau khi chua co cache/data (ms) */

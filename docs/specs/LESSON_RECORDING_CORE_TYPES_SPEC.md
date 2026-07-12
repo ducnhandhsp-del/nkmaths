@@ -1,5 +1,9 @@
 # Lesson Recording Core Types Spec
 
+> Tuition section superseded on 2026-07-11 by
+> `TUITION_CYCLE_BUSINESS_DECISION_SPEC.md`. Lesson types, class binding,
+> attendance counting and lesson-id rules in this file remain active.
+
 Last updated: 2026-07-10
 
 ## Goal

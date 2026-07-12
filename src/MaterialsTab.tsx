@@ -78,7 +78,7 @@ function MaterialModal({ open, onClose, editing, onSave, isSaving }: {
         <div style={{ padding:'14px 24px',borderTop:'1px solid #f1f5f9',display:'flex',justifyContent:'flex-end',gap:10,flexShrink:0 }}>
           <Button variant="outline" intent="neutral" onClick={onClose}>Hủy</Button>
           <Button intent="success" loading={isSaving} icon={<Save size={15}/>} onClick={()=>onSave({...f,id:editing?.id||`M${Date.now()}`,uploadedBy:editing?.uploadedBy||'',downloadCount:editing?.downloadCount||0,tags:f.tags||[]})}>
-            {editing?'Cập nhật':'Thêm mới'}
+            {isSaving ? 'Đang lưu...' : editing ? 'Cập nhật' : 'Thêm mới'}
           </Button>
         </div>
       </div>

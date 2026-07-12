@@ -13,14 +13,14 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { LockKeyhole } from 'lucide-react';
+import { BookOpenCheck, CircleDollarSign, LockKeyhole, ReceiptText, UserPlus } from 'lucide-react';
 
 import { loadSettings, saveSettings, parseDMY, SCRIPT_URL_DEFAULT, FEE_DEFAULT, CA_DAY_DEFAULT, TEACHER_LIST_DEFAULT, normalizeCaDayOptions, LESSON_OFF_NOTE_TAG } from './helpers';
 import { RULES } from './rules';
 import type { Screen, Student, DeleteTarget, TrainingSub, OperationsSub, FinanceSub, ReportsSub } from './types';
 
 import { Sidebar, MobileHeader, BottomNav, useIsDesktop } from './Layout';
-import { ErrorBoundary } from './AppComponents';
+import { ErrorBoundary, MobileActionFab } from './AppComponents';
 import CommandPalette from './CommandPalette';
 import { useCommands } from './useCommands';
 import { useAppData } from './useAppData';
@@ -349,7 +349,7 @@ function AdminApp({ adminToken, onChangeAdminAccess }: { adminToken: string; onC
       d.setFTch('');
       d.setFFC('');
       d.setFMo(`${String(d.curMo).padStart(2, '0')}/${d.curYr}`);
-      d.setFSt(financeSubtab === 'debt' ? 'unpaid' : '');
+      d.setFSt(financeSubtab === 'debt' ? 'all' : '');
       d.setPgF(1);
     }
   }, [screen, trainingSubtab, operationsSubtab, financeSubtab, reportsSubtab]);
@@ -381,6 +381,55 @@ function AdminApp({ adminToken, onChangeAdminAccess }: { adminToken: string; onC
     }).length;
     return tlogs.length - thisM + lastM;
   }, [tlogs, d.curMo, d.curYr, d.prevMo, d.prevYr]);
+
+  const mobileQuickActions = useMemo(() => [
+    {
+      key: 'lesson',
+      label: 'Ghi buổi học',
+      icon: <BookOpenCheck size={15} />,
+      tone: 'primary' as const,
+      onClick: () => {
+        goOperations('schedule');
+        handleAddDiary();
+      },
+    },
+    {
+      key: 'student',
+      label: 'Thêm học sinh',
+      icon: <UserPlus size={15} />,
+      tone: 'success' as const,
+      onClick: () => {
+        goTraining('students');
+        d.setEditStudent(null);
+        setShowStudent(true);
+      },
+    },
+    {
+      key: 'payment',
+      label: 'Phiếu thu',
+      icon: <ReceiptText size={15} />,
+      tone: 'success' as const,
+      onClick: () => {
+        goFinance('ledger');
+        d.setEditPayment(null);
+        d.setEditExpense(null);
+        setPaymentDraft(null);
+        setShowPayment(true);
+      },
+    },
+    {
+      key: 'expense',
+      label: 'Phiếu chi',
+      icon: <CircleDollarSign size={15} />,
+      tone: 'danger' as const,
+      onClick: () => {
+        goFinance('expense');
+        d.setEditPayment(null);
+        d.setEditExpense(null);
+        setShowExpense(true);
+      },
+    },
+  ], [d.setEditExpense, d.setEditPayment, d.setEditStudent, goFinance, goOperations, goTraining, handleAddDiary]);
 
   if (loading) {
     return (
@@ -442,9 +491,9 @@ function AdminApp({ adminToken, onChangeAdminAccess }: { adminToken: string; onC
                   tlogs={tlogs} uClasses={uClasses}
                   curMo={d.curMo} curYr={d.curYr} baseTuition={baseTuition}
                   goTraining={goTraining} goOperations={goOperations} goFinance={goFinance} isPaid={d.isPaid}
-                  onAddStudent={() => { goTraining('students'); d.setEditStudent(null); setShowStudent(true); }}
                   onAddDiary={(classId, date, caDay) => { goOperations('schedule'); handleAddDiary(classId, date, caDay); }}
                   onAddIncome={() => { goFinance('ledger'); d.setEditPayment(null); d.setEditExpense(null); setPaymentDraft(null); setShowPayment(true); }}
+                  onAddExpense={() => { goFinance('expense'); d.setEditPayment(null); d.setEditExpense(null); setShowExpense(true); }}
                 />
               </ErrorBoundary>
             )}
@@ -476,6 +525,7 @@ function AdminApp({ adminToken, onChangeAdminAccess }: { adminToken: string; onC
                   uClasses={uClasses} students={students}
                   teachers={teachers} payments={payments} tlogs={tlogs}
                   curMo={d.curMo} curYr={d.curYr}
+                  baseTuition={baseTuition}
                   qCls={d.qCls} setQCls={d.setQCls}
                   fClsTeacher={d.fClsTeacher} setFClsTeacher={d.setFClsTeacher}
                   isPaid={d.isPaid}
@@ -552,6 +602,7 @@ function AdminApp({ adminToken, onChangeAdminAccess }: { adminToken: string; onC
                   curMo={d.curMo}
                   curYr={d.curYr}
                   isPaid={d.isPaid}
+                  baseTuition={baseTuition}
                 />
               </ErrorBoundary>
             )}
@@ -594,6 +645,7 @@ function AdminApp({ adminToken, onChangeAdminAccess }: { adminToken: string; onC
       </div>
 
       <BottomNav active={screen} set={goScreen} isDesktop={isDesktop} />
+      {!isDesktop && <MobileActionFab actions={mobileQuickActions} label="Thao tác nhanh" />}
       <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} commands={commands} />
 
       <StudentModal
@@ -614,6 +666,7 @@ function AdminApp({ adminToken, onChangeAdminAccess }: { adminToken: string; onC
         open={showPayment}
         onClose={() => { setShowPayment(false); d.setEditPayment(null); setPaymentDraft(null); }}
         students={students} classes={uClasses} baseTuition={baseTuition} isSaving={d.saving}
+        teacherList={teacherList}
         payments={payments}
         tlogs={tlogs}
         onSave={d.handleSaveFee}
@@ -658,7 +711,7 @@ function AdminApp({ adminToken, onChangeAdminAccess }: { adminToken: string; onC
       {vDiary     && <DiaryDetailModal log={vDiary} onClose={() => setVDiary(null)} onEdit={(log) => { setVDiary(null); d.setEditDiary(log); setShowDiary(true); }} />}
       {d.vInvoice && <InvoiceModal payment={d.vInvoice} onClose={() => d.setVInvoice(null)} centerName={centerName} bankId={bankId} accountNo={accountNo} accountName={accountName} students={students} classes={uClasses} />}
       {vExpense   && <ExpenseModal expense={vExpense} onClose={() => setVExpense(null)} centerName={centerName} />}
-      {vFinance   && <FinanceDetailModal student={vFinance} payments={payments} onClose={() => setVFinance(null)} isPaid={d.isPaid} schoolYear={schoolYear} />}
+      {vFinance   && <FinanceDetailModal student={vFinance} classes={uClasses} payments={payments} tlogs={tlogs} baseTuition={baseTuition} onClose={() => setVFinance(null)} />}
       {delTarget  && <DeleteModal target={delTarget} onClose={() => setDelTarget(null)} onConfirm={() => { d.handleDelete(delTarget!); setDelTarget(null); }} isSaving={d.saving} />}
     </div>
   );

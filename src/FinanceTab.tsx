@@ -14,20 +14,17 @@
  */
 import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { Plus, Check, TrendingDown, TrendingUp, Wallet, AlertTriangle, MessageCircle, ReceiptText, Edit3, Trash2 } from 'lucide-react';
-import { fmtVND, capitalizeName, compareClassCode, normalizePaymentMethod, resolveTeacher, buildSchoolYearMonths } from './helpers';
+import { fmtVND, capitalizeName, compareClassCode, normalizePaymentMethod, parseDMY, resolveTeacher } from './helpers';
 import {
-  attendanceStudentId,
   classIdOf,
-  getMonthlyTuitionState,
-  getPaymentTuitionPeriod,
-  isStudentBillableInMonth,
-  isStudentActiveInMonth,
-  normalizeAttendanceStatus,
+  getPaymentReceiptPeriod,
+  getTuitionCycleState,
   parsePeriod,
 } from './measures';
 import { Badge, Button, Pager, SearchBar, Select } from './dsComponents';
 import { ActionableKpi, ActionableKpiGrid, DataTable, DateText, EmptyState, MobileRecordAction, MobileRecordList, MobileRecordMarker, MobileRecordRow, MobileRecordTextAction, MoneyText, MonthText, PageToolbar, StatusBadge, ToolbarTabs, ZaloMark, useIsMobileViewport } from './uiSystem';
 import type { Payment, Expense, Student, FinanceSub, TeachingLog } from './types';
+import type { TuitionStatus } from './measures';
 
 interface Props {
   financeSubtab?: FinanceSub;
@@ -52,31 +49,22 @@ interface Props {
   onViewExpense: (e: Expense) => void;
 }
 
-type DebtStatus = 'paid' | 'unpaid' | 'overdue' | 'inactive' | 'not_billable' | 'not_due' | 'no_schedule';
+type DebtStatus = TuitionStatus;
 
 interface DebtTableRow {
   id: string;
   student: Student;
-  billableMonths: { m: number; y: number; label: string }[];
-  unpaidMonths: { m: number; y: number; label: string }[];
-  paidCount: number;
-  paidPct: number;
+  target: number;
+  done: number;
+  cycleStartDate: string;
   debtAmount: number;
   paidAmount: number;
-  periodPayments: Payment[];
-  isEnrollmentMonth: boolean;
+  lastPayment?: Payment;
+  adjustedPayment: boolean;
   isInactive: boolean;
   isProblem: boolean;
   isWarning: boolean;
   status: DebtStatus;
-}
-
-interface TempTuitionRow {
-  id: string;
-  student: Student;
-  regularSessions: number;
-  extraSessions: number;
-  totalSessions: number;
 }
 
 const IPP = 25;
@@ -97,11 +85,13 @@ const FILTER_SELECT: React.CSSProperties = {
 const debtStatusMeta = (status: DebtStatus): { label: string; tone: 'success' | 'danger' | 'warning' | 'neutral' } => {
   if (status === 'paid') return { label: 'Đã thu', tone: 'success' };
   if (status === 'overdue') return { label: 'Quá hạn', tone: 'danger' };
+  if (status === 'due') return { label: 'Cần thu', tone: 'warning' };
+  if (status === 'needs_review') return { label: 'Cần kiểm tra', tone: 'warning' };
   if (status === 'inactive') return { label: 'Đã nghỉ', tone: 'neutral' };
+  if (status === 'not_started') return { label: 'Chưa nhập học tại kỳ này', tone: 'neutral' };
   if (status === 'no_schedule') return { label: 'Chưa có lịch', tone: 'neutral' };
-  if (status === 'not_billable') return { label: 'Không tính phí', tone: 'neutral' };
   if (status === 'not_due') return { label: 'Chưa đến kỳ', tone: 'neutral' };
-  return { label: 'Chưa thu', tone: 'warning' };
+  return { label: 'Chưa đến kỳ', tone: 'neutral' };
 };
 
 /* ── MonthSelect — picker T/YYYY không phụ thuộc locale ── */
@@ -148,22 +138,19 @@ export default function FinanceTab({
   setFinanceSubtab,
   payments, expenses, students, uClasses, tlogs,
   curMo, curYr, qF, setQF, fMo, setFMo, fTch, setFTch, fFC, setFFC, fSt, setFSt,
-  pgF, setPgF, isPaid, baseTuition, schoolYear, tuitionDueDay,
+  pgF, setPgF, baseTuition,
   onViewInvoice, onViewFinance, onShowFAB, onEditPayment, onDeletePayment, onEditExpense, onDeleteExpense, onViewExpense,
 }: Props) {
   const finSub: FinanceSub = financeSubtab === 'debt' || financeSubtab === 'expense' || financeSubtab === 'ledger'
     ? financeSubtab
     : 'debt';
 
-  // FIX Bug 4: dùng fM (tháng đang filter) thay vì curMo (tháng thực tế)
-  // để nội dung Zalo đúng với tháng user đang xem công nợ
-  const [fM, fY] = (fMo || `${String(curMo).padStart(2,'0')}/${curYr}`).split('/').map(Number);
   const makeZaloMsg = (s: Student, debtAmount = baseTuition) => {
     const amount = debtAmount > 0 ? debtAmount : baseTuition;
-    return `Chào phụ huynh em ${s.name || ''}, LỚP TOÁN NK thông báo học phí tháng ${fM || curMo}/${fY || curYr} của em hiện còn ${fmtVND(amount)}. Phụ huynh vui lòng kiểm tra và thanh toán giúp lớp. Em cảm ơn ạ.`;
+    return `Chào phụ huynh em ${s.name || ''}, LỚP TOÁN NK thông báo học phí theo chu kỳ học hiện tại của em đang cần thu, số tiền ${fmtVND(amount)}. Phụ huynh vui lòng kiểm tra và thanh toán giúp lớp. Em cảm ơn ạ.`;
   };
-  const debtStatusFilter: 'unpaid' | 'all' | 'paid' =
-    fSt === 'all' || fSt === 'paid' || fSt === 'unpaid' ? fSt : 'unpaid';
+  const debtStatusFilter: 'all' | 'review' | 'collected' | 'due' | 'overdue' =
+    fSt === 'review' || fSt === 'collected' || fSt === 'due' || fSt === 'overdue' ? fSt : 'all';
   const debtListRef = useRef<HTMLDivElement>(null);
   const ledgerListRef = useRef<HTMLDivElement>(null);
   const expenseListRef = useRef<HTMLDivElement>(null);
@@ -181,9 +168,11 @@ export default function FinanceTab({
   const filteredLedger = useMemo(() => {
     const [lFM, lFY] = (lFilterMo || '').split('/').map(Number);
     const q = isMobileViewport ? '' : ledgerQuery.trim().toLowerCase();
-    return payments.slice().reverse().filter(p => {
+    return payments
+      .map((payment, index) => ({ payment, index, ts: parseDMY(payment.date || '') || 0 }))
+      .filter(({ payment: p }) => {
       if (lFilterMo) {
-        const period = getPaymentTuitionPeriod(p);
+        const period = getPaymentReceiptPeriod(p);
         if (!period || period.m !== lFM || period.y !== lFY) return false;
       }
       if (lFilterCls) {
@@ -194,7 +183,9 @@ export default function FinanceTab({
         if (!haystack.includes(q)) return false;
       }
       return true;
-    });
+      })
+      .sort((a, b) => b.ts - a.ts || b.index - a.index)
+      .map(row => row.payment);
   }, [payments, lFilterMo, lFilterCls, ledgerQuery, students, isMobileViewport]);
 
   const pagedLedger = useMemo(() => {
@@ -240,10 +231,6 @@ export default function FinanceTab({
     });
   }, []);
 
-  const schoolYearMonths = useMemo(() => {
-    return buildSchoolYearMonths(schoolYear);
-  }, [schoolYear]);
-
   const currentMonthKey = `${String(curMo).padStart(2,'0')}/${curYr}`;
   useEffect(() => {
     if (fTch) setFTch('');
@@ -251,83 +238,75 @@ export default function FinanceTab({
   useEffect(() => {
     if (!fMo) setFMo(currentMonthKey);
   }, [fMo, setFMo, currentMonthKey]);
-  useEffect(() => { setPgF(1); }, [qF, debtStatusFilter, setPgF]);
+  useEffect(() => { setPgF(1); }, [qF, fFC, debtStatusFilter, setPgF]);
   const debtPeriodValue = fMo || currentMonthKey;
   const selectedDebtMonth = useMemo(() => {
     const [m, y] = debtPeriodValue.split('/').map(Number);
     return { m: m || curMo, y: y || curYr };
   }, [debtPeriodValue, curMo, curYr]);
-  const normalizedDueDay = Math.min(31, Math.max(1, Number(tuitionDueDay) || 15));
-  const isSelectedPeriodPastDue = useCallback(() => {
-    const now = new Date();
-    const lastDay = new Date(selectedDebtMonth.y, selectedDebtMonth.m, 0).getDate();
-    const dueDay = Math.min(normalizedDueDay, lastDay);
-    const due = new Date(selectedDebtMonth.y, selectedDebtMonth.m - 1, dueDay, 23, 59, 59, 999);
-    return now.getTime() > due.getTime();
-  }, [normalizedDueDay, selectedDebtMonth]);
+  const isCurrentDebtPeriod = selectedDebtMonth.m === curMo && selectedDebtMonth.y === curYr;
+  const debtAsOfTs = useMemo(() => {
+    const endOfSelectedMonth = new Date(selectedDebtMonth.y, selectedDebtMonth.m, 0, 23, 59, 59, 999).getTime();
+    return Math.min(endOfSelectedMonth, Date.now());
+  }, [selectedDebtMonth]);
   const buildDebtRow = useCallback((s: Student): DebtTableRow => {
-    const billableMonths = schoolYearMonths.filter(fm => {
-      if (!isStudentBillableInMonth(s, fm)) return false;
-      if (fm.y > curYr) return false;
-      if (fm.y === curYr && fm.m > curMo) return false;
-      return true;
-    });
-    const unpaidMonths = billableMonths.filter(fm => !isPaid(s.id, fm.m, fm.y));
-    const paidCount = billableMonths.length - unpaidMonths.length;
-    const paidPct = billableMonths.length > 0 ? Math.round(paidCount / billableMonths.length * 100) : 100;
-    const monthlyState = getMonthlyTuitionState({
+    const cycleState = getTuitionCycleState({
       student: s,
-      period: selectedDebtMonth,
+      classes: uClasses,
       payments,
+      tlogs,
       baseTuition,
-      pastDue: isSelectedPeriodPastDue(),
+      asOfTs: debtAsOfTs,
     });
-    const status = monthlyState.status as DebtStatus;
-    const debtAmount = monthlyState.outstandingAmount;
-    const isInactive = status === 'inactive' || status === 'not_billable';
+    const status = cycleState.status;
+    const debtAmount = cycleState.outstandingAmount;
+    const isInactive = status === 'inactive';
     const isProblem = status === 'overdue';
-    const isWarning = status === 'unpaid';
+    const isWarning = status === 'due' || status === 'needs_review';
     return {
       id: s.id,
       student: s,
-      billableMonths,
-      unpaidMonths,
-      paidCount,
-      paidPct,
+      target: cycleState.target,
+      done: cycleState.done,
+      cycleStartDate: cycleState.cycleStartDate,
       debtAmount,
-      paidAmount: monthlyState.paidAmount,
-      periodPayments: monthlyState.payments,
-      isEnrollmentMonth: monthlyState.isEnrollmentMonth,
+      paidAmount: cycleState.paidAmount,
+      lastPayment: cycleState.lastPayment,
+      adjustedPayment: cycleState.adjustedPayment,
       isInactive,
       isProblem,
       isWarning,
       status,
     };
-  }, [baseTuition, curMo, curYr, isPaid, isSelectedPeriodPastDue, payments, schoolYearMonths, selectedDebtMonth]);
+  }, [baseTuition, debtAsOfTs, payments, tlogs, uClasses]);
   const financeStudents = useMemo(() => {
     return students.filter(s => {
       if (fFC && s.classId !== fFC) return false;
-      if (!isStudentActiveInMonth(s, selectedDebtMonth)) return false;
-      if (!isStudentBillableInMonth(s, selectedDebtMonth)) return false;
       return true;
     });
-  }, [fFC, selectedDebtMonth, students]);
+  }, [fFC, students]);
 
-  const debtTableRows = useMemo(() => financeStudents
-    .map(buildDebtRow)
+  const financeCycleRows = useMemo(() => financeStudents.map(buildDebtRow), [buildDebtRow, financeStudents]);
+
+  const debtTableRows = useMemo(() => financeCycleRows
     .filter(row => {
-      if (debtStatusFilter === 'unpaid' && row.status !== 'overdue' && row.status !== 'unpaid') return false;
-      if (debtStatusFilter === 'paid' && row.status !== 'paid') return false;
+      if (debtStatusFilter === 'review' && row.status !== 'needs_review') return false;
+      if (debtStatusFilter === 'due' && row.status !== 'due') return false;
+      if (debtStatusFilter === 'overdue' && row.status !== 'overdue') return false;
+      if (debtStatusFilter === 'collected') {
+        const receiptPeriod = row.lastPayment ? getPaymentReceiptPeriod(row.lastPayment) : null;
+        if (receiptPeriod?.m !== selectedDebtMonth.m || receiptPeriod?.y !== selectedDebtMonth.y) return false;
+      }
       const q = isMobileViewport ? '' : qF.trim().toLowerCase();
       if (!q) return true;
       const s = row.student;
       return `${s.id || ''} ${s.name || ''} ${s.parentName || ''} ${s.parentPhone || ''}`.toLowerCase().includes(q);
     })
     .sort((a, b) => {
-      const rank = (row: DebtTableRow) => row.status === 'overdue' ? 0 : row.status === 'unpaid' ? 1 : row.status === 'paid' ? 2 : row.status === 'not_billable' ? 3 : 4;
+      const rank = (row: DebtTableRow) => row.status === 'overdue' ? 0 : row.status === 'due' ? 1 : row.status === 'needs_review' ? 2 : row.status === 'paid' ? 3 : 4;
       return rank(a) - rank(b) || a.student.name.localeCompare(b.student.name, 'vi');
     }),
-  [buildDebtRow, debtStatusFilter, financeStudents, qF, isMobileViewport]);
+  [debtStatusFilter, financeCycleRows, qF, isMobileViewport, selectedDebtMonth]);
 
   const pagedDebtRows = useMemo(() => debtTableRows.slice((pgF - 1) * IPP, pgF * IPP), [debtTableRows, pgF]);
   const classOptions = useMemo(() => [
@@ -343,26 +322,17 @@ export default function FinanceTab({
       .sort((a, b) => a.localeCompare(b, 'vi'))
       .map(v => ({ value: v, label: v })),
   ], [expenses]);
-  const debtDueLabel = useCallback(() => {
-    const lastDay = new Date(selectedDebtMonth.y, selectedDebtMonth.m, 0).getDate();
-    const dueDay = Math.min(normalizedDueDay, lastDay);
-    return `${String(dueDay).padStart(2, '0')}/${String(selectedDebtMonth.m).padStart(2, '0')}/${selectedDebtMonth.y}`;
-  }, [normalizedDueDay, selectedDebtMonth]);
-  const getDebtPeriodPayment = useCallback((row: DebtTableRow) => payments.find(p => {
-    if (p.studentId !== row.student.id) return false;
-    const period = getPaymentTuitionPeriod(p);
-    return period?.m === selectedDebtMonth.m && period?.y === selectedDebtMonth.y;
-  }), [payments, selectedDebtMonth]);
+  const getDebtPeriodPayment = useCallback((row: DebtTableRow) => row.lastPayment, []);
   const getDebtPeriodAmount = useCallback((row: DebtTableRow) => {
     if (row.status === 'paid') return row.paidAmount;
-    if (row.status === 'unpaid' || row.status === 'overdue') return row.debtAmount || baseTuition;
+    if (row.status === 'due' || row.status === 'overdue') return row.debtAmount || baseTuition;
     return 0;
   }, [baseTuition]);
-  const getDebtPeriodStatus = useCallback((row: DebtTableRow): DebtStatus => {
-    if (row.isInactive) return 'inactive';
-    if (!isStudentBillableInMonth(row.student, selectedDebtMonth)) return 'inactive';
-    return row.status;
-  }, [selectedDebtMonth]);
+  const getDebtDisplayAmount = useCallback(
+    (row: DebtTableRow) => debtStatusFilter === 'collected' ? row.paidAmount : getDebtPeriodAmount(row),
+    [debtStatusFilter, getDebtPeriodAmount],
+  );
+  const getDebtPeriodStatus = useCallback((row: DebtTableRow): DebtStatus => row.status, []);
   const makePaymentDraft = useCallback((row: DebtTableRow) => {
     const s = row.student;
     const amount = getDebtPeriodAmount(row) || row.debtAmount || baseTuition;
@@ -370,14 +340,14 @@ export default function FinanceTab({
       maHS: s.id,
       maLop: s.classId || '',
       soTien: amount,
-      thangHP: selectedDebtMonth.m,
-      namHP: selectedDebtMonth.y,
+      thangHP: curMo,
+      namHP: curYr,
     };
-  }, [baseTuition, getDebtPeriodAmount, selectedDebtMonth]);
+  }, [baseTuition, curMo, curYr, getDebtPeriodAmount]);
 
   const selectedMonthPayments = useMemo(() => {
     return payments.slice().reverse().filter(p => {
-      const period = getPaymentTuitionPeriod(p);
+      const period = getPaymentReceiptPeriod(p);
       if (period?.m !== selectedDebtMonth.m || period?.y !== selectedDebtMonth.y) return false;
       if (fFC && paymentClassId(p, students) !== fFC) return false;
       return true;
@@ -385,53 +355,14 @@ export default function FinanceTab({
   }, [fFC, payments, selectedDebtMonth, students]);
 
   const collectedAmount = selectedMonthPayments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
-  const remainingAmount = debtTableRows
-    .filter(row => row.status === 'unpaid' || row.status === 'overdue')
+  const collectionRows = financeCycleRows.filter(row => row.status === 'due' || row.status === 'overdue');
+  const reviewRows = financeCycleRows.filter(row => row.status === 'needs_review');
+  const dueAmount = financeCycleRows
+    .filter(row => row.status === 'due')
     .reduce((sum, row) => sum + getDebtPeriodAmount(row), 0);
-  const overdueAmount = debtTableRows
+  const overdueAmount = financeCycleRows
     .filter(row => row.status === 'overdue')
     .reduce((sum, row) => sum + getDebtPeriodAmount(row), 0);
-  const totalDueAmount = debtTableRows.reduce((sum, row) => sum + getDebtPeriodAmount(row), 0);
-  const tempTuitionRows = useMemo<TempTuitionRow[]>(() => {
-    const map = new Map<string, TempTuitionRow>();
-    const seen = new Set<string>();
-    financeStudents.forEach(student => {
-      if (fFC && student.classId !== fFC) return;
-      map.set(student.id, {
-        id: student.id,
-        student,
-        regularSessions: 0,
-        extraSessions: 0,
-        totalSessions: 0,
-      });
-    });
-
-    tlogs.forEach(log => {
-      const period = parsePeriod(log.rawDate || log.date || '');
-      if (period?.m !== selectedDebtMonth.m || period?.y !== selectedDebtMonth.y) return;
-      const lessonKey = String(log.maBuoi || log.id || `${log.rawDate || log.date || ''}|${log.classId || ''}|${log.caDay || ''}`).trim();
-      (log.attendanceList || []).forEach((entry: any) => {
-        if (normalizeAttendanceStatus(entry.trangThai || entry['Trạng thái'] || entry.TrangThai || '') !== 'present') return;
-        const studentId = attendanceStudentId(entry);
-        const row = map.get(studentId);
-        if (!row) return;
-        const seenKey = `${studentId}|${lessonKey}`;
-        if (seen.has(seenKey)) return;
-        seen.add(seenKey);
-        const type = String(entry.loaiDiemDanh || entry.LoaiDiemDanh || entry.attendanceType || 'regular') === 'extra' ? 'extra' : 'regular';
-        if (type === 'extra') row.extraSessions++;
-        else row.regularSessions++;
-        row.totalSessions++;
-      });
-    });
-
-    return [...map.values()]
-      .filter(row => row.totalSessions > 0)
-      .sort((a, b) => b.totalSessions - a.totalSessions || a.student.name.localeCompare(b.student.name, 'vi'));
-  }, [financeStudents, fFC, selectedDebtMonth, tlogs]);
-  const attendanceAuditByStudent = useMemo(() => {
-    return new Map(tempTuitionRows.map(row => [row.id, row]));
-  }, [tempTuitionRows]);
 
   const debtColumns = useMemo(() => [
     {
@@ -470,12 +401,10 @@ export default function FinanceTab({
       align: 'center' as const,
       width: '6%',
       render: (_: unknown, row: DebtTableRow) => {
-        const audit = attendanceAuditByStudent.get(row.id);
-        if (!audit?.totalSessions) return <span style={{ color: '#94a3b8', fontWeight: 900 }}>0</span>;
+        if (!row.target) return <span style={{ color: '#94a3b8', fontWeight: 900 }}>—</span>;
         return (
           <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 2, color: '#334155', fontWeight: 950, fontSize: 12, lineHeight: 1.1 }}>
-            {audit.totalSessions}
-            {audit.extraSessions > 0 && <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#4f46e5' }}>+{audit.extraSessions} thêm vào buổi</span>}
+            {row.done}/{row.target}
           </span>
         );
       },
@@ -487,17 +416,15 @@ export default function FinanceTab({
       width: '12%',
       render: (_: unknown, row: DebtTableRow) => {
         const periodStatus = getDebtPeriodStatus(row);
-        return <MoneyText value={getDebtPeriodAmount(row)} compact tone={periodStatus === 'paid' ? 'success' : periodStatus === 'overdue' ? 'danger' : undefined} />;
+        return <MoneyText value={getDebtDisplayAmount(row)} compact tone={debtStatusFilter === 'collected' || periodStatus === 'paid' ? 'success' : periodStatus === 'overdue' ? 'danger' : undefined} />;
       },
     },
     {
       key: 'due',
-      label: 'Hạn đóng',
+      label: 'Bắt đầu chu kỳ',
       align: 'center' as const,
       width: '10%',
-      render: () => (
-        <span style={{ color: '#475569', fontWeight: 900, whiteSpace: 'nowrap' }}>{debtDueLabel()}</span>
-      ),
+      render: (_: unknown, row: DebtTableRow) => <DateText value={row.cycleStartDate} />,
     },
     {
       key: 'status',
@@ -525,9 +452,9 @@ export default function FinanceTab({
         const periodStatus = getDebtPeriodStatus(row);
         return (
           <div className="ltn-mobile-action-row" onClick={e => e.stopPropagation()} style={{ display: 'flex', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>
-            {periodStatus === 'paid' && receipt ? (
+            {(debtStatusFilter === 'collected' || periodStatus === 'paid') && receipt ? (
               <Button intent="primary" variant="outline" size="sm" onClick={() => onViewInvoice(receipt)}>Biên lai</Button>
-            ) : periodStatus === 'unpaid' || periodStatus === 'overdue' ? (
+            ) : isCurrentDebtPeriod && (periodStatus === 'due' || periodStatus === 'overdue') ? (
               <>
                 <button
                   type="button"
@@ -560,7 +487,7 @@ export default function FinanceTab({
         );
       },
     },
-  ], [attendanceAuditByStudent, baseTuition, copiedId, copyMsg, debtDueLabel, getDebtPeriodAmount, getDebtPeriodPayment, getDebtPeriodStatus, makePaymentDraft, makeZaloMsg, onShowFAB, onViewInvoice]);
+  ], [baseTuition, copiedId, copyMsg, debtStatusFilter, getDebtDisplayAmount, getDebtPeriodAmount, getDebtPeriodPayment, getDebtPeriodStatus, isCurrentDebtPeriod, makePaymentDraft, makeZaloMsg, onShowFAB, onViewInvoice]);
 
   const ledgerColumns = useMemo(() => [
     {
@@ -599,7 +526,7 @@ export default function FinanceTab({
       align: 'center' as const,
       width: '11%',
       render: (_: unknown, p: Payment) => {
-        const period = getPaymentTuitionPeriod(p);
+        const period = getPaymentReceiptPeriod(p);
         return period ? <MonthText month={period.m} year={period.y} /> : <span style={{ color: '#94a3b8', fontWeight: 800 }}>—</span>;
       },
     },
@@ -715,7 +642,7 @@ export default function FinanceTab({
       ]}
       active={finSub}
       onChange={id => {
-        if (id === 'debt' && !fSt) setFSt('unpaid');
+        if (id === 'debt' && !fSt) setFSt('all');
         setFinanceSubtab?.(id);
       }}
     />
@@ -725,35 +652,18 @@ export default function FinanceTab({
     <>
       {finSub === 'debt' && (
         <>
-          <MonthSelect value={debtPeriodValue} allowAll={false} onChange={v => { setFMo(v); setPgF(1); }} />
+          <MonthSelect value={debtPeriodValue} allowAll={false} onChange={v => { setFMo(v); setFSt('all'); setPgF(1); }} />
           <div className="finance-desktop-only">
             <Select value={fFC} onChange={v => { setFFC(v); setPgF(1); }} options={classOptions} size="md" style={{ width: 108, minWidth: 96 }} />
-          </div>
-          <div className="finance-desktop-only">
-            <Select
-              value={debtStatusFilter}
-              onChange={v => { setFSt(v); setPgF(1); }}
-              options={[
-                { value: 'unpaid', label: 'Cần thu' },
-                { value: 'all', label: 'Tất cả' },
-                { value: 'paid', label: 'Đã thu' },
-              ]}
-              size="md"
-              style={{ width: 116, minWidth: 108 }}
-            />
           </div>
           <div className="finance-desktop-only">
             <SearchBar value={qF} onChange={v => { setQF(v); setPgF(1); }} placeholder="Tìm HS" width={116} size="md" />
           </div>
           <div className="finance-mobile-only">
             <Select
-              value={debtStatusFilter}
-              onChange={v => { setFSt(v); setPgF(1); }}
-              options={[
-                { value: 'unpaid', label: 'Cần thu' },
-                { value: 'all', label: 'Tất cả' },
-                { value: 'paid', label: 'Đã thu' },
-              ]}
+              value={fFC}
+              onChange={v => { setFFC(v); setPgF(1); }}
+              options={classOptions}
               size="md"
             />
           </div>
@@ -766,7 +676,7 @@ export default function FinanceTab({
             <Select value={lFilterCls} onChange={v => { setLFilterCls(v); setPgLedger(1); }} options={classOptions} size="md" style={{ width: 108, minWidth: 96 }} />
           </div>
           <div className="finance-desktop-only">
-            <SearchBar value={ledgerQuery} onChange={v => { setLedgerQuery(v); setPgLedger(1); }} placeholder="Tìm HS / số phiếu" width={188} size="sm" />
+            <SearchBar value={ledgerQuery} onChange={v => { setLedgerQuery(v); setPgLedger(1); }} placeholder="Tìm HS / số phiếu" width={108} size="sm" />
           </div>
           <div className="finance-mobile-only">
             <Select value={lFilterCls} onChange={v => { setLFilterCls(v); setPgLedger(1); }} options={classOptions} size="md" />
@@ -782,33 +692,24 @@ export default function FinanceTab({
     </>
   );
 
-  const focusDebtAll = () => {
+  const focusDebtStatus = (status: 'review' | 'collected' | 'due' | 'overdue') => {
     setFinanceSubtab?.('debt');
-    setFSt('all');
+    setFSt(debtStatusFilter === status ? 'all' : status);
     setPgF(1);
     scrollTo(debtListRef);
-  };
-  const focusDebtUnpaid = () => {
-    setFinanceSubtab?.('debt');
-    setFSt('unpaid');
-    setPgF(1);
-    scrollTo(debtListRef);
-  };
-  const focusLedger = () => {
-    setFinanceSubtab?.('ledger');
-    setLFilterMo(debtPeriodValue);
-    setLFilterCls(fFC);
-    setPgLedger(1);
-    scrollTo(ledgerListRef);
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <style>{`
+        .finance-toolbar-title{display:flex;align-items:center;gap:12px}
+        .finance-mobile-add{display:none}
         .finance-toolbar-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
         .finance-toolbar-filters select{min-width:96px}
         .finance-mobile-only{display:none}
         @media(max-width:767px){
+          .finance-toolbar-title{width:calc(100vw - 84px);justify-content:space-between}
+          .finance-mobile-add{display:none!important}
           .finance-toolbar-filters{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
           .finance-toolbar-filters > *{width:100%!important;min-width:0!important}
           .finance-toolbar-filters select{width:100%!important;min-width:0!important}
@@ -817,7 +718,16 @@ export default function FinanceTab({
         }
       `}</style>
       <PageToolbar
-        title={finSub === 'debt' ? 'HỌC PHÍ' : finSub === 'ledger' ? 'Phiếu thu' : 'Phiếu chi'}
+        title={(
+          <div className="finance-toolbar-title">
+            <h2 className="ltn-page-toolbar-title" style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>{finSub === 'debt' ? 'HỌC PHÍ' : finSub === 'ledger' ? 'Phiếu thu' : 'Phiếu chi'}</h2>
+            <span className="finance-mobile-add">
+              <Button intent={finSub === 'expense' ? 'danger' : 'success'} size="sm" icon={<Plus size={13} />} onClick={() => onShowFAB(finSub === 'expense' ? 'expense' : 'income')} style={{ minWidth: 82 }}>
+                Thêm
+              </Button>
+            </span>
+          </div>
+        )}
         hideActionsOnMobile
         actions={(
           <Button intent={finSub === 'expense' ? 'danger' : 'success'} size="sm" icon={<Plus size={13} />} onClick={() => onShowFAB(finSub === 'expense' ? 'expense' : 'income')}>
@@ -834,39 +744,39 @@ export default function FinanceTab({
       {finSub === 'debt' && (
         <ActionableKpiGrid>
           <ActionableKpi
-            icon={Wallet}
-            value={<MoneyText value={totalDueAmount} compact />}
-            label="Phải thu kỳ này"
-            sub={`${debtTableRows.length} học sinh tính phí`}
-            tone="primary"
-            onClick={focusDebtAll}
-            actionLabel="Xem bảng"
+            icon={AlertTriangle}
+            value={reviewRows.length}
+            label="Cần kiểm tra"
+            sub="Không tự động tính công nợ"
+            tone={reviewRows.length > 0 ? 'warning' : 'success'}
+            onClick={() => focusDebtStatus('review')}
+            actionLabel="Rà soát"
           />
           <ActionableKpi
             icon={TrendingUp}
             value={<MoneyText value={collectedAmount} compact tone="success" />}
-            label="Đã thu kỳ này"
-            sub={`${selectedMonthPayments.length} phiếu thu`}
+            label="Đã thu trong tháng"
+            sub={`${selectedMonthPayments.length} phiếu theo ngày thu`}
             tone="success"
-            onClick={focusLedger}
-            actionLabel="Mở phiếu thu"
+            onClick={() => focusDebtStatus('collected')}
+            actionLabel="Lọc đã thu"
           />
           <ActionableKpi
-            icon={AlertTriangle}
-            value={<MoneyText value={remainingAmount} compact tone={remainingAmount > 0 ? 'danger' : 'success'} />}
-            label="Còn phải thu"
-            sub={`T${selectedDebtMonth.m}/${selectedDebtMonth.y}`}
-            tone={remainingAmount > 0 ? 'danger' : 'success'}
-            onClick={focusDebtUnpaid}
-            actionLabel="Lọc chưa thu"
+            icon={Wallet}
+            value={<MoneyText value={dueAmount} compact tone={dueAmount > 0 ? 'danger' : 'success'} />}
+            label="Cần thu"
+            sub={`${collectionRows.filter(row => row.status === 'due').length} học sinh`}
+            tone={dueAmount > 0 ? 'danger' : 'success'}
+            onClick={() => focusDebtStatus('due')}
+            actionLabel="Lọc cần thu"
           />
           <ActionableKpi
             icon={TrendingDown}
             value={<MoneyText value={overdueAmount} compact tone={overdueAmount > 0 ? 'danger' : 'success'} />}
             label="Quá hạn"
-            sub={`${debtTableRows.filter(row => row.status === 'overdue').length} học sinh`}
+            sub={`${financeCycleRows.filter(row => row.status === 'overdue').length} học sinh`}
             tone={overdueAmount > 0 ? 'danger' : 'success'}
-            onClick={focusDebtUnpaid}
+            onClick={() => focusDebtStatus('overdue')}
             actionLabel="Lọc quá hạn"
           />
         </ActionableKpiGrid>
@@ -886,7 +796,7 @@ export default function FinanceTab({
               data={pagedDebtRows}
               rowKey="id"
               emptyText="Không có học sinh phù hợp"
-              emptySub="Thử đổi lớp hoặc tháng học phí."
+              emptySub="Thử đổi lớp hoặc trạng thái chu kỳ."
               onRowClick={row => onViewFinance(row.student)}
               scrollX={false}
               density="compact"
@@ -905,10 +815,9 @@ export default function FinanceTab({
               const periodStatus = getDebtPeriodStatus(row);
               const meta = debtStatusMeta(periodStatus);
               const receipt = getDebtPeriodPayment(row);
-              const amount = getDebtPeriodAmount(row);
+              const amount = getDebtDisplayAmount(row);
               const actionAmount = amount || row.debtAmount || baseTuition;
-              const audit = attendanceAuditByStudent.get(row.id);
-              const sessionLabel = audit?.totalSessions ? `${audit.totalSessions} buổi${audit.extraSessions ? ` · ${audit.extraSessions} thêm vào buổi` : ''}` : '0 buổi';
+              const sessionLabel = row.target ? `${row.done}/${row.target} buổi` : 'Chưa có lịch';
               const classId = s.classId || 'HS';
               return (
                 <MobileRecordRow
@@ -916,18 +825,18 @@ export default function FinanceTab({
                   marker={<MobileRecordMarker tone={meta.tone}>{classId}</MobileRecordMarker>}
                   title={capitalizeName(s.name)}
                   right={<MoneyText value={amount} compact tone={periodStatus === 'paid' ? 'success' : periodStatus === 'overdue' ? 'danger' : undefined} />}
-                  meta={`T${selectedDebtMonth.m}/${selectedDebtMonth.y} · ${sessionLabel}`}
+                  meta={`Cuối T${selectedDebtMonth.m}/${selectedDebtMonth.y} · ${sessionLabel}`}
                   note={<StatusBadge domain="tuition" status={periodStatus} label={meta.label} tone={meta.tone} />}
                   tone={meta.tone}
                   muted={row.isInactive}
                   onClick={() => onViewFinance(s)}
                   actions={(
                     <>
-                      {periodStatus === 'paid' && receipt ? (
+                      {(debtStatusFilter === 'collected' || periodStatus === 'paid') && receipt ? (
                         <MobileRecordTextAction title="Biên lai" tone="primary" onClick={() => onViewInvoice(receipt)}>
                           Biên lai
                         </MobileRecordTextAction>
-                      ) : periodStatus === 'unpaid' || periodStatus === 'overdue' ? (
+                      ) : isCurrentDebtPeriod && (periodStatus === 'due' || periodStatus === 'overdue') ? (
                         <>
                           <MobileRecordAction title="Thu phí" tone="success" onClick={() => onShowFAB('income', makePaymentDraft(row))}>
                             <ReceiptText size={15} />
@@ -984,12 +893,12 @@ export default function FinanceTab({
             {pagedLedger.length === 0 ? (
                 <EmptyState text="Chưa có phiếu thu phù hợp" sub="Thử đổi tháng hoặc lớp." compact />
               ) : <MobileRecordList>{pagedLedger.map(p => {
-                const period = getPaymentTuitionPeriod(p);
+                const period = getPaymentReceiptPeriod(p);
                 const cls = paymentClassId(p, students);
                 return (
                   <MobileRecordRow
                     key={p.id || p.docNum || `${p.studentId}-${p.date}-${p.amount}`}
-                    marker={<MobileRecordMarker tone="success">+</MobileRecordMarker>}
+                    marker={<MobileRecordMarker tone="success"><ReceiptText size={15} /></MobileRecordMarker>}
                     title={capitalizeName(p.studentName) || p.docNum || 'Phiếu thu'}
                     right={<MoneyText value={p.amount} compact tone="success" />}
                     meta={(
@@ -1039,7 +948,7 @@ export default function FinanceTab({
             ) : <MobileRecordList>{pagedExpense.map(e => (
                 <MobileRecordRow
                   key={e.id || e.docNum || `${e.date}-${e.description}-${e.amount}`}
-                  marker={<MobileRecordMarker tone="danger">-</MobileRecordMarker>}
+                  marker={<MobileRecordMarker tone="danger"><TrendingDown size={15} /></MobileRecordMarker>}
                   title={e.description || e.docNum || 'Phiếu chi'}
                   right={<MoneyText value={e.amount} compact tone="danger" />}
                   meta={<><DateText value={e.date} /> · {e.category || 'Chưa phân loại'}</>}

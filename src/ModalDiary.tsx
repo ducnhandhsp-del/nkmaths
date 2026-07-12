@@ -421,7 +421,7 @@ export function DiaryModal({
         <div className="ltn-quick-foot ltn-diary-foot">
           <Button variant="outline" intent="neutral" size="sm" onClick={onClose}>Hủy</Button>
           <Button intent={editingLog ? 'primary' : 'success'} size="sm" loading={isSaving} icon={<Save size={14}/>} onClick={doSave} style={{ minWidth: editingLog ? 104 : 82 }}>
-            {editingLog?'Cập nhật':'Lưu'}
+            {isSaving ? 'Đang lưu...' : editingLog ? 'Cập nhật' : 'Lưu'}
           </Button>
         </div>
       </div>

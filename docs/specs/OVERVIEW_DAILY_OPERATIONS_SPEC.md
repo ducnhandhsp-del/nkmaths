@@ -1,5 +1,10 @@
 # Overview Daily Operations Spec
 
+> Superseded for tuition business rules on 2026-07-11. Use
+> `TUITION_CYCLE_BUSINESS_DECISION_SPEC.md` as the source of truth for tuition
+> due/overdue status. This file remains valid for Overview layout and daily
+> operations behavior.
+
 ## Muc tieu
 
 Tab Tong quan la bang dieu hanh hang ngay cho quan ly lop, khong phai man bao

@@ -1,13 +1,14 @@
 /**
  * StudentsTab.tsx - man hinh quan ly du lieu hoc sinh goc.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ReceiptText, UserPlus } from 'lucide-react';
 import { IPP, capitalizeName, compareClassCode, fixVietnameseText, isStudentActive } from './helpers';
-import { isStudentActiveInMonth, isStudentBillableInMonth } from './measures';
+import { getTuitionCycleState } from './measures';
 import { Pager, Button, Select } from './dsComponents';
 import { DataTable, EmptyState, MobileRecordAction, MobileRecordList, MobileRecordMarker, MobileRecordRow, PageToolbar, StatusBadge } from './uiSystem';
-import type { Student, DeleteTarget } from './types';
+import type { Student, DeleteTarget, Payment, TeachingLog } from './types';
+import type { TuitionCycleState } from './measures';
 
 interface Props {
   filtS: Student[];
@@ -29,31 +30,15 @@ interface Props {
   onCollectFee?: (s: Student) => void;
   curMo?: number;
   curYr?: number;
-  isPaid?: (sid: string, mo: number, yr: number) => boolean;
+  payments: Payment[];
+  tlogs: TeachingLog[];
+  baseTuition: number;
   embedded?: boolean;
   toolbarPrefix?: React.ReactNode;
 }
 
 const getClassCode = (c: any) =>
   fixVietnameseText(c?.['Mã Lớp'] || c?.['Mã lớp'] || c?.['MÃ£ Lá»›p'] || c?.MaLop || c?.classId || '');
-
-function schoolMonthsUntil(month: number, year: number) {
-  const startYear = month >= 7 ? year : year - 1;
-  const months: { m: number; y: number }[] = [];
-  for (let m = 7; m <= 12; m++) months.push({ m, y: startYear });
-  for (let m = 1; m <= 6; m++) months.push({ m, y: startYear + 1 });
-  return months.filter(fm => fm.y < year || (fm.y === year && fm.m <= month));
-}
-
-function DebtMonthsState({ months }: { months: number | null }) {
-  if (months == null) return <span style={{ color: '#94a3b8', fontWeight: 800 }}>—</span>;
-  if (months === 1) return <StatusBadge status="warning" label="Chưa thu" tone="warning" />;
-  return months > 0 ? (
-    <StatusBadge status="warning" label={`Nợ ${months} tháng`} tone="warning" />
-  ) : (
-    <StatusBadge status="success" label="Đã đủ" tone="success" />
-  );
-}
 
 function classSummary(raw: string) {
   const classes = String(raw || '')
@@ -69,15 +54,15 @@ function ZaloMark({ size = 18 }: { size?: number }) {
     <span
       aria-hidden="true"
       style={{
-        width: size,
-        height: size,
-        borderRadius: Math.max(5, Math.round(size * 0.28)),
+        width: Math.round(size * 1.34),
+        height: Math.round(size * 0.82),
+        borderRadius: Math.max(5, Math.round(size * 0.25)),
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
         background: '#0068ff',
         color: '#fff',
-        fontSize: Math.max(8, Math.round(size * 0.48)),
+        fontSize: Math.max(8, Math.round(size * 0.42)),
         fontWeight: 950,
         lineHeight: 1,
         letterSpacing: 0,
@@ -85,9 +70,20 @@ function ZaloMark({ size = 18 }: { size?: number }) {
         boxShadow: 'inset 0 -1px 0 rgba(0,0,0,.14)',
       }}
     >
-      Z
+      Zalo
     </span>
   );
+}
+
+function TuitionCycleBadge({ state }: { state?: TuitionCycleState }) {
+  if (!state) return <span style={{ color: '#94a3b8', fontWeight: 800 }}>—</span>;
+  if (state.status === 'paid') return <StatusBadge domain="tuition" status="paid" label="Đã thu" tone="success" />;
+  if (state.status === 'due') return <StatusBadge domain="tuition" status="due" label={`Cần thu ${state.done}/${state.target}`} tone="warning" />;
+  if (state.status === 'overdue') return <StatusBadge domain="tuition" status="overdue" label={`Quá hạn ${state.done}/${state.target}`} tone="danger" />;
+  if (state.status === 'needs_review') return <StatusBadge domain="tuition" status="needs_review" label="Cần kiểm tra" tone="warning" />;
+  if (state.status === 'no_schedule') return <StatusBadge domain="tuition" status="no_schedule" label="Chưa có lịch" tone="neutral" />;
+  if (state.status === 'inactive') return <StatusBadge domain="tuition" status="inactive" label="Đã nghỉ" tone="neutral" />;
+  return <StatusBadge domain="tuition" status="not_due" label={`${state.done}/${state.target} · Chưa tới hạn`} tone="neutral" />;
 }
 
 export default function StudentsTab({
@@ -107,9 +103,9 @@ export default function StudentsTab({
   onAddStudent,
   onBulkTransfer,
   onCollectFee,
-  curMo,
-  curYr,
-  isPaid,
+  payments,
+  tlogs,
+  baseTuition,
   embedded = false,
   toolbarPrefix,
 }: Props) {
@@ -118,8 +114,6 @@ export default function StudentsTab({
   useEffect(() => {
     if (hideInactive && (statusFilter === 'all' || statusFilter === 'inactive')) setStatusFilter('active');
   }, [hideInactive, statusFilter]);
-
-  const canShowDebt = !!curMo && !!curYr && !!isPaid;
 
   const classOptions = useMemo(() => {
     const rows = uClasses
@@ -132,14 +126,13 @@ export default function StudentsTab({
     return [{ value: '', label: 'Lớp' }, ...rows];
   }, [uClasses]);
 
-  const debtMonthsOf = useCallback((s: Student): number | null => {
-    if (!canShowDebt) return null;
-    return schoolMonthsUntil(curMo!, curYr!)
-      .filter(fm => isStudentActiveInMonth(s, fm))
-      .filter(fm => isStudentBillableInMonth(s, fm))
-      .filter(fm => !isPaid!(s.id, fm.m, fm.y))
-      .length;
-  }, [canShowDebt, curMo, curYr, isPaid]);
+  const tuitionStateByStudent = useMemo(() => new Map(students.map(student => [student.id, getTuitionCycleState({
+    student,
+    classes: uClasses,
+    payments,
+    tlogs,
+    baseTuition,
+  })])), [baseTuition, payments, students, tlogs, uClasses]);
 
   const displayed = useMemo(() => {
     return filtS.filter(s => {
@@ -245,7 +238,7 @@ export default function StudentsTab({
       label: 'Học phí',
       align: 'center' as const,
       width: 98,
-      render: (_: unknown, student: Student) => <DebtMonthsState months={debtMonthsOf(student)} />,
+      render: (_: unknown, student: Student) => <TuitionCycleBadge state={tuitionStateByStudent.get(student.id)} />,
     },
     {
       key: 'actions',
@@ -287,13 +280,15 @@ export default function StudentsTab({
         );
       },
     },
-  ], [debtMonthsOf, onCollectFee]);
+  ], [onCollectFee, tuitionStateByStudent]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: embedded ? 8 : 12 }}>
       <style>{`
+        .student-toolbar-title{display:flex;align-items:center;gap:12px}
+        .student-mobile-add{display:none}
         .student-toolbar-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-        .student-toolbar-search{width:136px;min-width:118px;height:34px;border:1px solid #dbe3ef;border-radius:8px;background:#fff;padding:0 10px;font-size:13px;font-weight:800;color:#0f172a;outline:none}
+        .student-toolbar-search{width:104px;min-width:96px;height:34px;border:1px solid #dbe3ef;border-radius:8px;background:#fff;padding:0 10px;font-size:13px;font-weight:800;color:#0f172a;outline:none}
         .student-toolbar-search::placeholder{color:#94a3b8;font-weight:800}
         .student-toolbar-reset{height:32px;padding:0 9px;border-radius:999px;border:1px solid #e2e8f0;background:#fff;color:#475569;font-size:12px;font-weight:900;cursor:pointer}
         .student-toolbar-reset:hover{border-color:#cbd5e1;background:#f8fafc}
@@ -309,6 +304,8 @@ export default function StudentsTab({
         .student-mobile-actions .student-action-icon{width:34px;height:34px;flex-basis:34px}
         .student-desktop-table{display:block}.student-mobile-cards{display:none}
         @media(max-width:767px){
+          .student-toolbar-title{width:calc(100vw - 84px);justify-content:space-between}
+          .student-mobile-add{display:none!important}
           .student-toolbar-filters{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
           .student-toolbar-search{display:none}
           .student-toolbar-filters > *{width:100%!important;min-width:0!important}
@@ -319,7 +316,14 @@ export default function StudentsTab({
       `}</style>
 
       <PageToolbar
-        title="Học sinh"
+        title={embedded ? 'Học sinh' : (
+          <div className="student-toolbar-title">
+            <h2 className="ltn-page-toolbar-title" style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>Học sinh</h2>
+            <span className="student-mobile-add">
+              <Button intent="success" size="sm" icon={<UserPlus size={14} />} onClick={onAddStudent} style={{ minWidth: 82 }}>Thêm</Button>
+            </span>
+          </div>
+        )}
         embedded={embedded}
         hideActionsOnMobile
         actions={!embedded && (
@@ -369,7 +373,7 @@ export default function StudentsTab({
           ) : <MobileRecordList>{paged.map((s) => {
             const inactive = !isStudentActive(s);
             const zaloPhone = String(s.parentPhone || s.studentPhone || '').replace(/\D/g, '');
-            const debtMonths = debtMonthsOf(s);
+            const tuitionState = tuitionStateByStudent.get(s.id);
             const summary = classSummary(s.classId);
             const primaryClass = summary?.primary || 'HS';
             const parentLabel = s.parentName ? `PH: ${s.parentName}` : 'Chưa có PH';
@@ -379,7 +383,7 @@ export default function StudentsTab({
                 key={s.id}
                 marker={<MobileRecordMarker tone={inactive ? 'neutral' : 'primary'}>{primaryClass}</MobileRecordMarker>}
                 title={capitalizeName(s.name)}
-                right={<DebtMonthsState months={debtMonths} />}
+                right={<TuitionCycleBadge state={tuitionState} />}
                 meta={parentLabel}
                 note={(
                   <span style={{ color: zaloPhone.length >= 9 ? '#047857' : '#b45309' }}>
@@ -396,7 +400,6 @@ export default function StudentsTab({
                         href={`https://zalo.me/${zaloPhone}`}
                         title={`Zalo ${capitalizeName(s.name)}`}
                         tone="zalo"
-                        bare
                       >
                         <ZaloMark size={18} />
                       </MobileRecordAction>

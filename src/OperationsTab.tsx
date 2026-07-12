@@ -457,14 +457,6 @@ export default function OperationsTab({
       .sort((a, b) => a.slot.date.getTime() - b.slot.date.getTime() || a.slot.caIdx - b.slot.caIdx || a.slot.classId.localeCompare(b.slot.classId, 'vi'));
   }, [scheduleClass, scheduleDates, tlogs, uClasses]);
 
-  const actionableScheduleRows = useMemo(() => {
-    const nowTs = Date.now();
-    return scheduleRows
-      .filter(row => row.status === 'pending' || row.status === 'inProgress')
-      .sort((a, b) => Math.abs(getSlotStart(a.slot).getTime() - nowTs) - Math.abs(getSlotStart(b.slot).getTime() - nowTs))
-      .slice(0, 6);
-  }, [scheduleRows]);
-
   const displayScheduleRows = useMemo(() => {
     const nowTs = Date.now();
     const rank = (row: ScheduleRow) => {
@@ -992,7 +984,7 @@ export default function OperationsTab({
               style={{ width: 108, minWidth: 96 }}
             />
           </div>
-          <div className="ops-desktop-only">
+          {false && <div className="ops-desktop-only">
             <Select
               value={lessonFocus}
               onChange={value => { setLessonFocus(value as typeof lessonFocus); setPgD(1); }}
@@ -1003,7 +995,7 @@ export default function OperationsTab({
               size="md"
               style={{ width: 124, minWidth: 116 }}
             />
-          </div>
+          </div>}
           <div className="ops-mobile-only">
             <Select value={dCls} onChange={value => { setDCls(value); setPgD(1); }} options={classOptions} size="md" />
           </div>
@@ -1021,7 +1013,7 @@ export default function OperationsTab({
           <div className="ops-desktop-only">
             <Select value={attendanceClass} onChange={setAttendanceClass} options={attendanceClassOptions} size="md" style={{ width: 108, minWidth: 96 }} />
           </div>
-          <div className="ops-desktop-only">
+          {false && <div className="ops-desktop-only">
             <Select
               value={attendanceFocus}
               onChange={value => setAttendanceFocus(value as typeof attendanceFocus)}
@@ -1032,7 +1024,7 @@ export default function OperationsTab({
               size="md"
               style={{ width: 124, minWidth: 116 }}
             />
-          </div>
+          </div>}
           <div className="ops-mobile-only">
             <Select value={attendanceClass} onChange={setAttendanceClass} options={attendanceClassOptions} size="md" />
           </div>
@@ -1044,6 +1036,8 @@ export default function OperationsTab({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <style>{`
+        .ops-toolbar-title{display:flex;align-items:center;gap:12px}
+        .ops-mobile-add{display:none}
         .ops-toolbar-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
         .ops-mobile-only{display:none}
         .ops-period-control{display:flex;align-items:center;gap:4px;border:1px solid #e2e8f0;padding:3px 7px;border-radius:8px;background:white}
@@ -1051,6 +1045,8 @@ export default function OperationsTab({
         .ops-period-button:hover{background:#f1f5f9;color:#0f172a}
         .ops-period-label{font-size:12px;font-weight:900;color:#0f172a;min-width:76px;text-align:center;white-space:nowrap}
         @media(max-width:767px){
+          .ops-toolbar-title{width:calc(100vw - 84px);justify-content:space-between}
+          .ops-mobile-add{display:none!important}
           .ops-toolbar-filters{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
           .ops-period-control{justify-content:space-between}
           .ops-toolbar-filters > *{width:100%!important;min-width:0!important}
@@ -1059,7 +1055,14 @@ export default function OperationsTab({
         }
       `}</style>
       <PageToolbar
-        title={title}
+        title={(
+          <div className="ops-toolbar-title">
+            <h2 className="ltn-page-toolbar-title" style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>{title}</h2>
+            <span className="ops-mobile-add">
+              <Button intent="success" size="sm" icon={<Plus size={13} />} onClick={() => onAddDiary()} style={{ minWidth: 82 }}>Thêm</Button>
+            </span>
+          </div>
+        )}
         hideActionsOnMobile
         actions={(
           <Button intent="success" size="sm" icon={<Plus size={13} />} onClick={() => onAddDiary()}>
@@ -1093,31 +1096,7 @@ export default function OperationsTab({
           <style>{`
             .ops-schedule-desktop{display:block}.ops-schedule-mobile{display:none}
             @media(max-width:767px){.ops-schedule-desktop{display:none!important}.ops-schedule-mobile{display:grid!important}}
-            .ops-action-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px;margin-bottom:10px}
-            .ops-action-card{border:1px solid #e2e8f0;background:#fff;border-radius:12px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;text-align:left}
-            .ops-action-card:hover{border-color:#a7f3d0;background:#f0fdf4}
-            .ops-action-main{min-width:0}
-            .ops-action-title{margin:0;font-size:13px;font-weight:950;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-            .ops-action-sub{margin:3px 0 0;font-size:11px;font-weight:800;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
           `}</style>
-          {actionableScheduleRows.length > 0 && (
-            <div className="ops-action-strip" aria-label="Buổi chưa ghi gần nhất">
-              {actionableScheduleRows.map(row => {
-                const dayCode = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][row.slot.date.getDay()];
-                return (
-                  <div key={`action-${row.id}`} role="button" tabIndex={0} className="ops-action-card" onClick={() => openScheduleRow(row)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') openScheduleRow(row); }}>
-                    <span className="ops-action-main">
-                      <p className="ops-action-title">{row.slot.classId} · {row.slot.caDay}</p>
-                      <p className="ops-action-sub">{DAY_FULL[dayCode]} · {fmtWeekDate(row.slot.date)} · {scheduleStatusLabel(row.status)}</p>
-                    </span>
-                    <Button intent="success" variant="outline" size="sm" icon={<Plus size={13} />} onClick={event => { event.stopPropagation(); onAddDiary(row.slot.classId, row.slot.isoDate, row.slot.caDay); }}>
-                      Ghi
-                    </Button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
           <div className="ops-schedule-desktop">
             <DataTable
               columns={scheduleColumns}
@@ -1218,7 +1197,12 @@ export default function OperationsTab({
                   key={`${log.classId}-${log.rawDate || log.date}-${log.caDay}`}
                   marker={<MobileRecordMarker tone={st.tone}>{log.classId || 'Lớp'}</MobileRecordMarker>}
                   title={lessonDateLabel(log)}
-                  right={<span style={{ height: 22, display: 'inline-flex', alignItems: 'center', padding: '0 9px', borderRadius: 999, background: '#f8fafc', border: '1px solid #e2e8f0', color: '#334155', fontSize: 12, fontWeight: 950 }}>{lessonAttendanceRatio(log)}</span>}
+                  right={(
+                    <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                      <span style={{ height: 22, display: 'inline-flex', alignItems: 'center', padding: '0 9px', borderRadius: 999, background: '#eef2ff', border: '1px solid #c7d2fe', color: '#4338ca', fontSize: 12, fontWeight: 950 }}>{log.caDay || 'Ca học'}</span>
+                      <span style={{ height: 22, display: 'inline-flex', alignItems: 'center', padding: '0 9px', borderRadius: 999, background: '#f8fafc', border: '1px solid #e2e8f0', color: '#334155', fontSize: 12, fontWeight: 950 }}>{lessonAttendanceRatio(log)}</span>
+                    </span>
+                  )}
                   meta={isOff ? `Lý do: ${lessonOffReasonLabel(log)}` : contentLabel}
                   note={isOff ? contentLabel : `BTVN: ${homeworkLabel}`}
                   tone={st.tone}

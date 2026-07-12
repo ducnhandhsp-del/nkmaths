@@ -113,38 +113,70 @@ body {
   }
   .ltn-actionable-kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 8px !important;
+    gap: 6px !important;
   }
   .ltn-actionable-kpi {
-    min-height: 86px !important;
-    padding: 10px !important;
-    gap: 8px !important;
-    align-items: flex-start !important;
-    border-radius: 12px !important;
-  }
-  .ltn-actionable-kpi-icon {
-    width: 34px !important;
-    height: 34px !important;
+    min-height: 62px !important;
+    padding: 7px 8px !important;
+    gap: 7px !important;
+    align-items: center !important;
     border-radius: 10px !important;
   }
+  .ltn-actionable-kpi-icon {
+    width: 28px !important;
+    height: 28px !important;
+    border-radius: 9px !important;
+  }
   .ltn-actionable-kpi-value {
-    font-size: 18px !important;
+    font-size: 16px !important;
     line-height: 1.05 !important;
     max-width: 100%;
   }
   .ltn-actionable-kpi-label {
-    margin-top: 3px !important;
-    font-size: 11px !important;
-    line-height: 1.25 !important;
+    margin-top: 2px !important;
+    font-size: 10px !important;
+    line-height: 1.18 !important;
     white-space: normal !important;
     display: -webkit-box !important;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
   }
   .ltn-actionable-kpi-sub {
+    display: none !important;
+  }
+  .stat-grid {
+    gap: 6px !important;
+  }
+  .ltn-stat-block {
+    min-height: 58px !important;
+    padding: 8px 9px !important;
+    gap: 7px !important;
+    border-radius: 10px !important;
+    box-shadow: 0 1px 8px rgba(15, 23, 42, 0.06) !important;
+  }
+  .ltn-stat-block-icon {
+    width: 28px !important;
+    height: 28px !important;
+    border-radius: 9px !important;
+  }
+  .ltn-stat-block-icon svg {
+    width: 15px !important;
+    height: 15px !important;
+  }
+  .ltn-stat-block-value {
+    font-size: 16px !important;
+  }
+  .ltn-stat-block-label {
     margin-top: 2px !important;
     font-size: 10px !important;
-    line-height: 1.25 !important;
+    line-height: 1.18 !important;
+    white-space: normal !important;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .ltn-stat-block-sub {
+    display: none !important;
   }
   .overview-quick-panel {
     display: none !important;

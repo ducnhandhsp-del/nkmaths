@@ -5,8 +5,8 @@ import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Clock, Plus, Trash2, X, Users, MapPin, User } from 'lucide-react';
 import { compareClassCode, fixVietnameseText, isStudentActive, normalizeCaDayLabel, normalizeScheduleCaText, resolveTeacher } from './helpers';
-import { getMonthlyTuitionState, getPaymentTuitionPeriod, isStudentActiveInMonth } from './measures';
-import { SearchBar, Select, Button } from './dsComponents';
+import { getPaymentReceiptPeriod, getTuitionCycleState, getUniquePaidStudentIdsByReceiptPeriod } from './measures';
+import { Button } from './dsComponents';
 import { DataTable, DetailMetric, EmptyState, MobileRecordList, MobileRecordMarker, MobileRecordRow, MobileRecordTextAction, MoneyText, PageToolbar, StatusBadge } from './uiSystem';
 import type { Student, ClassRecord, Payment, DeleteTarget, TeachingLog } from './types';
 
@@ -14,6 +14,7 @@ interface Props {
   uClasses: ClassRecord[]; students: Student[];
   payments?: Payment[];
   tlogs?: TeachingLog[];
+  baseTuition: number;
   curMo: number; curYr: number;
   qCls: string; setQCls: (v: string) => void;
   fClsTeacher: string; setFClsTeacher: (v: string) => void;
@@ -156,29 +157,35 @@ function ClassStudentListOverlay({ title, students, tone, onClose }: {
   return typeof document === 'undefined' ? content : createPortal(content, document.body);
 }
 
-function ClassDetailModal({ cls, curMo, curYr, students, payments = [], onClose, onEdit, onDelete }: {
+function ClassDetailModal({ cls, curMo, curYr, students, classes, payments = [], tlogs = [], baseTuition, onClose, onEdit, onDelete }: {
   cls: ClassRecord & { studentCount?: number; paidCount?: number; pct?: number };
   curMo: number; curYr: number;
   students: Student[];
+  classes: ClassRecord[];
   payments?: Payment[];
+  tlogs?: TeachingLog[];
+  baseTuition: number;
   onClose: () => void; onEdit: () => void; onDelete?: () => void;
 }) {
   // Chỉ tính HS đang học — bỏ qua HS đã nghỉ
-  const tuitionPeriod = { m: curMo, y: curYr };
   const clsStudents = students.filter(s =>
     s.classId === getClassCode(cls) &&
-    isStudentActiveInMonth(s, tuitionPeriod)
+    isStudentActive(s)
   );
-  const tuitionStates = clsStudents.map(student => getMonthlyTuitionState({
+  const tuitionStates = clsStudents.map(student => getTuitionCycleState({
     student,
-    period: tuitionPeriod,
+    classes,
     payments,
+    tlogs,
+    baseTuition,
   }));
   const billableStudents = tuitionStates.filter(state => state.billable).map(state => state.student);
-  const paid   = tuitionStates.filter(state => state.status === 'paid').map(state => state.student);
-  const unpaid = tuitionStates.filter(state => state.outstandingAmount > 0).map(state => state.student);
-  const pct = billableStudents.length > 0 ? Math.round(paid.length / billableStudents.length * 100) : 0;
-  const feeTone = tuitionTone(billableStudents.length, pct);
+  const paidIds = getUniquePaidStudentIdsByReceiptPeriod(payments, { m: curMo, y: curYr });
+  const paid = clsStudents.filter(student => paidIds.has(student.id));
+  const unpaid = tuitionStates.filter(state => state.status === 'due' || state.status === 'overdue').map(state => state.student);
+  const reviewCount = tuitionStates.filter(state => state.status === 'needs_review').length;
+  const pct = clsStudents.length > 0 ? Math.round(paid.length / clsStudents.length * 100) : 0;
+  const feeTone = tuitionTone(clsStudents.length, pct);
   const feeBg = feeTone === 'emerald' ? '#ecfdf5' : feeTone === 'amber' ? '#fefce8' : feeTone === 'rose' ? '#fff1f2' : '#f8fafc';
   const feeBorder = feeTone === 'emerald' ? '#a7f3d0' : feeTone === 'amber' ? '#fde68a' : feeTone === 'rose' ? '#fecaca' : '#e2e8f0';
   const feeColor = feeTone === 'emerald' ? '#059669' : feeTone === 'amber' ? '#d97706' : feeTone === 'rose' ? '#e11d48' : '#64748b';
@@ -216,9 +223,9 @@ function ClassDetailModal({ cls, curMo, curYr, students, payments = [], onClose,
           <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(96px,1fr))',gap:10 }}>
             <DetailMetric label="Lớp" value={classCode || '---'} tone="violet" />
             <DetailMetric label="Sĩ số" value={clsStudents.length} tone="sky" />
-            <DetailMetric label="Cần thu" value={billableStudents.length} tone="amber" />
-            <DetailMetric label="Đã đóng" value={`${paid.length}/${billableStudents.length}`} tone="emerald" />
-            <DetailMetric label={`T${curMo}/${curYr}`} value={`${pct}%`} tone={feeTone === 'rose' ? 'rose' : feeTone === 'amber' ? 'amber' : 'emerald'} />
+            <DetailMetric label="Cần thu" value={unpaid.length} tone="amber" />
+            <DetailMetric label="Đã thu tháng" value={`${paid.length}/${clsStudents.length}`} tone="emerald" />
+            <DetailMetric label="Cần kiểm tra" value={reviewCount} tone="rose" />
           </div>
 
           <section className="ltn-detail-section">
@@ -246,10 +253,10 @@ function ClassDetailModal({ cls, curMo, curYr, students, payments = [], onClose,
           </section>
 
           <section className="ltn-detail-section soft" style={{ borderColor: feeBorder, background: feeBg }}>
-            <p className="ltn-section-title">Học phí T{curMo}</p>
+            <p className="ltn-section-title">Thu theo ngày phiếu T{curMo}</p>
             <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8 }}>
-              <span style={{ fontSize:12,fontWeight:700,color:'#374151' }}>Đã đóng / cần thu</span>
-              <span style={{ fontSize:16,fontWeight:800,color:feeColor }}>{paid.length}/{billableStudents.length} · {pct}%</span>
+              <span style={{ fontSize:12,fontWeight:700,color:'#374151' }}>Đã thu trong tháng / sĩ số</span>
+              <span style={{ fontSize:16,fontWeight:800,color:feeColor }}>{paid.length}/{clsStudents.length} · {pct}%</span>
             </div>
             <div style={{ height:6,background:'rgba(0,0,0,0.08)',borderRadius:3,overflow:'hidden' }}>
               <div style={{ width:`${pct}%`,height:'100%',background:feeTone==='slate'?'#94a3b8':pct>=80?'#10b981':pct>=50?'#f59e0b':'#ef4444',borderRadius:3,transition:'width 0.4s' }}/>
@@ -258,44 +265,44 @@ function ClassDetailModal({ cls, curMo, curYr, students, payments = [], onClose,
 
           <section className="ltn-detail-section">
             <p style={{ fontSize:11,fontWeight:800,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.08em',margin:'0 0 8px' }}>
-              Danh sách học sinh cần đóng ({billableStudents.length}/{clsStudents.length})
+              Danh sách trạng thái thu ({unpaid.length + paid.length}/{clsStudents.length})
             </p>
             <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:8 }}>
               <button type="button" onClick={() => setFeeListMode('unpaid')} style={{ minHeight:54,padding:'10px 12px',borderRadius:12,border:'1px solid #fecaca',background:'#fff5f5',textAlign:'left',cursor:'pointer' }}>
                 <span style={{ display:'block',fontSize:18,fontWeight:950,color:'#be123c' }}>{unpaid.length}</span>
-                <span style={{ display:'block',fontSize:12,fontWeight:900,color:'#7f1d1d' }}>Xem chưa đóng</span>
+                <span style={{ display:'block',fontSize:12,fontWeight:900,color:'#7f1d1d' }}>Xem cần thu</span>
               </button>
               <button type="button" onClick={() => setFeeListMode('paid')} style={{ minHeight:54,padding:'10px 12px',borderRadius:12,border:'1px solid #a7f3d0',background:'#f0fdf4',textAlign:'left',cursor:'pointer' }}>
                 <span style={{ display:'block',fontSize:18,fontWeight:950,color:'#047857' }}>{paid.length}</span>
-                <span style={{ display:'block',fontSize:12,fontWeight:900,color:'#065f46' }}>Xem đã đóng</span>
+                <span style={{ display:'block',fontSize:12,fontWeight:900,color:'#065f46' }}>Xem đã thu tháng</span>
               </button>
             </div>
             {clsStudents.length > 0 && (
               <div style={{ maxHeight:280,overflowY:'auto',display:'grid',gap:10,paddingRight:2 }}>
                 {unpaid.length > 0 && (
                   <div style={{ display:'grid',gap:6 }}>
-                    <p style={{ fontSize:11,fontWeight:900,color:'#be123c',margin:0 }}>Chưa đóng ({unpaid.length})</p>
+                    <p style={{ fontSize:11,fontWeight:900,color:'#be123c',margin:0 }}>Cần thu ({unpaid.length})</p>
                     {unpaid.map(s => (
                       <div key={s.id} style={{ display:'grid',gridTemplateColumns:'minmax(0,1fr) auto',gap:8,alignItems:'center',padding:'9px 10px',background:'#fff5f5',borderRadius:10,border:'1px solid #fecaca' }}>
                         <div style={{ minWidth:0 }}>
                           <p style={{ fontSize:13,fontWeight:850,color:'#0f172a',margin:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{s.name}</p>
                           <p style={{ fontSize:11,color:'#64748b',fontWeight:750,margin:'2px 0 0' }}>{s.id}{s.parentPhone ? ` · ${s.parentPhone}` : ''}</p>
                         </div>
-                        <span style={{ fontSize:11,fontWeight:900,color:'#be123c',background:'#fee2e2',padding:'4px 8px',borderRadius:999,whiteSpace:'nowrap' }}>Chưa đóng</span>
+                        <span style={{ fontSize:11,fontWeight:900,color:'#be123c',background:'#fee2e2',padding:'4px 8px',borderRadius:999,whiteSpace:'nowrap' }}>Cần thu</span>
                       </div>
                     ))}
                   </div>
                 )}
                 {paid.length > 0 && (
                   <div style={{ display:'grid',gap:6 }}>
-                    <p style={{ fontSize:11,fontWeight:900,color:'#047857',margin:0 }}>Đã đóng ({paid.length})</p>
+                    <p style={{ fontSize:11,fontWeight:900,color:'#047857',margin:0 }}>Đã thu tháng ({paid.length})</p>
                     {paid.map(s => (
                       <div key={s.id} style={{ display:'grid',gridTemplateColumns:'minmax(0,1fr) auto',gap:8,alignItems:'center',padding:'9px 10px',background:'#f0fdf4',borderRadius:10,border:'1px solid #a7f3d0' }}>
                         <div style={{ minWidth:0 }}>
                           <p style={{ fontSize:13,fontWeight:850,color:'#0f172a',margin:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{s.name}</p>
                           <p style={{ fontSize:11,color:'#64748b',fontWeight:750,margin:'2px 0 0' }}>{s.id}{s.parentPhone ? ` · ${s.parentPhone}` : ''}</p>
                         </div>
-                        <span style={{ fontSize:11,fontWeight:900,color:'#047857',background:'#dcfce7',padding:'4px 8px',borderRadius:999,whiteSpace:'nowrap' }}>Đã đóng</span>
+                        <span style={{ fontSize:11,fontWeight:900,color:'#047857',background:'#dcfce7',padding:'4px 8px',borderRadius:999,whiteSpace:'nowrap' }}>Đã thu tháng</span>
                       </div>
                     ))}
                   </div>
@@ -311,7 +318,7 @@ function ClassDetailModal({ cls, curMo, curYr, students, payments = [], onClose,
           {clsStudents.length > 0 && (
             <section className="ltn-detail-section" style={{ display:'none' }}>
               <p style={{ fontSize:11,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.08em',margin:'0 0 8px' }}>
-                Danh sách học sinh cần đóng ({billableStudents.length}/{clsStudents.length})
+                Danh sách trạng thái thu ({unpaid.length + paid.length}/{clsStudents.length})
               </p>
 
               {/* Chưa đóng phí */}
@@ -319,7 +326,7 @@ function ClassDetailModal({ cls, curMo, curYr, students, payments = [], onClose,
                 <div style={{ marginBottom:8 }}>
                   <p style={{ fontSize:11,fontWeight:700,color:'#e11d48',margin:'0 0 5px',display:'flex',alignItems:'center',gap:5 }}>
                     <span style={{ width:6,height:6,borderRadius:'50%',background:'#e11d48',display:'inline-block' }}/>
-                    Chưa đóng ({unpaid.length})
+                    Cần thu ({unpaid.length})
                   </p>
                   <div style={{ display:'flex',flexDirection:'column',gap:4 }}>
                     {unpaid.map(s => (
@@ -342,7 +349,7 @@ function ClassDetailModal({ cls, curMo, curYr, students, payments = [], onClose,
                 <div>
                   <p style={{ fontSize:11,fontWeight:700,color:'#059669',margin:'0 0 5px',display:'flex',alignItems:'center',gap:5 }}>
                     <span style={{ width:6,height:6,borderRadius:'50%',background:'#059669',display:'inline-block' }}/>
-                    Đã đóng ({paid.length})
+                    Đã thu tháng ({paid.length})
                   </p>
                   <div style={{ display:'flex',flexDirection:'column',gap:4 }}>
                     {paid.map(s => (
@@ -382,7 +389,7 @@ function ClassDetailModal({ cls, curMo, curYr, students, payments = [], onClose,
   );
 }
 
-export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,qCls,setQCls,fClsTeacher,setFClsTeacher,onEditClass,onDeleteClass,onAddClass,onAddDiary,embedded=false,toolbarPrefix }: Props) {
+export default function ClassesTab({ uClasses,students,payments=[],tlogs=[],baseTuition,curMo,curYr,qCls,setQCls,fClsTeacher,setFClsTeacher,onEditClass,onDeleteClass,onAddClass,onAddDiary,embedded=false,toolbarPrefix }: Props) {
   const [detailCls, setDetailCls] = useState<any>(null);
 
   // FIX C4: memoize getSchedule helper (stable reference)
@@ -401,63 +408,41 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
   }, [getSchedule]);
 
   // FIX C4: memoize clsStats — chỉ tính HS đang học (bỏ HS nghỉ)
+  const paidStudentIds = useMemo(
+    () => getUniquePaidStudentIdsByReceiptPeriod(payments, { m: curMo, y: curYr }),
+    [payments, curMo, curYr]
+  );
   const clsStats = React.useMemo(() => uClasses.map(c => {
-    const tuitionPeriod = { m: curMo, y: curYr };
     const cls = students.filter(s =>
       s.classId === getClassCode(c) &&
-      isStudentActiveInMonth(s, tuitionPeriod)
+      isStudentActive(s)
     );
-    const tuitionStates = cls.map(student => getMonthlyTuitionState({
+    const tuitionStates = cls.map(student => getTuitionCycleState({
       student,
-      period: tuitionPeriod,
+      classes: uClasses,
       payments,
+      tlogs,
+      baseTuition,
     }));
     const billable = tuitionStates.filter(state => state.billable);
-    const paidCount = tuitionStates.filter(state => state.status === 'paid').length;
+    const paidCount = cls.filter(student => paidStudentIds.has(student.id)).length;
+    const collectionCount = tuitionStates.filter(state => state.status === 'due' || state.status === 'overdue').length;
+    const reviewCount = tuitionStates.filter(state => state.status === 'needs_review').length;
     const pct = billable.length > 0 ? Math.round(paidCount / billable.length * 100) : 0;
     const classId = getClassCode(c);
     const paidAmount = payments
       .filter(p => {
-        const period = getPaymentTuitionPeriod(p);
+        const period = getPaymentReceiptPeriod(p);
         return paymentClassId(p, students) === classId && period?.m === curMo && period?.y === curYr;
       })
       .reduce((sum, p) => sum + (p.amount || 0), 0);
-    return { ...c, studentCount: cls.length, billableCount: billable.length, paidCount, pct, paidAmount };
+    return { ...c, studentCount: cls.length, billableCount: billable.length, paidCount, collectionCount, reviewCount, pct, paidAmount };
   }).sort((a, b) => compareClassCode(getClassCode(a), getClassCode(b))),
-  [uClasses, students, payments, curMo, curYr]);
+  [uClasses, students, payments, tlogs, baseTuition, paidStudentIds, curMo, curYr]);
 
-  // FIX C4: memoize teacher list (uses resolveTeacher per class)
-  const teachers = React.useMemo(() =>
-    [...new Set(uClasses.map(c => resolveTeacher(getClassTeacher(c))).filter(Boolean))],
-  [uClasses]);
-  const [classStatusFilter, setClassStatusFilter] = React.useState<'all' | ClassStatus>('all');
-
-  // FIX C3 Bug: filter compares resolveTeacher(raw) against fClsTeacher (already resolved)
-  const filtCls = React.useMemo(() => {
-    const q = qCls.toLowerCase();
-    return clsStats.filter(c => {
-      const classCode = getClassCode(c);
-      const resolvedTeacher = resolveTeacher(getClassTeacher(c));
-      return (!q || classCode.toLowerCase().includes(q))
-        && (!fClsTeacher || resolvedTeacher === fClsTeacher)
-        && (classStatusFilter === 'all' || getClassStatus(c) === classStatusFilter);
-    });
-  }, [clsStats, qCls, fClsTeacher, classStatusFilter]);
-
-  // FIX C4: memoize select options
-  const teacherOptions = React.useMemo(() =>
-    [{ value: '', label: 'Giáo viên' }, ...teachers.map(t => ({ value: t, label: t }))],
-  [teachers]);
-  const classStatusOptions = [
-    { value: 'all', label: 'Tất cả' },
-    { value: 'active', label: 'Đang mở' },
-    { value: 'missingTeacher', label: 'Thiếu GV' },
-    { value: 'missingSchedule', label: 'Chưa lịch' },
-    { value: 'inactive', label: 'Đã đóng' },
-  ];
-  const hasActiveFilter = !!(qCls || fClsTeacher || classStatusFilter !== 'all');
-  const emptyText = hasActiveFilter ? 'Không tìm thấy lớp phù hợp' : 'Chưa có lớp học';
-  const emptySub = hasActiveFilter ? 'Thử đổi từ khóa tìm kiếm hoặc bộ lọc.' : 'Tạo lớp đầu tiên để gán học sinh, giáo viên và lịch học.';
+  const filtCls = clsStats;
+  const emptyText = 'Chưa có lớp học';
+  const emptySub = 'Tạo lớp đầu tiên để gán học sinh, giáo viên và lịch học.';
 
   const classColumns = useMemo(() => [
     {
@@ -521,18 +506,17 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
     },
     {
       key: 'tuitionRate',
-      label: `Tỉ lệ T${curMo}`,
+      label: 'Cần thu',
       align: 'center' as const,
       width: 110,
-      render: (_: unknown, c: ClassRecord & { billableCount?: number; paidCount?: number; paidAmount?: number }) => {
-        const billable = c.billableCount || 0;
-        const paid = c.paidCount || 0;
+      render: (_: unknown, c: ClassRecord & { collectionCount?: number; paidAmount?: number }) => {
+        const collectionCount = c.collectionCount || 0;
         return (
           <StatusBadge
             domain="tuition"
-            status={billable > 0 && paid >= billable ? 'paid' : 'unpaid'}
-            label={`${paid}/${billable}`}
-            tone={billable > 0 && paid >= billable ? 'success' : 'warning'}
+            status={collectionCount > 0 ? 'due' : 'paid'}
+            label={`${collectionCount} HS`}
+            tone={collectionCount > 0 ? 'warning' : 'success'}
           />
         );
       },
@@ -578,22 +562,30 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
       {!embedded && <Button intent="success" size="sm" icon={<Plus size={13}/>} onClick={onAddClass}>Thêm lớp đầu tiên</Button>}
     </div>
   );
+  const titleNode = embedded ? 'Lớp học' : (
+    <div className="class-toolbar-title">
+      <h2 className="ltn-page-toolbar-title" style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>Lớp học</h2>
+      <span className="class-mobile-add">
+        <Button intent="success" size="sm" icon={<Plus size={13}/>} onClick={onAddClass} style={{ minWidth: 82 }}>Thêm</Button>
+      </span>
+    </div>
+  );
 
   return (
     <div style={{ display:'flex',flexDirection:'column',gap: embedded ? 8 : 12 }}>
       <style>{`
-        .class-toolbar-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+        .class-toolbar-title{display:flex;align-items:center;gap:12px}
+        .class-mobile-add{display:none}
         .class-desktop-table{display:block}.class-mobile-cards{display:none}
         @media(max-width:767px){
-          .class-toolbar-filters{width:100%;display:grid;grid-template-columns:minmax(0,1fr) minmax(112px,1fr);gap:8px}
-          .class-toolbar-filters > div:first-child{display:none!important}
-          .class-toolbar-filters > *{width:100%!important;min-width:0!important}
+          .class-toolbar-title{width:calc(100vw - 84px);justify-content:space-between}
+          .class-mobile-add{display:none!important}
           .class-desktop-table{display:none!important}.class-mobile-cards{display:block!important}
         }
       `}</style>
 
       <PageToolbar
-        title="Lớp học"
+        title={titleNode}
         embedded={embedded}
         hideActionsOnMobile
         actions={!embedded && (
@@ -601,11 +593,6 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
         )}
       >
         {toolbarPrefix}
-        <div className="class-toolbar-filters">
-          <SearchBar value={qCls} onChange={setQCls} placeholder="Tìm" width={126}/>
-          <Select value={fClsTeacher} onChange={setFClsTeacher} options={teacherOptions} style={{ width: 136, minWidth: 118 }}/>
-          <Select value={classStatusFilter} onChange={v => setClassStatusFilter(v as typeof classStatusFilter)} options={classStatusOptions} style={{ width: 124, minWidth: 112 }} />
-        </div>
       </PageToolbar>
 
       <div>
@@ -632,16 +619,17 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
             const branch = getClassBranch(c);
             const status = getClassStatus(c);
             const meta = classStatusMeta(status);
-            const tuitionLabel = `HP T${curMo}: ${c.paidCount || 0}/${c.billableCount || 0}`;
+            const tuitionLabel = `Cần thu: ${c.collectionCount || 0} HS`;
             return (
               <MobileRecordRow
                 key={classId || idx}
                 marker={<MobileRecordMarker tone={meta.tone}>{classId || 'Lớp'}</MobileRecordMarker>}
-                title={`${schedule || 'Chưa có lịch'}${branch ? ` · ${branch}` : ''}`}
-                right={`${c.studentCount || 0} HS`}
+                title={schedule || 'Chưa có lịch'}
+                right={tuitionLabel}
                 meta={status !== 'active'
                   ? <StatusBadge domain="general" status={status} label={meta.label} tone={meta.tone} />
-                  : `${teacherName || 'Chưa phân công'} · ${tuitionLabel}`}
+                  : `Địa chỉ: ${branch || 'Chưa rõ'}`}
+                note={`GV: ${teacherName || 'Chưa phân công'}`}
                 tone={meta.tone}
                 onClick={() => setDetailCls(c)}
                 actions={(
@@ -663,7 +651,10 @@ export default function ClassesTab({ uClasses,students,payments=[],curMo,curYr,q
         curMo={curMo}
         curYr={curYr}
         students={students}
+        classes={uClasses}
         payments={payments}
+        tlogs={tlogs}
+        baseTuition={baseTuition}
         onClose={()=>setDetailCls(null)}
         onEdit={()=>{onEditClass(detailCls);setDetailCls(null);}}
         onDelete={onDeleteClass ? () => {

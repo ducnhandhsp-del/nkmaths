@@ -150,6 +150,17 @@ export const hasExplicitPaymentTuitionPeriod = (payment: Payment): boolean => {
 
 export const getPaymentReceiptPeriod = (payment: Payment): Period | null => parsePeriod(payment.date || '');
 
+export const getUniquePaidStudentIdsByReceiptPeriod = (payments: Payment[], period: Period): Set<string> => {
+  const ids = new Set<string>();
+  payments.forEach(payment => {
+    const receiptPeriod = getPaymentReceiptPeriod(payment);
+    const studentId = String(payment.studentId || '').trim();
+    if (!studentId || Number(payment.amount) <= 0) return;
+    if (receiptPeriod?.m === period.m && receiptPeriod?.y === period.y) ids.add(studentId);
+  });
+  return ids;
+};
+
 /** Kiểm tra học sinh đã đóng học phí tháng/năm chưa */
 export const isPaidFn = (
   paidMap: Map<string, Set<string>>,
@@ -398,7 +409,7 @@ export const getTuitionSessionProgress = (
   };
 };
 
-export type TuitionStatus = 'inactive' | 'paid' | 'not_due' | 'due' | 'overdue' | 'no_schedule';
+export type TuitionStatus = 'inactive' | 'not_started' | 'paid' | 'not_due' | 'due' | 'overdue' | 'no_schedule' | 'needs_review';
 
 export type MonthlyTuitionStatus = 'inactive' | 'not_billable' | 'paid' | 'unpaid' | 'overdue';
 
@@ -510,16 +521,20 @@ export interface TuitionCycleState {
   student: Student;
   classRecord?: Partial<ClassRecord> | Record<string, any>;
   target: number;
+  collectionThreshold: number;
   done: number;
   status: TuitionStatus;
   lastPayment?: Payment;
   cycleStartDate: string;
   cycleStartTs: number;
   amount: number;
+  paidAmount: number;
+  adjustedPayment: boolean;
   outstandingAmount: number;
   sessionProgress: SessionProgress;
   billable: boolean;
   inactive: boolean;
+  asOfTs?: number;
 }
 
 export const getTuitionCycleState = ({
@@ -528,32 +543,49 @@ export const getTuitionCycleState = ({
   payments = [],
   tlogs = [],
   baseTuition = 0,
+  asOfTs,
 }: {
   student: Student;
   classes: Array<Partial<ClassRecord> | Record<string, any>>;
   payments?: Payment[];
   tlogs?: TeachingLog[];
   baseTuition?: number;
+  asOfTs?: number;
 }): TuitionCycleState => {
-  const inactive = !isStudentActive(student);
+  const snapshotTs = Number(asOfTs) > 0 ? Number(asOfTs) : 0;
+  const endTs = parseDMY(student.endDate || '') || 0;
+  const hasEndDate = endTs > 0;
+  const endedAtSnapshot = hasEndDate && (!snapshotTs || endTs <= snapshotTs);
+  const inactiveWithoutEndDate = student.status === 'inactive' && !hasEndDate;
+  const inactive = inactiveWithoutEndDate || endedAtSnapshot;
   const classId = String(student.classId || '').trim();
   const classRecord = classes.find(c => classIdOf(c) === classId);
   const target = getClassSessionTarget(classRecord);
+  const collectionThreshold = target > 0 ? Math.ceil(target / 2) : 0;
+  const startTs = parseDMY(student.startDate || '') || 0;
+  const notStartedAtSnapshot = snapshotTs > 0 && startTs > snapshotTs;
   const studentPayments = payments
-    .filter(payment => {
-      if (payment.studentId !== student.id) return false;
-      const paymentClassId = String((payment as any).maLop || (payment as any).MaLop || (payment as any).classId || (payment as any)['Mã Lớp'] || '').trim();
-      return !paymentClassId || !classId || paymentClassId === classId;
-    })
-    .map(payment => ({ payment, ts: paymentDateTs(payment) }))
-    .filter(row => row.ts > 0)
-    .sort((a, b) => b.ts - a.ts);
+    .map((payment, index) => ({ payment, index, ts: paymentDateTs(payment) }))
+    .filter(row => (
+      row.payment.studentId === student.id
+      && Number(row.payment.amount) > 0
+      && row.ts > 0
+      && (!snapshotTs || row.ts <= snapshotTs)
+      && (!startTs || row.ts >= startTs)
+    ))
+    .sort((a, b) => b.ts - a.ts || b.index - a.index);
   const lastPayment = studentPayments[0]?.payment;
   const lastPaymentTs = studentPayments[0]?.ts || 0;
-  const startTs = parseDMY(student.startDate || '') || 0;
   const cycleStartTs = lastPaymentTs || startTs;
+  const attendanceToTs = [endedAtSnapshot ? endTs : 0, snapshotTs]
+    .filter(ts => ts > 0)
+    .reduce((earliest, ts) => Math.min(earliest, ts), Number.POSITIVE_INFINITY);
   const done = target > 0
-    ? countUniqueStudentAttendances(tlogs, student.id, { fromTs: cycleStartTs, fromExclusive: !!lastPaymentTs })
+    ? countUniqueStudentAttendances(tlogs, student.id, {
+        fromTs: cycleStartTs,
+        fromExclusive: !!lastPaymentTs,
+        toTs: Number.isFinite(attendanceToTs) ? attendanceToTs : undefined,
+      })
     : 0;
   const sessionProgress = {
     done,
@@ -561,33 +593,49 @@ export const getTuitionCycleState = ({
     due: target > 0 && done === target,
     overdue: target > 0 && done > target,
   };
-  const billable = !inactive && target > 0;
-  const status: TuitionStatus = inactive
+  const status: TuitionStatus = notStartedAtSnapshot
+    ? 'not_started'
+    : inactiveWithoutEndDate
     ? 'inactive'
     : target <= 0
-      ? 'no_schedule'
-      : lastPayment && done === 0
-        ? 'paid'
-        : sessionProgress.overdue
-          ? 'overdue'
-          : sessionProgress.due
-            ? 'due'
-            : 'not_due';
-  const amount = status === 'paid' || status === 'due' || status === 'overdue' ? baseTuition : 0;
+      ? inactive
+        ? 'inactive'
+        : 'no_schedule'
+      : sessionProgress.overdue
+        ? 'overdue'
+        : sessionProgress.due
+          ? 'due'
+          : inactive
+            ? done > 0
+              ? 'needs_review'
+              : 'inactive'
+            : done >= collectionThreshold
+              ? 'due'
+            : lastPayment && done === 0
+              ? 'paid'
+              : 'not_due';
+  const paidAmount = lastPayment ? Number(lastPayment.amount) || 0 : 0;
+  const adjustedPayment = !!lastPayment && baseTuition > 0 && paidAmount !== baseTuition;
+  const amount = status === 'paid' ? paidAmount : status === 'due' || status === 'overdue' ? baseTuition : 0;
+  const billable = target > 0 && (status === 'not_due' || status === 'paid' || status === 'due' || status === 'overdue');
   return {
     student,
     classRecord,
     target,
+    collectionThreshold,
     done,
     status,
     lastPayment,
     cycleStartDate: lastPayment?.date || student.startDate || '',
     cycleStartTs,
     amount,
+    paidAmount,
+    adjustedPayment,
     outstandingAmount: status === 'due' || status === 'overdue' ? baseTuition : 0,
     sessionProgress,
     billable,
     inactive,
+    asOfTs: snapshotTs || undefined,
   };
 };
 

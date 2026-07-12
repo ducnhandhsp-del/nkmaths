@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import toast from 'react-hot-toast';
-import { X, Save, DollarSign, Printer, Check, TrendingDown, MessageCircle, Wallet } from 'lucide-react';
-import { fmtVND, formatDate, makeVietQR, BANK_DEFAULT, toInputDate, localDateStr, normalizePaymentMethod, buildSchoolYearMonths, fixVietnameseText, compareClassCode } from './helpers';
-import { getPaymentTuitionPeriod, isStudentBillableInMonth } from './measures';
+import { X, Save, DollarSign, Printer, TrendingDown, MessageCircle, Wallet } from 'lucide-react';
+import { fmtVND, formatDate, makeVietQR, BANK_DEFAULT, toInputDate, localDateStr, normalizePaymentMethod, fixVietnameseText, compareClassCode } from './helpers';
+import { getPaymentTuitionPeriod, getTuitionCycleState } from './measures';
 import { Button, FilterTabs } from './dsComponents';
 import type { Student, Payment, Expense, ClassRecord, TeachingLog } from './types';
 
@@ -80,7 +80,9 @@ export function PaymentFormModal({
   onClose,
   students,
   classes = [],
+  teacherList = [],
   payments = [],
+  tlogs = [],
   isSaving,
   onSave,
   baseTuition,
@@ -91,6 +93,7 @@ export function PaymentFormModal({
   onClose: () => void;
   students: Student[];
   classes?: ClassRecord[];
+  teacherList?: string[];
   payments?: Payment[];
   tlogs?: TeachingLog[];
   isSaving: boolean;
@@ -165,16 +168,10 @@ export function PaymentFormModal({
   const selectedStudent = students.find(s => s.id === rawStudentId);
   const selectedClass = classes.find(c => classIdOf(c) === String(form.maLop || selectedStudent?.classId || '').trim());
   const duplicatePayment = useMemo(() => {
-    const thangHP = Number(form.thangHP);
-    const namHP = Number(form.namHP);
-    if (!rawStudentId || !thangHP || !namHP) return null;
-    return payments.find(payment => {
-      if (payment.studentId !== rawStudentId) return false;
-      if (editingPayment && (payment.id === editingPayment.id || payment.docNum === editingPayment.docNum)) return false;
-      const period = getPaymentTuitionPeriod(payment);
-      return period?.m === thangHP && period?.y === namHP;
-    }) || null;
-  }, [editingPayment, form.namHP, form.thangHP, payments, rawStudentId]);
+    if (!selectedStudent || editingPayment) return null;
+    const state = getTuitionCycleState({ student: selectedStudent, classes, payments, tlogs, baseTuition });
+    return state.status === 'paid' ? state.lastPayment || null : null;
+  }, [baseTuition, classes, editingPayment, payments, selectedStudent, tlogs]);
 
   useEffect(() => {
     if (!open || !selectedStudent) return;
@@ -194,6 +191,12 @@ export function PaymentFormModal({
   const activeStudents = students
     .filter(s => s.status !== 'inactive' && (!s.endDate || s.endDate === '---' || s.endDate === ''))
     .sort((a, b) => compareClassCode(a.classId, b.classId) || a.name.localeCompare(b.name, 'vi'));
+  const collectorOptions = Array.from(new Set([
+    ...teacherList,
+    ...classes.map(c => teacherOf(c)).filter(Boolean),
+    ...students.map(s => String(s.teacher || '').trim()).filter(Boolean),
+  ].map(fixVietnameseText).map(name => name.trim()).filter(Boolean)))
+    .sort((a, b) => a.localeCompare(b, 'vi'));
   const tuitionPeriodValue = form.thangHP && form.namHP ? `${Number(form.thangHP)}/${Number(form.namHP)}` : '';
   const tuitionPeriodOptions = yearOptions(curYr).flatMap(year =>
     monthOptions().map(month => ({
@@ -208,7 +211,7 @@ export function PaymentFormModal({
     if (!form.date) { toast.error('Vui lòng chọn ngày thu'); return; }
     if (!form.soTien || Number(form.soTien) <= 0) { toast.error('Số tiền không hợp lệ'); return; }
     if (!form.thangHP) { toast.error('Vui lòng chọn tháng học phí'); return; }
-    if (duplicatePayment && !window.confirm(`Học sinh ${selectedStudent?.name || maHS} đã có phiếu thu T${form.thangHP}/${form.namHP || curYr} (${duplicatePayment.docNum || duplicatePayment.id}). Bạn vẫn muốn lưu thêm phiếu?`)) return;
+    if (duplicatePayment && !window.confirm(`Học sinh ${selectedStudent?.name || maHS} vừa có phiếu thu ${duplicatePayment.docNum || duplicatePayment.id} và chưa phát sinh buổi học mới. Bạn vẫn muốn lưu thêm phiếu?`)) return;
     const maLop = String(form.maLop || selectedStudent?.classId || '').trim();
     const nguoiThu = String(form.nguoiThu || selectedStudent?.teacher || teacherOf(selectedClass) || '').trim();
     onClose();
@@ -226,7 +229,7 @@ export function PaymentFormModal({
         <>
           <Button variant="outline" intent="neutral" onClick={onClose}>Hủy</Button>
           <Button intent={editingPayment ? 'primary' : 'success'} loading={isSaving} icon={<Save size={14} />} onClick={submit}>
-            {editingPayment ? 'Cập nhật phiếu thu' : 'Lưu phiếu thu'}
+            {isSaving ? 'Đang lưu...' : editingPayment ? 'Cập nhật phiếu thu' : 'Lưu phiếu thu'}
           </Button>
         </>
       )}
@@ -264,6 +267,13 @@ export function PaymentFormModal({
           </div>
           <div className="ltn-quick-field span-4"><label>Ngày thu</label><input type="date" value={form.date || ''} onChange={e => update('date', e.target.value)} /></div>
           <div className="ltn-quick-field span-4"><label>Người nộp</label><input value={form.nguoiNop || ''} onChange={e => update('nguoiNop', e.target.value)} placeholder="Phụ huynh / học sinh" /></div>
+          <div className="ltn-quick-field span-4">
+            <label>Người thu</label>
+            <select value={form.nguoiThu || ''} onChange={e => update('nguoiThu', e.target.value)}>
+              <option value="">Tự động theo lớp</option>
+              {collectorOptions.map(name => <option key={name} value={name}>{name}</option>)}
+            </select>
+          </div>
           <div className="ltn-quick-field span-4 compact-note"><label>Ghi chú</label><textarea value={form.note || ''} onChange={e => update('note', e.target.value)} rows={1} placeholder="Đóng trễ, đóng bù..." /></div>
         </div>
       </section>
@@ -348,7 +358,7 @@ export function ExpenseFormModal({
         <>
           <Button variant="outline" intent="neutral" onClick={onClose}>Hủy</Button>
           <Button intent={editingExpense ? 'primary' : 'danger'} loading={isSaving} icon={<Save size={14} />} onClick={submit}>
-            {editingExpense ? 'Cập nhật phiếu chi' : 'Lưu phiếu chi'}
+            {isSaving ? 'Đang lưu...' : editingExpense ? 'Cập nhật phiếu chi' : 'Lưu phiếu chi'}
           </Button>
         </>
       )}
@@ -376,7 +386,7 @@ export function ExpenseFormModal({
 
 export function FABModal({
   open, onClose, students, classes = [], isSaving, onSaveFee, onSaveExpense,
-  baseTuition, editingPayment, editingExpense, initialTab, payments = [],
+  baseTuition, editingPayment, editingExpense, initialTab, payments = [], tlogs = [],
 }: {
   open: boolean; onClose: () => void; students: Student[]; classes?: ClassRecord[]; isSaving: boolean;
   onSaveFee: (f: any) => Promise<void>; onSaveExpense: (f: any) => Promise<void>;
@@ -471,15 +481,9 @@ export function FABModal({
   const receiptAmount = Number(fee.soTien || 0);
   const receiptClassId = String(selectedStudent?.classId || classIdOf(selectedClass) || '').trim();
   const duplicateFeePayment = (() => {
-    const thangHP = Number(fee.thangHP);
-    const namHP = Number(fee.namHP);
-    if (!rawFeeId || !thangHP || !namHP) return null;
-    return payments.find(payment => {
-      if (payment.studentId !== rawFeeId) return false;
-      if (editingPayment && (payment.id === editingPayment.id || payment.docNum === editingPayment.docNum)) return false;
-      const period = getPaymentTuitionPeriod(payment);
-      return period?.m === thangHP && period?.y === namHP;
-    }) || null;
+    if (!selectedStudent || editingPayment) return null;
+    const state = getTuitionCycleState({ student: selectedStudent, classes, payments, tlogs, baseTuition });
+    return state.status === 'paid' ? state.lastPayment || null : null;
   })();
 
   return (
@@ -662,12 +666,12 @@ export function FABModal({
                 if (!fee.date) { toast.error('⚠️ Vui lòng chọn ngày thu!'); return; }
                 if (!fee.soTien || Number(fee.soTien) <= 0) { toast.error('⚠️ Số tiền không hợp lệ!'); return; }
                 if (!fee.thangHP) { toast.error('⚠️ Vui lòng chọn tháng học phí!'); return; }
-                if (duplicateFeePayment && !window.confirm(`Học sinh ${selectedStudent?.name || maHS} đã có phiếu thu T${fee.thangHP}/${fee.namHP || curYr} (${duplicateFeePayment.docNum || duplicateFeePayment.id}). Bạn vẫn muốn lưu thêm phiếu?`)) return;
+                if (duplicateFeePayment && !window.confirm(`Học sinh ${selectedStudent?.name || maHS} vừa có phiếu thu ${duplicateFeePayment.docNum || duplicateFeePayment.id} và chưa phát sinh buổi học mới. Bạn vẫn muốn lưu thêm phiếu?`)) return;
                 const maLop = selectedStudent?.classId || '';
                 onClose(); onSaveFee({ ...fee, maHS, maLop, MaLop: maLop, classId: maLop, nguoiThu: collectorName, collector: collectorName });
               }}
             >
-              {isEditing ? 'Cập nhật thu' : 'Lưu phiếu thu'}
+              {isSaving ? 'Đang lưu...' : isEditing ? 'Cập nhật thu' : 'Lưu phiếu thu'}
             </Button>
           ) : (
             <Button
@@ -681,7 +685,7 @@ export function FABModal({
                 onClose(); onSaveExpense(exp);
               }}
             >
-              {isEditing ? 'Cập nhật chi' : 'Lưu phiếu chi'}
+              {isSaving ? 'Đang lưu...' : isEditing ? 'Cập nhật chi' : 'Lưu phiếu chi'}
             </Button>
           )}
         </div>
@@ -826,29 +830,38 @@ export function ExpenseModal({ expense, onClose, centerName }: {
 /* ══════════════════════════════════════════════════════════════════
    FinanceDetailModal – Chi tiết tài chính học sinh (giữ nguyên)
 ══════════════════════════════════════════════════════════════════ */
-export function FinanceDetailModal({ student, payments, onClose, isPaid, schoolYear }: {
+export function FinanceDetailModal({ student, classes, payments, tlogs, baseTuition, onClose }: {
   student: Student; payments: Payment[]; onClose: () => void;
-  isPaid: (sid: string, mo: number, yr: number) => boolean;
-  schoolYear: string;
+  classes: ClassRecord[];
+  tlogs: TeachingLog[];
+  baseTuition: number;
 }) {
-  const financeMonths = useMemo(() => {
-    const now = new Date();
-    return buildSchoolYearMonths(schoolYear).filter(fm => {
-      if (fm.y > now.getFullYear()) return false;
-      if (fm.y === now.getFullYear() && fm.m > now.getMonth() + 1) return false;
-      return isStudentBillableInMonth(student, fm);
-    });
-  }, [schoolYear, student]);
-
   const s = student;
+  const cycle = useMemo(
+    () => getTuitionCycleState({ student, classes, payments, tlogs, baseTuition }),
+    [baseTuition, classes, payments, student, tlogs]
+  );
   const sPayments = payments
     .filter(p => p.studentId === s.id)
     .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
   const totalPaid = sPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
-  const paidMonths = financeMonths.filter(fm => isPaid(s.id, fm.m, fm.y)).length;
-  const unpaidMonths = financeMonths.length - paidMonths;
   const latestPayment = sPayments[0];
   const contactPhone = String(s.parentPhone || s.studentPhone || '').replace(/\D/g, '');
+  const cycleMeta = cycle.status === 'overdue'
+    ? { label: 'Quá hạn', color: '#be123c', bg: '#fff1f2' }
+    : cycle.status === 'due'
+      ? { label: 'Cần thu', color: '#b45309', bg: '#fffbeb' }
+      : cycle.status === 'paid'
+        ? { label: 'Đã thu', color: '#047857', bg: '#ecfdf5' }
+        : cycle.status === 'needs_review'
+          ? { label: 'Cần kiểm tra', color: '#b45309', bg: '#fffbeb' }
+          : cycle.status === 'not_due'
+            ? { label: 'Chưa đến hạn', color: '#475569', bg: '#f8fafc' }
+            : cycle.status === 'no_schedule'
+              ? { label: 'Chưa có lịch', color: '#64748b', bg: '#f8fafc' }
+              : cycle.status === 'not_started'
+                ? { label: 'Chưa nhập học', color: '#64748b', bg: '#f8fafc' }
+                : { label: 'Đã nghỉ', color: '#64748b', bg: '#f8fafc' };
 
   return (
     <div className="ltn-form-modal-overlay" style={{ ...FS_WRAP, alignItems: 'center', padding: 16 }}>
@@ -881,9 +894,10 @@ export function FinanceDetailModal({ student, payments, onClose, isPaid, schoolY
             <p className="ltn-section-title">Tổng quan học phí</p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 10 }}>
               {[
-                { label: 'Đã thu', value: fmtVND(totalPaid), tone: '#059669', bg: '#ecfdf5' },
-                { label: 'Đã đóng', value: `${paidMonths}/${financeMonths.length} tháng`, tone: '#4f46e5', bg: '#eef2ff' },
-                { label: 'Còn thiếu', value: `${unpaidMonths} tháng`, tone: unpaidMonths ? '#e11d48' : '#059669', bg: unpaidMonths ? '#fff1f2' : '#ecfdf5' },
+                { label: 'Trạng thái', value: cycleMeta.label, tone: cycleMeta.color, bg: cycleMeta.bg },
+                { label: 'Tiến độ chu kỳ', value: cycle.target > 0 ? `${cycle.done}/${cycle.target} buổi` : 'Chưa xác định', tone: '#4f46e5', bg: '#eef2ff' },
+                { label: 'Cần thu', value: fmtVND(cycle.outstandingAmount), tone: cycle.outstandingAmount ? '#e11d48' : '#059669', bg: cycle.outstandingAmount ? '#fff1f2' : '#ecfdf5' },
+                { label: 'Tổng đã thu', value: fmtVND(totalPaid), tone: '#059669', bg: '#ecfdf5' },
               ].map(item => (
                 <div key={item.label} style={{ border: '1px solid #e2e8f0', borderRadius: 12, background: item.bg, padding: '11px 12px' }}>
                   <p style={{ margin: 0, fontSize: 10.5, color: '#64748b', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.06em' }}>{item.label}</p>
@@ -895,26 +909,13 @@ export function FinanceDetailModal({ student, payments, onClose, isPaid, schoolY
 
           <section className="ltn-detail-section soft">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-              <p className="ltn-section-title">Lịch đóng học phí</p>
+              <p className="ltn-section-title">Chu kỳ hiện tại</p>
               {latestPayment && <span style={{ fontSize: 12, fontWeight: 900, color: '#059669' }}>Gần nhất: {formatDate(latestPayment.date)}</span>}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(66px,1fr))', gap: 7 }}>
-              {financeMonths.map(fm => {
-                const paid = isPaid(s.id, fm.m, fm.y);
-                return (
-                  <div key={`${fm.m}-${fm.y}`} style={{ borderRadius: 10, padding: '8px 5px', textAlign: 'center', background: paid ? '#ecfdf5' : '#f8fafc', border: paid ? '1.5px solid #a7f3d0' : '1.5px solid #e2e8f0' }}>
-                    <p style={{ fontSize: 11, fontWeight: 900, color: paid ? '#059669' : '#94a3b8', margin: '0 0 4px' }}>{fm.label}</p>
-                    <p style={{ fontSize: 10, fontWeight: 800, color: '#94a3b8', margin: '0 0 5px' }}>{fm.y}</p>
-                    {paid ? (
-                      <div style={{ width: 16, height: 16, borderRadius: '50%', background: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>
-                        <Check size={9} color="white" />
-                      </div>
-                    ) : (
-                      <div style={{ width: 16, height: 16, borderRadius: '50%', background: '#e2e8f0', margin: '0 auto' }} />
-                    )}
-                  </div>
-                );
-              })}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 8 }}>
+              <div className="ltn-info-cell"><p>Bắt đầu chu kỳ</p><p>{cycle.cycleStartDate ? formatDate(cycle.cycleStartDate) : '—'}</p></div>
+              <div className="ltn-info-cell"><p>Bắt đầu cần thu</p><p>{cycle.collectionThreshold > 0 ? `${cycle.collectionThreshold}/${cycle.target} buổi` : '—'}</p></div>
+              <div className="ltn-info-cell"><p>Phiếu gần nhất</p><p>{cycle.lastPayment ? `${formatDate(cycle.lastPayment.date)} · ${fmtVND(cycle.paidAmount)}` : 'Chưa có'}</p></div>
             </div>
           </section>
 

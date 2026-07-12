@@ -153,7 +153,7 @@ export function ClassModal({
         <div className="ltn-quick-foot">
           <Button variant="outline" intent="neutral" onClick={onClose}>Hủy</Button>
           <Button intent={isEditing ? 'primary' : 'success'} loading={isSaving} icon={<Save size={15} />} onClick={handleSave}>
-            {isEditing ? 'Cập nhật lớp' : 'Lưu lớp học'}
+            {isSaving ? 'Đang lưu...' : isEditing ? 'Cập nhật lớp' : 'Lưu lớp học'}
           </Button>
         </div>
       </div>

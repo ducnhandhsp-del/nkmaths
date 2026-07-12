@@ -18,8 +18,8 @@ import {
   X,
 } from 'lucide-react';
 
-import { parseDMY } from './helpers';
-import { getMonthlyTuitionState, getPaymentTuitionPeriod, isStudentActiveInMonth } from './measures';
+import { isStudentActive, parseDMY } from './helpers';
+import { getPaymentReceiptPeriod, getTuitionCycleState, getUniquePaidStudentIdsByReceiptPeriod } from './measures';
 import { Button, IconButton, SearchBar, Select } from './dsComponents';
 import { DataTable, DetailMetric, EmptyState, MobileRecordAction, MobileRecordList, MobileRecordMarker, MobileRecordRow, MoneyText, PageToolbar, StatusBadge } from './uiSystem';
 import type { ClassRecord, DeleteTarget, Payment, Student, Teacher, TeachingLog } from './types';
@@ -39,6 +39,7 @@ interface TeacherRow {
   totalRevenue: number;
   paidCount: number;
   unpaidCount: number;
+  reviewCount: number;
   projectedCost: number;
   hasCostData: boolean;
   attendancePct: number | null;
@@ -53,6 +54,7 @@ interface Props {
   tlogs: TeachingLog[];
   curMo: number;
   curYr: number;
+  baseTuition: number;
   onSave: (f: any) => void | Promise<void>;
   onDeleteTeacher?: (t: DeleteTarget) => void;
   isSaving: boolean;
@@ -133,8 +135,8 @@ const sameMonth = (raw: any, mo: number, yr: number) => {
   return d.getMonth() + 1 === mo && d.getFullYear() === yr;
 };
 
-const paymentInTuitionMonth = (p: Payment, mo: number, yr: number) => {
-  const period = getPaymentTuitionPeriod(p, yr);
+const paymentInReceiptMonth = (p: Payment, mo: number, yr: number) => {
+  const period = getPaymentReceiptPeriod(p);
   return period?.m === mo && period?.y === yr;
 };
 
@@ -286,7 +288,7 @@ function TeacherModal({
         <div className="ltn-quick-foot">
           <Button variant="outline" intent="neutral" onClick={onClose}>Hủy</Button>
           <Button intent={editing ? 'primary' : 'success'} loading={isSaving || localSaving} icon={<Save size={15} />} onClick={() => { void save(); }} disabled={!f.name?.trim() || isSaving || localSaving}>
-            {editing ? 'Cập nhật giáo viên' : 'Lưu giáo viên'}
+            {isSaving || localSaving ? 'Đang lưu...' : editing ? 'Cập nhật giáo viên' : 'Lưu giáo viên'}
           </Button>
         </div>
       </div>
@@ -302,6 +304,7 @@ export default function TeachersTab({
   tlogs,
   curMo,
   curYr,
+  baseTuition,
   onSave,
   onDeleteTeacher,
   isSaving,
@@ -363,14 +366,15 @@ export default function TeachersTab({
       });
       const classes = [...classMap.values()];
       const classIds = new Set(classes.map(getClassId).filter(Boolean));
-      const tuitionPeriod = { m: curMo, y: curYr };
       const activeStudents = students.filter(s =>
-        isStudentActiveInMonth(s, tuitionPeriod) && (teacherMatches(s.teacher, name) || classIds.has(s.classId))
+        isStudentActive(s) && (teacherMatches(s.teacher, name) || classIds.has(s.classId))
       );
-      const tuitionStates = activeStudents.map(student => getMonthlyTuitionState({
+      const tuitionStates = activeStudents.map(student => getTuitionCycleState({
         student,
-        period: tuitionPeriod,
+        classes: uClasses,
         payments,
+        tlogs,
+        baseTuition,
       }));
       const billableStudents = tuitionStates.filter(state => state.billable).map(state => state.student);
       const teacherPayments = payments.filter(p => {
@@ -381,10 +385,13 @@ export default function TeachersTab({
       const monthLogs = logs.filter(l => sameMonth(l.date, curMo, curYr));
       const recentLogs = [...logs].sort((a, b) => parseDMY(b.date) - parseDMY(a.date)).slice(0, 5);
       const monthRevenue = teacherPayments
-        .filter(p => paymentInTuitionMonth(p, curMo, curYr))
+        .filter(p => paymentInReceiptMonth(p, curMo, curYr))
         .reduce((s, p) => s + p.amount, 0);
       const totalRevenue = teacherPayments.reduce((s, p) => s + p.amount, 0);
-      const paidCount = tuitionStates.filter(state => state.status === 'paid').length;
+      const paidStudentIds = getUniquePaidStudentIdsByReceiptPeriod(teacherPayments, { m: curMo, y: curYr });
+      const paidCount = activeStudents.filter(student => paidStudentIds.has(student.id)).length;
+      const unpaidCount = tuitionStates.filter(state => state.status === 'due' || state.status === 'overdue').length;
+      const reviewCount = tuitionStates.filter(state => state.status === 'needs_review').length;
       const attendanceTotal = monthLogs.reduce((s, l) => s + (l.present || 0) + (l.absent || 0) + (l.late || 0) + (l.excused || 0), 0);
       const attendancePresent = monthLogs.reduce((s, l) => s + (l.present || 0) + (l.late || 0), 0);
       const attendancePct = attendanceTotal > 0 ? Math.round((attendancePresent / attendanceTotal) * 100) : null;
@@ -407,7 +414,8 @@ export default function TeachersTab({
         monthRevenue,
         totalRevenue,
         paidCount,
-        unpaidCount: Math.max(0, billableStudents.length - paidCount),
+        unpaidCount,
+        reviewCount,
         projectedCost,
         hasCostData,
         attendancePct,
@@ -420,7 +428,7 @@ export default function TeachersTab({
       if (b.monthLogs.length !== a.monthLogs.length) return b.monthLogs.length - a.monthLogs.length;
       return a.teacher.name.localeCompare(b.teacher.name, 'vi');
     });
-  }, [teachers, uClasses, students, tlogs, payments, curMo, curYr]);
+  }, [teachers, uClasses, students, tlogs, payments, baseTuition, curMo, curYr]);
 
   const visibleRows = useMemo(() => {
     const q = teacherQuery.trim().toLowerCase();
@@ -500,15 +508,15 @@ export default function TeachersTab({
     },
     {
       key: 'paidRate',
-      label: `Tỉ lệ HP T${curMo}`,
+      label: 'Cần thu',
       align: 'center' as const,
       width: '14%',
       render: (_: unknown, r: TeacherRow) => (
         <StatusBadge
           domain="tuition"
-          status={r.billableStudents.length && r.paidCount >= r.billableStudents.length ? 'paid' : 'unpaid'}
-          label={`${r.paidCount}/${r.billableStudents.length} HS`}
-          tone={r.billableStudents.length && r.paidCount >= r.billableStudents.length ? 'success' : 'warning'}
+          status={r.unpaidCount > 0 ? 'due' : 'paid'}
+          label={`${r.unpaidCount} HS`}
+          tone={r.unpaidCount > 0 ? 'warning' : 'success'}
         />
       ),
     },
@@ -619,7 +627,7 @@ export default function TeachersTab({
             const phone = String(t.phone || '').replace(/\D/g, '');
             const classIds = r.classes.map(getClassId).filter(Boolean);
             const attendanceText = r.attendancePct == null ? 'Chưa có CC' : `CC ${r.attendancePct}%`;
-            const tuitionText = `HP T${curMo}: ${r.paidCount}/${r.billableStudents.length}`;
+            const tuitionText = `Cần thu: ${r.unpaidCount} HS`;
             return (
               <MobileRecordRow
                 key={r.id}
@@ -698,7 +706,9 @@ export default function TeachersTab({
                   <DetailMetric label="Lớp" value={detailRow.classes.length} tone="sky" />
                   <DetailMetric label="Học sinh" value={detailRow.activeStudents.length} tone="emerald" />
                   <DetailMetric label="Buổi dạy" value={detailRow.monthLogs.length} tone="violet" />
-                  <DetailMetric label="Đã đóng" value={`${detailRow.paidCount}/${detailRow.billableStudents.length}`} tone="amber" />
+                  <DetailMetric label="Cần thu" value={detailRow.unpaidCount} tone="amber" />
+                  <DetailMetric label="Đã thu tháng" value={`${detailRow.paidCount}/${detailRow.activeStudents.length}`} tone="emerald" />
+                  <DetailMetric label="Cần kiểm tra" value={detailRow.reviewCount} tone="rose" />
                   <DetailMetric label="Thu học phí" value={<MoneyText value={detailRow.monthRevenue} compact tone="success" />} tone="emerald" />
                 </div>
               </section>

@@ -159,6 +159,66 @@ function checkAdminToken(d) {
   return null;
 }
 
+function isWriteAction(action) {
+  action = str(action);
+  return action.indexOf('save') === 0 || action.indexOf('update') === 0 || action.indexOf('delete') === 0;
+}
+
+function requestIdOf(d) {
+  return str(d && (d.requestId || d.request_id || d.RequestId));
+}
+
+function idempotencyKeyOf(requestId) {
+  return 'IDEMPOTENCY_' + str(requestId).replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 120);
+}
+
+function cleanupIdempotencyKeys(props) {
+  var ttlMs = 7 * 24 * 60 * 60 * 1000;
+  var now = Date.now();
+  var all = props.getProperties();
+  Object.keys(all).forEach(function(key) {
+    if (key.indexOf('IDEMPOTENCY_') !== 0) return;
+    try {
+      var item = JSON.parse(all[key] || '{}');
+      if (item.storedAt && now - Number(item.storedAt) > ttlMs) props.deleteProperty(key);
+    } catch (err) {}
+  });
+}
+
+function runIdempotentWrite(d, fn) {
+  var requestId = requestIdOf(d);
+  if (!requestId || !isWriteAction(d.action)) return fn(d);
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var key = idempotencyKeyOf(requestId);
+    var stored = props.getProperty(key);
+    if (stored) {
+      var replay = JSON.parse(stored);
+      var replayResult = replay.result || { ok: true };
+      replayResult.duplicate = true;
+      replayResult.requestId = requestId;
+      return replayResult;
+    }
+
+    var result = fn(d);
+    if (result && result.ok !== false) {
+      result.requestId = requestId;
+      props.setProperty(key, JSON.stringify({
+        storedAt: Date.now(),
+        action: str(d.action),
+        result: result
+      }));
+      cleanupIdempotencyKeys(props);
+    }
+    return result;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function doPost(e) {
   var result;
   try {
@@ -208,7 +268,7 @@ function doPost(e) {
 
     if (map[action]) {
       var authError = isPublicAction(action) ? null : checkAdminToken(data);
-      result = authError || map[action](data);
+      result = authError || runIdempotentWrite(data, map[action]);
     }
     else result = { ok: false, error: 'Unknown action: ' + action };
   } catch (err) {
@@ -672,6 +732,8 @@ function lookupStudentPortal(d) {
     var studentName = str(student.HoTen || student.name || student['Họ và tên học sinh']) || maHS;
     var tuitionAmount = cls ? num(cls.HocPhiMacDinh) : 0;
     if (!tuitionAmount) tuitionAmount = num(getConfig('baseTuition'));
+    var scheduleSlots = cls ? [cls.Buoi1, cls.Buoi2, cls.Buoi3].filter(function(slot) { return !!str(slot); }).length : 0;
+    var tuitionTarget = scheduleSlots >= 3 ? 12 : scheduleSlots >= 2 ? 8 : scheduleSlots === 1 ? 4 : 0;
 
     var payments = paymentsRaw
       .filter(function(p) {
@@ -744,6 +806,10 @@ function lookupStudentPortal(d) {
         endDate: formatDate(student.NgayKetThuc)
       },
       tuitionAmount: tuitionAmount,
+      tuitionCycle: {
+        target: tuitionTarget,
+        collectionThreshold: tuitionTarget ? Math.ceil(tuitionTarget / 2) : 0
+      },
       payments: payments,
       attendance: attendance,
       generatedAt: nowStr()

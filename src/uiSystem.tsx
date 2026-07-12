@@ -493,10 +493,10 @@ export function ActionableKpi({
       style={{
         ...CARD,
         width: '100%',
-        padding: mobile ? '10px 12px' : '14px 16px',
+        padding: mobile ? '8px 9px' : '14px 16px',
         display: 'flex',
         alignItems: 'center',
-        gap: mobile ? 9 : 12,
+        gap: mobile ? 7 : 12,
         textAlign: 'left',
         border: `1.5px solid ${hov && clickable ? `${t.solid}55` : colors.neutral[200]}`,
         cursor: clickable ? 'pointer' : 'default',
@@ -506,13 +506,13 @@ export function ActionableKpi({
         opacity: 1,
       }}
     >
-      <span className="ltn-actionable-kpi-icon" style={{ width: mobile ? 36 : 42, height: mobile ? 36 : 42, borderRadius: radius.md, background: t.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-        {iconNode(icon, mobile ? 17 : 19, t.text)}
+      <span className="ltn-actionable-kpi-icon" style={{ width: mobile ? 30 : 42, height: mobile ? 30 : 42, borderRadius: radius.md, background: t.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        {iconNode(icon, mobile ? 15 : 19, t.text)}
       </span>
       <span style={{ flex: 1, minWidth: 0 }}>
-        <span className="ltn-actionable-kpi-value" style={{ display: 'block', fontSize: mobile ? 20 : 22, fontWeight: 800, color: colors.neutral[900], lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</span>
-        <span className="ltn-actionable-kpi-label" style={{ display: 'block', fontSize: 12, fontWeight: 700, color: colors.neutral[500], marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
-        {sub && <span className="ltn-actionable-kpi-sub" style={{ display: 'block', fontSize: 11, color: colors.neutral[400], marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</span>}
+        <span className="ltn-actionable-kpi-value" style={{ display: 'block', fontSize: mobile ? 18 : 22, fontWeight: 800, color: colors.neutral[900], lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</span>
+        <span className="ltn-actionable-kpi-label" style={{ display: 'block', fontSize: mobile ? 11 : 12, fontWeight: 700, color: colors.neutral[500], marginTop: mobile ? 2 : 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+        {sub && !mobile && <span className="ltn-actionable-kpi-sub" style={{ display: 'block', fontSize: 11, color: colors.neutral[400], marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</span>}
       </span>
       {delta != null && (
         <span style={{ fontSize: 11, fontWeight: 800, padding: '3px 7px', borderRadius: 999, background: delta > 0 ? '#dcfce7' : delta < 0 ? '#fee2e2' : colors.neutral[100], color: delta > 0 ? '#16a34a' : delta < 0 ? '#dc2626' : colors.neutral[500], flexShrink: 0 }}>
@@ -949,7 +949,7 @@ export function ModalForm({
         <div className="ltn-form-modal-body" style={{ flex: 1, overflowY: 'auto', padding: 22 }}>{children}</div>
         <footer className="ltn-form-modal-footer" style={{ padding: '14px 22px', borderTop: `1px solid ${colors.neutral[100]}`, background: colors.neutral[50], display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
           <Button type="button" variant="outline" intent="neutral" onClick={onClose}>{cancelLabel}</Button>
-          <Button type="submit" intent="primary" loading={isSaving} disabled={submitDisabled}>{submitLabel}</Button>
+          <Button type="submit" intent="primary" loading={isSaving} disabled={submitDisabled}>{isSaving ? 'Đang lưu...' : submitLabel}</Button>
         </footer>
       </form>
     </div>
@@ -1382,15 +1382,15 @@ export function ZaloMark({ size = 18 }: { size?: number }) {
     <span
       aria-hidden="true"
       style={{
-        width: size,
-        height: size,
-        borderRadius: Math.max(5, Math.round(size * 0.28)),
+        width: Math.round(size * 1.34),
+        height: Math.round(size * 0.82),
+        borderRadius: Math.max(5, Math.round(size * 0.25)),
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
         background: '#0068ff',
         color: '#fff',
-        fontSize: Math.max(8, Math.round(size * 0.48)),
+        fontSize: Math.max(8, Math.round(size * 0.42)),
         fontWeight: 950,
         lineHeight: 1,
         letterSpacing: 0,
@@ -1398,7 +1398,7 @@ export function ZaloMark({ size = 18 }: { size?: number }) {
         boxShadow: 'inset 0 -1px 0 rgba(0,0,0,.14)',
       }}
     >
-      Z
+      Zalo
     </span>
   );
 }

@@ -427,7 +427,7 @@ export default function SettingsTab({
             {settingIssues.length > 0 && <InfoPill tone="amber">{settingIssues.length} cảnh báo</InfoPill>}
             <Button intent="neutral" variant="outline" size="sm" icon={<RefreshCw size={13} />} loading={saving} onClick={handleLoadData}>Tải dữ liệu</Button>
             <Button intent={hasUnsavedChanges ? 'primary' : 'success'} size="sm" icon={<Save size={13} />} loading={saving} onClick={handleSaveAll}>
-              {hasUnsavedChanges ? 'Lưu thay đổi' : 'Đã lưu'}
+              {saving ? 'Đang lưu...' : hasUnsavedChanges ? 'Lưu thay đổi' : 'Đã lưu'}
             </Button>
           </div>
         </div>

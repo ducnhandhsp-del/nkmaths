@@ -1,16 +1,16 @@
 /**
  * OverviewTab.tsx - dashboard dieu hanh hang ngay.
  */
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   AlertTriangle,
   CalendarCheck,
   CheckCircle2,
   Clock,
-  MessageCircle,
   Plus,
   ReceiptText,
   School,
+  TrendingDown,
   TrendingUp,
   Users,
 } from 'lucide-react';
@@ -19,9 +19,8 @@ import {
   calcStudentAbsenceStreak,
   calcStudentAttendance,
   getAttendanceRisk,
-  getMonthlyTuitionState,
+  getTuitionCycleState,
   getPaymentReceiptPeriod,
-  isStudentActiveInMonth,
   normalizeAttendanceStatus,
 } from './measures';
 import { ActionableKpi, ActionableKpiGrid, EmptyState, MoneyText, PageToolbar } from './uiSystem';
@@ -184,55 +183,6 @@ function SectionTitle({ title, action, onAction }: { title: string; action?: str
   );
 }
 
-function QuickAction({
-  label,
-  icon,
-  tone = 'primary',
-  primary,
-  compact,
-  onClick,
-}: {
-  label: string;
-  icon: React.ReactNode;
-  tone?: 'primary' | 'success' | 'neutral' | 'zalo';
-  primary?: boolean;
-  compact?: boolean;
-  onClick: () => void;
-}) {
-  const cfg = {
-    primary: { bg: '#4f46e5', color: 'white', border: '#4f46e5' },
-    success: { bg: '#10b981', color: 'white', border: '#10b981' },
-    neutral: { bg: '#f8fafc', color: '#334155', border: '#e8eaf3' },
-    zalo: { bg: '#06b6d4', color: 'white', border: '#06b6d4' },
-  }[tone];
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        minHeight: compact ? 32 : primary ? 44 : 40,
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 7,
-        padding: compact ? '7px 10px' : primary ? '10px 15px' : '9px 13px',
-        borderRadius: compact ? 10 : 12,
-        border: `1px solid ${cfg.border}`,
-        background: cfg.bg,
-        color: cfg.color,
-        fontSize: compact ? 12 : 13,
-        fontWeight: 800,
-        cursor: 'pointer',
-        boxShadow: primary && !compact ? '0 8px 22px rgba(79,70,229,0.24)' : 'none',
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {icon}
-      {label}
-    </button>
-  );
-}
-
 function InsightItem({
   icon,
   label,
@@ -290,9 +240,9 @@ interface Props {
   goOperations: (sub?: OperationsSub) => void;
   goFinance: (sub?: FinanceSub) => void;
   isPaid: (sid: string, mo: number, yr: number) => boolean;
-  onAddStudent: () => void;
   onAddDiary: (classId?: string, date?: string, caDay?: string) => void;
   onAddIncome: () => void;
+  onAddExpense: () => void;
 }
 
 export default function OverviewTab({
@@ -306,32 +256,25 @@ export default function OverviewTab({
   goTraining,
   goOperations,
   goFinance,
-  onAddStudent,
   onAddDiary,
   onAddIncome,
+  onAddExpense,
 }: Props) {
+  const [quickOpen, setQuickOpen] = useState(false);
   const activeStudents = useMemo(() => students.filter(isStudentActive), [students]);
-  const tuitionPeriod = useMemo(() => ({ m: curMo, y: curYr }), [curMo, curYr]);
-  const tuitionStudents = useMemo(
-    () => students.filter(student => isStudentActiveInMonth(student, tuitionPeriod)),
-    [students, tuitionPeriod],
-  );
-  const tuitionStates = useMemo(() => tuitionStudents.map(student => getMonthlyTuitionState({
+  const tuitionStates = useMemo(() => students.map(student => getTuitionCycleState({
     student,
-    period: tuitionPeriod,
+    classes: uClasses,
     payments,
+    tlogs,
     baseTuition,
-  })), [baseTuition, payments, tuitionPeriod, tuitionStudents]);
+  })), [baseTuition, payments, students, tlogs, uClasses]);
   const billableStudents = useMemo(
     () => tuitionStates.filter(state => state.billable).map(state => state.student),
     [tuitionStates],
   );
-  const billablePaid = useMemo(
-    () => tuitionStates.filter(state => state.status === 'paid').length,
-    [tuitionStates],
-  );
   const unpaidStudents = useMemo(
-    () => tuitionStates.filter(state => state.outstandingAmount > 0).map(state => state.student),
+    () => tuitionStates.filter(state => state.status === 'due' || state.status === 'overdue').map(state => state.student),
     [tuitionStates],
   );
   const debtAmount = useMemo(
@@ -388,19 +331,6 @@ export default function OverviewTab({
     });
   }, [todaySlots]);
 
-  const soonSlots = useMemo(() => {
-    const now = new Date();
-    const soonMs = 90 * 60 * 1000;
-    return todaySlots.filter(slot => {
-      if (slot.logged) return false;
-      const startsAt = new Date(slot.date);
-      const minutes = slotMinute(slot.caDay);
-      startsAt.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
-      const diff = startsAt.getTime() - now.getTime();
-      return diff > 0 && diff <= soonMs;
-    });
-  }, [todaySlots]);
-
   const recordedToday = useMemo(() => todaySlots.filter(slot => slot.logged).length, [todaySlots]);
 
   const newStudentsThisMonth = useMemo(
@@ -446,25 +376,62 @@ export default function OverviewTab({
     const missingSchedule = activeClasses.filter(c => getClassSlots(c).length === 0).length;
 
     return [
-      dueUnrecordedToday.length > 0 && { id: 'attendance', tone: '#6366f1', title: `${dueUnrecordedToday.length} buổi đã tới giờ chưa ghi`, sub: 'Mở điểm danh để ghi ngay', onClick: () => goOperations('attendance') },
-      unpaidStudents.length > 0 && { id: 'debt', tone: '#e11d48', title: `${unpaidStudents.length} học sinh có học phí tới hạn`, sub: <><MoneyText value={debtAmount} tone="danger" /> cần thu theo tháng</>, onClick: () => goFinance('debt') },
+      dueUnrecordedToday.length > 0 && { id: 'attendance', tone: '#6366f1', title: `${dueUnrecordedToday.length} buổi đã tới giờ chưa ghi`, sub: 'Mở lịch dạy để ghi ngay', onClick: () => goOperations('schedule') },
+      unpaidStudents.length > 0 && { id: 'debt', tone: '#e11d48', title: `${unpaidStudents.length} học sinh đang cần thu học phí`, sub: <><MoneyText value={debtAmount} tone="danger" /> cần thu theo chu kỳ</>, onClick: () => goFinance('debt') },
       unassigned > 0 && { id: 'unassigned', tone: '#f59e0b', title: `${unassigned} học sinh chờ xếp lớp`, sub: 'Cần gán lớp học', onClick: () => goTraining('students') },
       missingTeacher > 0 && { id: 'teacher', tone: '#ef4444', title: `${missingTeacher} lớp thiếu giáo viên`, sub: 'Cần phân công giáo viên', onClick: () => goTraining('classes') },
       missingSchedule > 0 && { id: 'schedule', tone: '#f97316', title: `${missingSchedule} lớp thiếu lịch học`, sub: 'Cần bổ sung Buổi 1/2/3', onClick: () => goTraining('classes') },
       frequentAbsentees.length > 0 && { id: 'absence', tone: '#f97316', title: `${frequentAbsentees.length} học sinh nghỉ nhiều`, sub: 'Vắng nhiều hoặc vắng liên tiếp trong tháng', onClick: () => goOperations('attendance') },
-      soonSlots.length > 0 && { id: 'soon', tone: '#0ea5e9', title: `${soonSlots.length} buổi sắp bắt đầu`, sub: 'Trong 90 phút tới', onClick: () => goOperations('schedule') },
     ].filter(Boolean) as { id: string; tone: string; title: string; sub: React.ReactNode; onClick: () => void }[];
-  }, [activeClasses, activeStudents, curMo, debtAmount, dueUnrecordedToday.length, frequentAbsentees.length, goTraining, goOperations, goFinance, soonSlots.length, unpaidStudents.length]);
+  }, [activeClasses, activeStudents, curMo, debtAmount, dueUnrecordedToday.length, frequentAbsentees.length, goTraining, goOperations, goFinance, unpaidStudents.length]);
+
+  const renderQuickAdd = (className: string) => (
+    <div className={className} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setQuickOpen(v => !v)}
+        style={{ minWidth: 82, height: 34, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '0 12px', borderRadius: 10, border: '1px solid #4f46e5', background: '#4f46e5', color: '#fff', fontSize: 13, fontWeight: 900, cursor: 'pointer', boxShadow: '0 8px 20px rgba(79,70,229,.22)' }}
+      >
+        <Plus size={14} />
+        Thêm
+      </button>
+      {quickOpen && (
+        <div style={{ position: 'absolute', top: 40, right: 0, zIndex: 20, width: 178, padding: 6, borderRadius: 12, border: '1px solid #e2e8f0', background: '#fff', boxShadow: '0 18px 42px rgba(15,23,42,.16)', display: 'grid', gap: 4 }}>
+          {[
+            { label: 'Điểm danh', icon: <CalendarCheck size={14} />, onClick: () => onAddDiary() },
+            { label: 'Phiếu thu', icon: <ReceiptText size={14} />, onClick: onAddIncome },
+            { label: 'Phiếu chi', icon: <TrendingDown size={14} />, onClick: onAddExpense },
+          ].map(action => (
+            <button
+              key={action.label}
+              type="button"
+              onClick={() => { setQuickOpen(false); action.onClick(); }}
+              style={{ width: '100%', minHeight: 34, display: 'flex', alignItems: 'center', gap: 9, padding: '7px 9px', borderRadius: 9, border: 'none', background: '#fff', color: '#0f172a', fontSize: 13, fontWeight: 850, cursor: 'pointer', textAlign: 'left' }}
+            >
+              <span style={{ width: 24, height: 24, borderRadius: 8, background: '#eef2ff', color: '#4f46e5', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{action.icon}</span>
+              {action.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <style>{`
         .overview-toolbar-desktop-actions{display:flex;align-items:center;gap:8}
+        .overview-mobile-quick-add{display:none}
         @media(min-width:768px){
           .overview-quick-panel{display:none!important}
         }
         @media(max-width:767px){
-          .overview-toolbar-desktop-actions{display:none!important}
+          .overview-toolbar-title{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:12px!important;width:calc(100vw - 84px)!important}
+          .overview-toolbar-title h2{font-size:20px!important;line-height:1.1!important}
+          .overview-toolbar-title p{display:none!important}
+          .overview-toolbar-chip{display:none!important}
+          .overview-mobile-quick-add{display:none!important}
+          .overview-mobile-quick-add button{min-width:88px!important;justify-content:center!important}
           .overview-quick-actions{display:grid!important;grid-template-columns:1fr 1fr!important;width:100%!important}
           .overview-quick-actions button{width:100%!important}
           .overview-kpi-grid > div{grid-template-columns:repeat(2,minmax(0,1fr))!important}
@@ -475,25 +442,25 @@ export default function OverviewTab({
       `}</style>
 
       <PageToolbar
+        style={{ position: 'relative' }}
         title={(
-          <div>
-            <h2 style={{ fontSize: 24, fontWeight: 900, color: '#1a1d2e', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>Tổng quan</h2>
-            <p style={{ fontSize: 13, color: '#6b7280', margin: '3px 0 0' }}>{todayLabel}</p>
+          <div className="overview-toolbar-title">
+            <div style={{ minWidth: 0 }}>
+              <h2 style={{ fontSize: 24, fontWeight: 900, color: '#1a1d2e', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>Tổng quan</h2>
+              <p style={{ fontSize: 13, color: '#6b7280', margin: '3px 0 0' }}>{todayLabel}</p>
+            </div>
+            {renderQuickAdd('overview-mobile-quick-add')}
           </div>
         )}
         actions={(
           <>
-            <span style={{ border: '1px solid #dbeafe', background: '#eff6ff', color: '#1d4ed8', borderRadius: 999, padding: '7px 10px', fontSize: 12, fontWeight: 900 }}>
+            <span className="overview-toolbar-chip" style={{ border: '1px solid #dbeafe', background: '#eff6ff', color: '#1d4ed8', borderRadius: 999, padding: '7px 10px', fontSize: 12, fontWeight: 900 }}>
               {todaySlots.length} buổi hôm nay
             </span>
-            <span style={{ border: '1px solid #fee2e2', background: dueUnrecordedToday.length ? '#fff1f2' : '#f0fdf4', color: dueUnrecordedToday.length ? '#be123c' : '#047857', borderRadius: 999, padding: '7px 10px', fontSize: 12, fontWeight: 900 }}>
+            <span className="overview-toolbar-chip" style={{ border: '1px solid #fee2e2', background: dueUnrecordedToday.length ? '#fff1f2' : '#f0fdf4', color: dueUnrecordedToday.length ? '#be123c' : '#047857', borderRadius: 999, padding: '7px 10px', fontSize: 12, fontWeight: 900 }}>
               {dueUnrecordedToday.length} cần ghi
             </span>
-            <div className="overview-toolbar-desktop-actions">
-              <QuickAction label="Điểm danh" primary compact tone="primary" icon={<CalendarCheck size={14} />} onClick={() => onAddDiary()} />
-              <QuickAction label="Thu học phí" compact tone="success" icon={<ReceiptText size={14} />} onClick={onAddIncome} />
-              <QuickAction label="Thêm học sinh" compact tone="neutral" icon={<Plus size={14} />} onClick={onAddStudent} />
-            </div>
+            {renderQuickAdd('overview-toolbar-desktop-actions')}
           </>
         )}
       />
@@ -530,8 +497,8 @@ export default function OverviewTab({
           <ActionableKpi
             icon={AlertTriangle}
             value={<MoneyText value={debtAmount} compact tone={debtAmount > 0 ? 'danger' : 'success'} />}
-            label="Học phí tới hạn"
-            sub={debtAmount > 0 ? `${unpaidStudents.length}/${billableStudents.length} học sinh cần thu` : 'Không có học sinh tới hạn'}
+            label="Học phí cần thu"
+            sub={debtAmount > 0 ? `${unpaidStudents.length}/${billableStudents.length} học sinh cần thu` : 'Không có học sinh cần thu'}
             tone={debtAmount > 0 ? 'danger' : 'success'}
             onClick={() => goFinance('debt')}
             actionLabel="Xem"
@@ -561,7 +528,7 @@ export default function OverviewTab({
         </Panel>
 
         <Panel className="overview-panel" style={{ minHeight: 210 }}>
-          <SectionTitle title="Lịch dạy hôm nay" action="Vận hành →" onAction={() => goOperations('schedule')} />
+          <SectionTitle title="Lịch dạy hôm nay" action="Lịch dạy →" onAction={() => goOperations('schedule')} />
           {todaySlots.length === 0 ? (
             <EmptyState icon={CalendarCheck} text="Không có buổi học hôm nay" sub="Bạn có thể kiểm tra lịch dạy trong tab Vận hành." compact />
           ) : (
@@ -642,15 +609,6 @@ export default function OverviewTab({
         </div>
       </Panel>
 
-      <Panel className="overview-panel overview-quick-panel">
-        <SectionTitle title="Thao tác nhanh" />
-        <div className="overview-quick-actions" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <QuickAction label="Điểm danh" primary tone="primary" icon={<CalendarCheck size={15} />} onClick={() => onAddDiary()} />
-          <QuickAction label="Thu học phí" tone="success" icon={<ReceiptText size={15} />} onClick={onAddIncome} />
-          <QuickAction label="Thêm học sinh" tone="neutral" icon={<Plus size={15} />} onClick={onAddStudent} />
-          <QuickAction label="Nhắc phí Zalo" tone="zalo" icon={<MessageCircle size={15} />} onClick={() => goFinance('debt')} />
-        </div>
-      </Panel>
     </div>
   );
 }
