@@ -13,7 +13,7 @@
  * ✅ [v28.2] Zalo: thêm nút copy message vào clipboard
  */
 import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
-import { Plus, Check, TrendingDown, TrendingUp, Wallet, AlertTriangle, MessageCircle, ReceiptText, Edit3, Trash2 } from 'lucide-react';
+import { Plus, Check, TrendingDown, TrendingUp, Wallet, MessageCircle, ReceiptText, Edit3, Trash2 } from 'lucide-react';
 import { fmtVND, capitalizeName, compareClassCode, normalizePaymentMethod, parseDMY, resolveTeacher } from './helpers';
 import {
   classIdOf,
@@ -782,15 +782,6 @@ export default function FinanceTab({
 
       {finSub === 'debt' && (
         <ActionableKpiGrid>
-          <ActionableKpi
-            icon={AlertTriangle}
-            value={financeSummary.reviewStudentCount}
-            label="Cần đối soát"
-            sub={`${financeSummary.reviewStudentCount} học sinh cần kiểm tra`}
-            tone={financeSummary.reviewStudentCount > 0 ? 'warning' : 'success'}
-            onClick={() => focusDebtStatus('review')}
-            actionLabel="Rà soát"
-          />
           <ActionableKpi
             icon={TrendingUp}
             value={<MoneyText value={collectedAmount} compact tone="success" />}

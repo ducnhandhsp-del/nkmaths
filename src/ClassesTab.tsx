@@ -2,12 +2,11 @@
  * ClassesTab.tsx — màn quản lý dữ liệu lớp học gốc.
  */
 import React, { useState, useMemo } from 'react';
-import { createPortal } from 'react-dom';
-import { Clock, Plus, Trash2, X, Users, MapPin, User } from 'lucide-react';
+import { Clock, Plus, Trash2, Users, MapPin, User } from 'lucide-react';
 import { compareClassCode, fixVietnameseText, isStudentActive, normalizeCaDayLabel, normalizeScheduleCaText, resolveTeacher } from './helpers';
 import { getPaymentReceiptPeriod, getTuitionAccountState, getUniquePaidStudentIdsByReceiptPeriod } from './measures';
 import { Button } from './dsComponents';
-import { DataTable, DetailMetric, EmptyState, MobileRecordList, MobileRecordMarker, MobileRecordRow, MobileRecordTextAction, MoneyText, PageToolbar, StatusBadge } from './uiSystem';
+import { DataTable, DetailMetric, DetailModal, EmptyState, MobileRecordList, MobileRecordMarker, MobileRecordRow, MobileRecordTextAction, MoneyText, PageToolbar, StatusBadge } from './uiSystem';
 import type { Student, ClassRecord, Payment, DeleteTarget, TeachingLog } from './types';
 
 interface Props {
@@ -117,46 +116,6 @@ function compactScheduleLabel(schedule: string) {
   return raw.length > 36 ? `${raw.slice(0, 33)}...` : raw;
 }
 
-function ClassStudentListOverlay({ title, students, tone, onClose }: {
-  title: string;
-  students: Student[];
-  tone: 'unpaid' | 'paid';
-  onClose: () => void;
-}) {
-  const isUnpaid = tone === 'unpaid';
-  const content = (
-    <div style={{ position:'fixed',inset:0,zIndex:1000,background:'rgba(15,23,42,0.68)',backdropFilter:'blur(4px)',overflowY:'auto',padding:'18px 12px' }}>
-      <div style={{ width:'100%',maxWidth:680,margin:'0 auto',background:'white',borderRadius:18,overflow:'hidden',boxShadow:'0 24px 80px rgba(15,23,42,0.3)' }}>
-        <div style={{ position:'sticky',top:0,zIndex:1,background:'#f8fafc',borderBottom:'1px solid #e2e8f0',padding:'14px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:10 }}>
-          <div style={{ minWidth:0 }}>
-            <p style={{ margin:0,fontSize:16,fontWeight:950,color:'#0f172a' }}>{title}</p>
-            <p style={{ margin:'3px 0 0',fontSize:12,fontWeight:800,color:'#64748b' }}>{students.length} học sinh</p>
-          </div>
-          <button onClick={onClose} style={{ width:34,height:34,borderRadius:10,border:'none',background:'#eef2f7',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0 }}>
-            <X size={16} color="#64748b" />
-          </button>
-        </div>
-        <div style={{ display:'grid',gap:8,padding:12 }}>
-          {students.length === 0 ? (
-            <div style={{ padding:'24px 12px',textAlign:'center',fontSize:13,fontWeight:800,color:'#94a3b8' }}>Không có học sinh trong danh sách</div>
-          ) : students.map(s => (
-            <div key={s.id} style={{ display:'grid',gridTemplateColumns:'minmax(0,1fr) auto',gap:10,alignItems:'center',padding:'11px 12px',borderRadius:12,border:`1px solid ${isUnpaid ? '#fecaca' : '#a7f3d0'}`,background:isUnpaid ? '#fff5f5' : '#f0fdf4' }}>
-              <div style={{ minWidth:0 }}>
-                <p style={{ fontSize:14,fontWeight:900,color:'#0f172a',margin:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{s.name}</p>
-                <p style={{ fontSize:12,fontWeight:750,color:'#64748b',margin:'3px 0 0' }}>{s.id}{s.parentPhone ? ` · ${s.parentPhone}` : ''}</p>
-              </div>
-              <span style={{ fontSize:11,fontWeight:900,color:isUnpaid ? '#be123c' : '#047857',background:isUnpaid ? '#fee2e2' : '#dcfce7',padding:'5px 9px',borderRadius:999,whiteSpace:'nowrap' }}>
-                {isUnpaid ? 'Chưa đóng' : 'Đã đóng'}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-  return typeof document === 'undefined' ? content : createPortal(content, document.body);
-}
-
 function ClassDetailModal({ cls, curMo, curYr, students, classes, payments = [], tlogs = [], baseTuition, onClose, onEdit, onDelete }: {
   cls: ClassRecord & { studentCount?: number; paidCount?: number; pct?: number };
   curMo: number; curYr: number;
@@ -179,7 +138,6 @@ function ClassDetailModal({ cls, curMo, curYr, students, classes, payments = [],
     tlogs,
     baseTuition,
   }));
-  const billableStudents = tuitionStates.filter(state => state.billable).map(state => state.student);
   const paidIds = getUniquePaidStudentIdsByReceiptPeriod(payments, { m: curMo, y: curYr });
   const paid = clsStudents.filter(student => paidIds.has(student.id));
   const unpaid = tuitionStates.filter(state => state.status === 'due' || state.status === 'overdue').map(state => state.student);
@@ -192,41 +150,27 @@ function ClassDetailModal({ cls, curMo, curYr, students, classes, payments = [],
   const classCode = getClassCode(cls);
   const teacherName = resolveTeacher(getClassTeacher(cls)) || 'Chưa phân công';
   const scheduleSlots = getClassScheduleSlots(cls);
-  const [feeListMode, setFeeListMode] = useState<'unpaid' | 'paid' | null>(null);
+  const [feeListMode, setFeeListMode] = useState<'unpaid' | 'paid'>('unpaid');
+  const visibleFeeStudents = feeListMode === 'unpaid' ? unpaid : paid;
 
   return (
-    <div style={{ position:'fixed',inset:0,zIndex:200,display:'flex',alignItems:'flex-start',justifyContent:'center',padding:'24px 18px',overflowY:'auto',background:'rgba(15,23,42,0.6)',backdropFilter:'blur(4px)' }}>
-      <div style={{ background:'white',width:'100%',maxWidth:760,borderRadius:20,overflow:'hidden',boxShadow:'0 24px 80px rgba(15,23,42,0.28)',display:'flex',flexDirection:'column',margin:'0 auto' }}>
-
-        {/* Header */}
-        <div style={{ padding:'16px 20px',borderBottom:'1px solid #f1f5f9',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0 }}>
-          <div style={{ display:'flex',alignItems:'center',gap:10 }}>
-            <div style={{ width:38,height:38,borderRadius:10,background:'#eef2ff',border:'1px solid #c7d2fe',display:'flex',alignItems:'center',justifyContent:'center' }}>
-              <span style={{ color:'#4f46e5',fontWeight:800,fontSize:12 }}>{classCode.slice(0,3)}</span>
-            </div>
-            <div>
-              <p style={{ fontSize:16,fontWeight:850,color:'#0f172a',margin:0 }}>Lớp {classCode || '---'}</p>
-              <p style={{ fontSize:12,color:'#64748b',fontWeight:700,margin:'2px 0 0' }}>Giáo viên {teacherName}</p>
-            </div>
-          </div>
-          <div style={{ display:'flex',alignItems:'center',gap:8,flexShrink:0 }}>
-            <Button intent="primary" variant="outline" size="sm" onClick={onEdit}>Chỉnh sửa</Button>
-            {onDelete && <Button intent="danger" variant="outline" size="sm" icon={<Trash2 size={14}/>} onClick={onDelete}>Xóa</Button>}
-            <button onClick={onClose} style={{ width:32,height:32,borderRadius:8,background:'#f1f5f9',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center' }}>
-              <X size={14} color="#64748b" />
-            </button>
-          </div>
-        </div>
-
-        <div style={{ flex:'initial',overflowY:'visible',padding:'16px 20px',display:'flex',flexDirection:'column',gap:14 }}>
-
-          <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(96px,1fr))',gap:10 }}>
-            <DetailMetric label="Lớp" value={classCode || '---'} tone="violet" />
+    <DetailModal
+      onClose={onClose}
+      title={`Lớp ${classCode || '---'}`}
+      subtitle={`Giáo viên ${teacherName} · ${getClassBranch(cls) || 'Chưa rõ cơ sở'}`}
+      primaryAction={<Button intent="primary" variant="outline" size="sm" onClick={onEdit}>Chỉnh sửa</Button>}
+      dangerActions={onDelete ? [{ label:'Xóa lớp', icon:<Trash2 size={15}/>, onClick:onDelete }] : []}
+      width={800}
+      summary={(
+        <div className="ltn-class-detail-summary" style={{ display:'grid',gridTemplateColumns:'repeat(4,minmax(0,1fr))',gap:8 }}>
             <DetailMetric label="Sĩ số" value={clsStudents.length} tone="sky" />
             <DetailMetric label="Cần thu" value={unpaid.length} tone="amber" />
             <DetailMetric label="Đã thu tháng" value={`${paid.length}/${clsStudents.length}`} tone="emerald" />
             <DetailMetric label="Cần kiểm tra" value={reviewCount} tone="rose" />
-          </div>
+        </div>
+      )}
+    >
+        <div style={{ display:'flex',flexDirection:'column',gap:14 }}>
 
           <section className="ltn-detail-section">
             <p className="ltn-section-title" style={{ textAlign:'left' }}>Chi tiết lớp</p>
@@ -268,124 +212,43 @@ function ClassDetailModal({ cls, curMo, curYr, students, classes, payments = [],
               Danh sách trạng thái thu ({unpaid.length + paid.length}/{clsStudents.length})
             </p>
             <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:8 }}>
-              <button type="button" onClick={() => setFeeListMode('unpaid')} style={{ minHeight:54,padding:'10px 12px',borderRadius:12,border:'1px solid #fecaca',background:'#fff5f5',textAlign:'left',cursor:'pointer' }}>
+              <button type="button" aria-pressed={feeListMode==='unpaid'} onClick={() => setFeeListMode('unpaid')} style={{ minHeight:54,padding:'10px 12px',borderRadius:12,border:`${feeListMode==='unpaid'?'2px':'1px'} solid #fecaca`,background:'#fff5f5',textAlign:'left',cursor:'pointer',boxShadow:feeListMode==='unpaid'?'0 0 0 2px rgba(225,29,72,.08)':'none' }}>
                 <span style={{ display:'block',fontSize:18,fontWeight:950,color:'#be123c' }}>{unpaid.length}</span>
                 <span style={{ display:'block',fontSize:12,fontWeight:900,color:'#7f1d1d' }}>Xem cần thu</span>
               </button>
-              <button type="button" onClick={() => setFeeListMode('paid')} style={{ minHeight:54,padding:'10px 12px',borderRadius:12,border:'1px solid #a7f3d0',background:'#f0fdf4',textAlign:'left',cursor:'pointer' }}>
+              <button type="button" aria-pressed={feeListMode==='paid'} onClick={() => setFeeListMode('paid')} style={{ minHeight:54,padding:'10px 12px',borderRadius:12,border:`${feeListMode==='paid'?'2px':'1px'} solid #a7f3d0`,background:'#f0fdf4',textAlign:'left',cursor:'pointer',boxShadow:feeListMode==='paid'?'0 0 0 2px rgba(5,150,105,.08)':'none' }}>
                 <span style={{ display:'block',fontSize:18,fontWeight:950,color:'#047857' }}>{paid.length}</span>
                 <span style={{ display:'block',fontSize:12,fontWeight:900,color:'#065f46' }}>Xem đã thu tháng</span>
               </button>
             </div>
-            {clsStudents.length > 0 && (
-              <div style={{ maxHeight:280,overflowY:'auto',display:'grid',gap:10,paddingRight:2 }}>
-                {unpaid.length > 0 && (
-                  <div style={{ display:'grid',gap:6 }}>
-                    <p style={{ fontSize:11,fontWeight:900,color:'#be123c',margin:0 }}>Cần thu ({unpaid.length})</p>
-                    {unpaid.map(s => (
-                      <div key={s.id} style={{ display:'grid',gridTemplateColumns:'minmax(0,1fr) auto',gap:8,alignItems:'center',padding:'9px 10px',background:'#fff5f5',borderRadius:10,border:'1px solid #fecaca' }}>
-                        <div style={{ minWidth:0 }}>
-                          <p style={{ fontSize:13,fontWeight:850,color:'#0f172a',margin:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{s.name}</p>
-                          <p style={{ fontSize:11,color:'#64748b',fontWeight:750,margin:'2px 0 0' }}>{s.id}{s.parentPhone ? ` · ${s.parentPhone}` : ''}</p>
-                        </div>
-                        <span style={{ fontSize:11,fontWeight:900,color:'#be123c',background:'#fee2e2',padding:'4px 8px',borderRadius:999,whiteSpace:'nowrap' }}>Cần thu</span>
-                      </div>
-                    ))}
+            <div style={{ maxHeight:280,overflowY:'auto',display:'grid',gap:6,marginTop:10,paddingRight:2 }}>
+              {visibleFeeStudents.length === 0 ? (
+                <div style={{ padding:'18px 10px',textAlign:'center',fontSize:12,fontWeight:800,color:'#94a3b8' }}>
+                  {feeListMode === 'unpaid' ? 'Không có học sinh cần thu' : 'Chưa có học sinh đã thu trong tháng'}
+                </div>
+              ) : visibleFeeStudents.map(student => {
+                const isUnpaid = feeListMode === 'unpaid';
+                return (
+                  <div key={student.id} style={{ display:'grid',gridTemplateColumns:'minmax(0,1fr) auto',gap:8,alignItems:'center',padding:'9px 10px',background:isUnpaid?'#fff5f5':'#f0fdf4',borderRadius:10,border:`1px solid ${isUnpaid?'#fecaca':'#a7f3d0'}` }}>
+                    <div style={{ minWidth:0 }}>
+                      <p style={{ fontSize:13,fontWeight:850,color:'#0f172a',margin:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{student.name}</p>
+                      <p style={{ fontSize:11,color:'#64748b',fontWeight:750,margin:'2px 0 0' }}>{student.id}{student.parentPhone ? ` · ${student.parentPhone}` : ''}</p>
+                    </div>
+                    <span style={{ fontSize:11,fontWeight:900,color:isUnpaid?'#be123c':'#047857',background:isUnpaid?'#fee2e2':'#dcfce7',padding:'4px 8px',borderRadius:999,whiteSpace:'nowrap' }}>
+                      {isUnpaid ? 'Cần thu' : 'Đã thu tháng'}
+                    </span>
                   </div>
-                )}
-                {paid.length > 0 && (
-                  <div style={{ display:'grid',gap:6 }}>
-                    <p style={{ fontSize:11,fontWeight:900,color:'#047857',margin:0 }}>Đã thu tháng ({paid.length})</p>
-                    {paid.map(s => (
-                      <div key={s.id} style={{ display:'grid',gridTemplateColumns:'minmax(0,1fr) auto',gap:8,alignItems:'center',padding:'9px 10px',background:'#f0fdf4',borderRadius:10,border:'1px solid #a7f3d0' }}>
-                        <div style={{ minWidth:0 }}>
-                          <p style={{ fontSize:13,fontWeight:850,color:'#0f172a',margin:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{s.name}</p>
-                          <p style={{ fontSize:11,color:'#64748b',fontWeight:750,margin:'2px 0 0' }}>{s.id}{s.parentPhone ? ` · ${s.parentPhone}` : ''}</p>
-                        </div>
-                        <span style={{ fontSize:11,fontWeight:900,color:'#047857',background:'#dcfce7',padding:'4px 8px',borderRadius:999,whiteSpace:'nowrap' }}>Đã thu tháng</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {unpaid.length === 0 && paid.length === 0 && (
-                  <div style={{ padding:'18px 10px',textAlign:'center',fontSize:12,fontWeight:800,color:'#94a3b8' }}>Không có học sinh cần thu trong tháng này</div>
-                )}
-              </div>
-            )}
+                );
+              })}
+            </div>
           </section>
-
-          {/* Danh sách học sinh */}
-          {clsStudents.length > 0 && (
-            <section className="ltn-detail-section" style={{ display:'none' }}>
-              <p style={{ fontSize:11,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.08em',margin:'0 0 8px' }}>
-                Danh sách trạng thái thu ({unpaid.length + paid.length}/{clsStudents.length})
-              </p>
-
-              {/* Chưa đóng phí */}
-              {unpaid.length > 0 && (
-                <div style={{ marginBottom:8 }}>
-                  <p style={{ fontSize:11,fontWeight:700,color:'#e11d48',margin:'0 0 5px',display:'flex',alignItems:'center',gap:5 }}>
-                    <span style={{ width:6,height:6,borderRadius:'50%',background:'#e11d48',display:'inline-block' }}/>
-                    Cần thu ({unpaid.length})
-                  </p>
-                  <div style={{ display:'flex',flexDirection:'column',gap:4 }}>
-                    {unpaid.map(s => (
-                      <div key={s.id} style={{ display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 12px',background:'#fff5f5',borderRadius:8,border:'1px solid #fecaca' }}>
-                        <div>
-                          <p style={{ fontSize:13,fontWeight:600,color:'#0f172a',margin:0 }}>{s.name}</p>
-                          <p style={{ fontSize:11,color:'#94a3b8',margin:0 }}>{s.id}</p>
-                        </div>
-                        {s.parentPhone && (
-                          <a href={`tel:${s.parentPhone}`} style={{ fontSize:11,color:'#6366f1',fontWeight:600,textDecoration:'none' }}>{s.parentPhone}</a>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Đã đóng phí */}
-              {paid.length > 0 && (
-                <div>
-                  <p style={{ fontSize:11,fontWeight:700,color:'#059669',margin:'0 0 5px',display:'flex',alignItems:'center',gap:5 }}>
-                    <span style={{ width:6,height:6,borderRadius:'50%',background:'#059669',display:'inline-block' }}/>
-                    Đã thu tháng ({paid.length})
-                  </p>
-                  <div style={{ display:'flex',flexDirection:'column',gap:4 }}>
-                    {paid.map(s => (
-                      <div key={s.id} style={{ display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 12px',background:'#f0fdf4',borderRadius:8,border:'1px solid #a7f3d0' }}>
-                        <div>
-                          <p style={{ fontSize:13,fontWeight:600,color:'#0f172a',margin:0 }}>{s.name}</p>
-                          <p style={{ fontSize:11,color:'#94a3b8',margin:0 }}>{s.id}</p>
-                        </div>
-                        <span style={{ fontSize:11,fontWeight:700,color:'#059669',background:'#dcfce7',padding:'2px 8px',borderRadius:5 }}>✓ Đã đóng</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </section>
-          )}
 
           {clsStudents.length === 0 && (
             <div style={{ textAlign:'center',padding:'24px 0',color:'#94a3b8',fontStyle:'italic',fontSize:13 }}>Chưa có học sinh trong lớp này</div>
           )}
         </div>
 
-        {/* Footer */}
-        <div style={{ padding:'10px 20px',borderTop:'1px solid #f1f5f9',display:'flex',justifyContent:'flex-end',gap:10,flexShrink:0 }}>
-          <Button variant="outline" intent="neutral" size="sm" onClick={onClose}>Đóng</Button>
-        </div>
-      </div>
-      {feeListMode && (
-        <ClassStudentListOverlay
-          title={feeListMode === 'unpaid' ? `Chưa đóng phí lớp ${classCode}` : `Đã đóng phí lớp ${classCode}`}
-          students={feeListMode === 'unpaid' ? unpaid : paid}
-          tone={feeListMode}
-          onClose={() => setFeeListMode(null)}
-        />
-      )}
-    </div>
+    </DetailModal>
   );
 }
 

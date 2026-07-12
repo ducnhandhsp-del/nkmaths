@@ -15,13 +15,12 @@ import {
   Trash2,
   UserCheck,
   Users,
-  X,
 } from 'lucide-react';
 
-import { parseDMY } from './helpers';
+import { isValidDateDMY, isValidPhone, parseDMY } from './helpers';
 import { getPaymentReceiptPeriod, getTuitionAccountState, getUniquePaidStudentIdsByReceiptPeriod, isStudentActiveInMonth } from './measures';
-import { Button, IconButton, SearchBar, Select } from './dsComponents';
-import { DataTable, DetailMetric, EmptyState, MobileRecordAction, MobileRecordList, MobileRecordMarker, MobileRecordRow, MoneyText, PageToolbar, StatusBadge } from './uiSystem';
+import { Button, SearchBar, Select } from './dsComponents';
+import { DataTable, DetailMetric, DetailModal, EmptyState, MobileRecordAction, MobileRecordList, MobileRecordMarker, MobileRecordRow, MoneyText, PageToolbar, StatusBadge } from './uiSystem';
 import type { ClassRecord, DeleteTarget, Payment, Student, Teacher, TeachingLog } from './types';
 
 type TeacherStatus = 'active' | 'inactive' | 'onleave' | string;
@@ -172,17 +171,43 @@ function TeacherModal({
   };
   const [f, setF] = useState<Partial<Teacher>>(blank);
   const [localSaving, setLocalSaving] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   React.useEffect(() => {
     if (!open) return;
     setF(editing ?? { ...blank, createdAt: new Date().toISOString() });
+    setErrors({});
   }, [open, editing]);
 
   if (!open) return null;
 
-  const u = (k: keyof Teacher | string, v: any) => setF(p => ({ ...p, [k]: v }));
+  const u = (k: keyof Teacher | string, v: any) => {
+    setF(p => ({ ...p, [k]: v }));
+    setErrors(prev => {
+      if (!prev[k]) return prev;
+      const next = { ...prev };
+      delete next[k];
+      return next;
+    });
+  };
   const save = async () => {
-    if (!f.name?.trim() || localSaving || isSaving) return;
+    if (localSaving || isSaving) return;
+    const nextErrors: Record<string, string> = {};
+    const name = String(f.name || '').trim();
+    const email = String(f.email || '').trim();
+    if (!name) nextErrors.name = 'Vui lòng nhập họ tên giáo viên';
+    else if (name.length < 3) nextErrors.name = 'Họ tên cần ít nhất 3 ký tự';
+    if (f.phone && !isValidPhone(f.phone)) nextErrors.phone = 'Số điện thoại không hợp lệ';
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) nextErrors.email = 'Email không hợp lệ';
+    if (f.dob && !isValidDateDMY(String(f.dob))) nextErrors.dob = 'Dùng định dạng DD/MM/YYYY';
+    (['experience', 'hourlyRate', 'baseSalary', 'allowance'] as const).forEach(key => {
+      const value = Number(f[key] || 0);
+      if (!Number.isFinite(value) || value < 0) nextErrors[key] = 'Giá trị không được âm';
+    });
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors);
+      return;
+    }
     setLocalSaving(true);
     try {
       await Promise.resolve(onSave({
@@ -219,15 +244,18 @@ function TeacherModal({
             <div className="ltn-grid-12">
               <div className="ltn-quick-field span-4">
                 <label>Họ tên</label>
-                <input value={f.name || ''} onChange={e=>u('name', e.target.value)} placeholder="Lê Đức Nhân" />
+                <input value={f.name || ''} onChange={e=>u('name', e.target.value)} placeholder="Lê Đức Nhân" aria-invalid={!!errors.name} />
+                {errors.name && <span className="ltn-field-error">{errors.name}</span>}
               </div>
               <div className="ltn-quick-field span-3">
                 <label>Số điện thoại</label>
-                <input value={f.phone || ''} onChange={e=>u('phone', e.target.value)} placeholder="09xxxxxxxx" />
+                <input value={f.phone || ''} onChange={e=>u('phone', e.target.value)} placeholder="09xxxxxxxx" aria-invalid={!!errors.phone} />
+                {errors.phone && <span className="ltn-field-error">{errors.phone}</span>}
               </div>
               <div className="ltn-quick-field span-3">
                 <label>Email</label>
-                <input type="email" value={f.email || ''} onChange={e=>u('email', e.target.value)} placeholder="email@..." />
+                <input type="email" value={f.email || ''} onChange={e=>u('email', e.target.value)} placeholder="email@..." aria-invalid={!!errors.email} />
+                {errors.email && <span className="ltn-field-error">{errors.email}</span>}
               </div>
               <div className="ltn-quick-field span-2">
                 <label>Trạng thái</label>
@@ -251,11 +279,13 @@ function TeacherModal({
               </div>
               <div className="ltn-quick-field span-2">
                 <label>Ngày sinh</label>
-                <input value={f.dob || ''} onChange={e=>u('dob', e.target.value)} placeholder="dd/mm/yyyy" />
+                <input value={f.dob || ''} onChange={e=>u('dob', e.target.value)} placeholder="dd/mm/yyyy" aria-invalid={!!errors.dob} />
+                {errors.dob && <span className="ltn-field-error">{errors.dob}</span>}
               </div>
               <div className="ltn-quick-field span-2">
                 <label>Kinh nghiệm</label>
-                <input type="number" value={String(f.experience || 0)} onChange={e=>u('experience', Number(e.target.value || 0))} />
+                <input type="number" min="0" value={String(f.experience || 0)} onChange={e=>u('experience', Number(e.target.value || 0))} aria-invalid={!!errors.experience} />
+                {errors.experience && <span className="ltn-field-error">{errors.experience}</span>}
               </div>
             </div>
 
@@ -263,15 +293,18 @@ function TeacherModal({
             <div className="ltn-grid-12">
               <div className="ltn-quick-field span-4">
                 <label>Đơn giá/buổi</label>
-                <input type="number" value={String(f.hourlyRate || 0)} onChange={e=>u('hourlyRate', Number(e.target.value || 0))} />
+                <input type="number" min="0" value={String(f.hourlyRate || 0)} onChange={e=>u('hourlyRate', Number(e.target.value || 0))} aria-invalid={!!errors.hourlyRate} />
+                {errors.hourlyRate && <span className="ltn-field-error">{errors.hourlyRate}</span>}
               </div>
               <div className="ltn-quick-field span-4">
                 <label>Lương cơ bản</label>
-                <input type="number" value={String(f.baseSalary || 0)} onChange={e=>u('baseSalary', Number(e.target.value || 0))} />
+                <input type="number" min="0" value={String(f.baseSalary || 0)} onChange={e=>u('baseSalary', Number(e.target.value || 0))} aria-invalid={!!errors.baseSalary} />
+                {errors.baseSalary && <span className="ltn-field-error">{errors.baseSalary}</span>}
               </div>
               <div className="ltn-quick-field span-4">
                 <label>Phụ cấp</label>
-                <input type="number" value={String(f.allowance || 0)} onChange={e=>u('allowance', Number(e.target.value || 0))} />
+                <input type="number" min="0" value={String(f.allowance || 0)} onChange={e=>u('allowance', Number(e.target.value || 0))} aria-invalid={!!errors.allowance} />
+                {errors.allowance && <span className="ltn-field-error">{errors.allowance}</span>}
               </div>
             </div>
 
@@ -660,58 +693,24 @@ export default function TeachersTab({
       </div>
 
       {detailRow && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 150, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }} onClick={() => setDetailId(null)}>
-          <div style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,0.35)', backdropFilter: 'blur(4px)' }} />
-          <div style={{ position: 'relative', background: 'white', width: '100%', maxWidth: 760, maxHeight: '88dvh', borderRadius: 20, overflowY: 'auto', boxShadow: '0 24px 80px rgba(15,23,42,0.28)' }} onClick={e => e.stopPropagation()}>
-            <div style={{ padding: 24 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 18 }}>
-                <div style={{ minWidth: 0 }}>
-                  <h3 style={{ fontSize: 20, fontWeight: 900, color: '#0f172a', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{detailRow.teacher.name}</h3>
-                  {detailRow.teacher.qualification && (
-                    <p style={{ fontSize: 13, color: '#64748b', fontWeight: 800, margin: '4px 0 0' }}>
-                      {detailRow.teacher.qualification}
-                    </p>
-                  )}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                  <Button intent="primary" variant="outline" size="sm" icon={<Edit3 size={14} />} onClick={() => { openEdit(detailRow.teacher); setDetailId(null); }}>
-                    {detailRow.official ? 'Sửa hồ sơ' : 'Bổ sung'}
-                  </Button>
-                  {onDeleteTeacher && detailRow.official && (
-                    <Button
-                      intent="danger"
-                      variant="outline"
-                      size="sm"
-                      icon={<Trash2 size={14} />}
-                      onClick={() => {
-                        onDeleteTeacher({ type: 'teacher', id: detailRow.teacher.id, name: detailRow.teacher.name });
-                        setDetailId(null);
-                      }}
-                    >
-                      Xóa
-                    </Button>
-                  )}
-                  <IconButton icon={<X size={18} />} label="Đóng" onClick={() => setDetailId(null)} />
-                </div>
-              </div>
-
-              <section className="ltn-detail-section" style={{ marginBottom: 14 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                  <p className="ltn-section-title" style={{ textAlign: 'left' }}>Tổng quan tháng {curMo}/{curYr}</p>
-                  <span style={{ color: '#64748b', fontSize: 12, fontWeight: 800 }}>
-                    {detailRow.classes.length} lớp · {detailRow.activeStudents.length} học sinh
-                  </span>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(112px,1fr))', gap: 8 }}>
+        <DetailModal
+          onClose={() => setDetailId(null)}
+          title={detailRow.teacher.name}
+          subtitle={detailRow.teacher.qualification || `${detailRow.teacher.id || 'Chưa có mã'} · Tháng ${curMo}/${curYr}`}
+          status={<span style={{ fontSize:11,fontWeight:850,color:teacherStatus(detailRow.teacher.status)==='active'?'#047857':'#64748b',background:teacherStatus(detailRow.teacher.status)==='active'?'#ecfdf5':'#f8fafc',border:'1px solid #e2e8f0',padding:'3px 8px',borderRadius:999,whiteSpace:'nowrap' }}>{teacherStatus(detailRow.teacher.status)==='active'?'Đang dạy':'Tạm nghỉ'}</span>}
+          primaryAction={<Button intent="primary" variant="outline" size="sm" icon={<Edit3 size={14} />} onClick={() => { openEdit(detailRow.teacher); setDetailId(null); }}>{detailRow.official ? 'Sửa hồ sơ' : 'Bổ sung'}</Button>}
+          actions={String(detailRow.teacher.phone || '').replace(/\D/g,'').length >= 9 ? [{ label:'Gọi giáo viên', icon:<Phone size={15}/>, onClick:()=>{ window.location.href=`tel:${String(detailRow.teacher.phone || '').replace(/\D/g,'')}`; } }] : []}
+          dangerActions={onDeleteTeacher && detailRow.official ? [{ label:'Xóa giáo viên', icon:<Trash2 size={15}/>, onClick:()=>{ onDeleteTeacher({ type:'teacher', id:detailRow.teacher.id, name:detailRow.teacher.name }); setDetailId(null); } }] : []}
+          width={800}
+          summary={(
+            <div className="ltn-teacher-detail-summary" style={{ display:'grid',gridTemplateColumns:'repeat(4,minmax(0,1fr))',gap:8 }}>
                   <DetailMetric label="Lớp" value={detailRow.classes.length} tone="sky" />
                   <DetailMetric label="Học sinh" value={detailRow.activeStudents.length} tone="emerald" />
                   <DetailMetric label="Buổi dạy" value={detailRow.monthLogs.length} tone="violet" />
                   <DetailMetric label="Cần thu" value={detailRow.unpaidCount} tone="amber" />
-                  <DetailMetric label="Đã thu tháng" value={`${detailRow.paidCount}/${detailRow.activeStudents.length}`} tone="emerald" />
-                  <DetailMetric label="Cần kiểm tra" value={detailRow.reviewCount} tone="rose" />
-                  <DetailMetric label="Thu học phí" value={<MoneyText value={detailRow.monthRevenue} compact tone="success" />} tone="emerald" />
-                </div>
-              </section>
+            </div>
+          )}
+        >
 
               <section className="ltn-detail-section soft" style={{ marginBottom: 14 }}>
                 <p className="ltn-section-title" style={{ textAlign: 'left' }}>Thông tin liên hệ</p>
@@ -812,10 +811,7 @@ export default function TeachersTab({
                 </section>
               )}
 
-              <Button variant="outline" intent="neutral" fullWidth onClick={() => setDetailId(null)}>Đóng</Button>
-            </div>
-          </div>
-        </div>
+        </DetailModal>
       )}
 
       <TeacherModal

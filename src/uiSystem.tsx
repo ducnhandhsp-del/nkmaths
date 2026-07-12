@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
 import { AlertTriangle, ChevronLeft, ChevronRight, Inbox, Info, RotateCcw, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -77,6 +78,178 @@ export function DetailMetric({
       </p>
       <p style={{ fontSize: 10, color: '#64748b', margin: '3px 0 0', fontWeight: 800 }}>{label}</p>
     </div>
+  );
+}
+
+export function DetailActionMenu({
+  actions = [],
+  dangerActions = [],
+  label = 'Thêm thao tác',
+}: {
+  actions?: UiAction[];
+  dangerActions?: UiAction[];
+  label?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    menuRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+    const closeOutside = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', closeOutside);
+    return () => document.removeEventListener('mousedown', closeOutside);
+  }, [open]);
+
+  if (actions.length === 0 && dangerActions.length === 0) return null;
+
+  const run = (action: UiAction) => {
+    setOpen(false);
+    action.onClick();
+  };
+
+  return (
+    <div ref={rootRef} className="ltn-detail-action-menu" onKeyDown={event => {
+      if (event.key === 'Escape' && open) {
+        event.preventDefault();
+        event.stopPropagation();
+        setOpen(false);
+        requestAnimationFrame(() => rootRef.current?.querySelector<HTMLButtonElement>('button')?.focus());
+      }
+    }}>
+      <Button type="button" size="sm" variant="outline" intent="neutral" onClick={() => setOpen(value => !value)} aria-expanded={open}>
+        {label}
+      </Button>
+      {open && (
+        <div ref={menuRef} className="ltn-detail-action-popover" role="menu">
+          {actions.map(action => (
+            <button key={action.label} type="button" role="menuitem" disabled={action.disabled} onClick={() => run(action)}>
+              {action.icon}<span>{action.label}</span>
+            </button>
+          ))}
+          {dangerActions.length > 0 && <div className="ltn-detail-action-separator" />}
+          {dangerActions.map(action => (
+            <button key={action.label} type="button" role="menuitem" className="danger" disabled={action.disabled} onClick={() => run(action)}>
+              {action.icon}<span>{action.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function DetailModal({
+  open = true,
+  onClose,
+  title,
+  subtitle,
+  status,
+  primaryAction,
+  actions,
+  dangerActions,
+  summary,
+  footer,
+  children,
+  width = 800,
+  busy = false,
+  closeOnBackdrop = true,
+}: {
+  open?: boolean;
+  onClose: () => void;
+  title: React.ReactNode;
+  subtitle?: React.ReactNode;
+  status?: React.ReactNode;
+  primaryAction?: React.ReactNode;
+  actions?: UiAction[];
+  dangerActions?: UiAction[];
+  summary?: React.ReactNode;
+  footer?: React.ReactNode;
+  children: React.ReactNode;
+  width?: number;
+  busy?: boolean;
+  closeOnBackdrop?: boolean;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const titleId = useId();
+
+  useEffect(() => {
+    if (!open) return;
+    previousFocusRef.current = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    panelRef.current?.focus();
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      previousFocusRef.current?.focus();
+    };
+  }, [open]);
+
+  if (!open || typeof document === 'undefined') return null;
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape' && !busy) {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = panelRef.current?.querySelectorAll<HTMLElement>(
+      'button:not(:disabled),[href],input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex]:not([tabindex="-1"])',
+    );
+    if (!focusable?.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
+  return createPortal(
+    <div className="ltn-detail-modal-overlay" onMouseDown={event => {
+      if (event.target === event.currentTarget && closeOnBackdrop && !busy) onClose();
+    }}>
+      <div
+        ref={panelRef}
+        className="ltn-detail-modal-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-busy={busy || undefined}
+        tabIndex={-1}
+        onKeyDown={handleKeyDown}
+        style={{ maxWidth: width }}
+      >
+        <header className="ltn-detail-modal-header">
+          <div className="ltn-detail-modal-identity">
+            <div className="ltn-detail-modal-title-row">
+              <h3 id={titleId}>{title}</h3>
+              {status}
+            </div>
+            {subtitle && <p>{subtitle}</p>}
+          </div>
+          <div className="ltn-detail-modal-actions">
+            {primaryAction}
+            <DetailActionMenu actions={actions} dangerActions={dangerActions} />
+            <IconButton icon={<X size={18} />} label="Đóng" onClick={onClose} disabled={busy} />
+          </div>
+        </header>
+        {summary && <div className="ltn-detail-modal-summary">{summary}</div>}
+        <div className="ltn-detail-modal-body">{children}</div>
+        <footer className="ltn-detail-modal-footer">
+          {footer || <Button variant="outline" intent="neutral" size="sm" onClick={onClose} disabled={busy}>Đóng</Button>}
+        </footer>
+      </div>
+    </div>,
+    document.body,
   );
 }
 

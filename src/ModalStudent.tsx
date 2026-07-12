@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, UserCheck, Activity, UserX, Phone, MessageCircle, Trash2, ExternalLink } from 'lucide-react';
+import { Save, UserCheck, Activity, UserX, Phone, MessageCircle, Trash2, ExternalLink } from 'lucide-react';
 import { fmtVND, formatDate, capitalizeName, compareClassCode, isValidPhone, isValidDateDMY, toInputDate } from './helpers';
-import { Button, IconButton, Input, Select } from './dsComponents';
-import { DetailMetric } from './uiSystem';
+import { Button, Input, Select } from './dsComponents';
+import { DetailMetric, DetailModal } from './uiSystem';
 import { calcStudentAttendance } from './measures';
 import type { Student, Payment, DeleteTarget } from './types';
 
@@ -11,13 +11,6 @@ const MODAL_STYLE: React.CSSProperties = {
   display:'flex', alignItems:'center', justifyContent:'center',
   padding:'12px', background:'rgba(15,23,42,0.65)', backdropFilter:'blur(5px)',
 };
-const DIALOG_STYLE: React.CSSProperties = {
-  background:'white', width:'100%', maxWidth:840,
-  maxHeight:'95vh', borderRadius:14, overflow:'hidden',
-  display:'flex', flexDirection:'column',
-  boxShadow:'0 24px 80px rgba(0,0,0,0.28)',
-};
-
 function nextStudentId(existingIds: string[]): string {
   const used = new Set(existingIds.map(id => String(id || '').trim().toUpperCase()));
   const maxNo = existingIds.reduce((max, id) => {
@@ -179,11 +172,13 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
   const [noteSaving, setNoteSaving] = useState(false);
 
   const [noteSaved,  setNoteSaved]  = useState(false);
+  const [noteSaveFailed, setNoteSaveFailed] = useState(false);
   const fbKey = `ltn-facebook-${student.id}`;
   const initialFacebook = student.facebookUrl || (() => { try { return localStorage.getItem(fbKey)||''; } catch { return ''; } })();
   const [facebookUrl, setFacebookUrl] = useState<string>(initialFacebook);
   const [facebookSaving, setFacebookSaving] = useState(false);
   const [facebookSaved, setFacebookSaved] = useState(false);
+  const [facebookSaveFailed, setFacebookSaveFailed] = useState(false);
 
   // Reset note khi mở modal cho HS khác
   useEffect(() => {
@@ -199,8 +194,9 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
   const saveNote = async () => {
     if (onSaveNote) {
       setNoteSaving(true);
+      setNoteSaveFailed(false);
       try { await onSaveNote(student, note); setNoteSaved(true); setTimeout(()=>setNoteSaved(false), 2000); }
-      catch { /* fallback localStorage */ try { localStorage.setItem(noteKey, note); } catch {} setNoteSaved(true); setTimeout(()=>setNoteSaved(false), 2000); }
+      catch { setNoteSaved(false); setNoteSaveFailed(true); }
       finally { setNoteSaving(false); }
     } else {
       // Không có onSaveNote → dùng localStorage
@@ -213,8 +209,9 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
     const cleanUrl = facebookUrl.trim();
     if (onSaveFacebook) {
       setFacebookSaving(true);
+      setFacebookSaveFailed(false);
       try { await onSaveFacebook(student, cleanUrl); setFacebookSaved(true); setTimeout(()=>setFacebookSaved(false), 2000); }
-      catch { try { localStorage.setItem(fbKey, cleanUrl); } catch {} setFacebookSaved(true); setTimeout(()=>setFacebookSaved(false), 2000); }
+      catch { setFacebookSaved(false); setFacebookSaveFailed(true); }
       finally { setFacebookSaving(false); }
     } else {
       try { localStorage.setItem(fbKey, cleanUrl); } catch {}
@@ -259,42 +256,54 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
     </div>
   );
 
+  const regularActions = [
+    ...(ph.length >= 9 ? [
+      { label:'Gọi phụ huynh', icon:<Phone size={15}/>, onClick:()=>{ window.location.href = `tel:${ph}`; } },
+      { label:'Mở Zalo phụ huynh', icon:<MessageCircle size={15}/>, onClick:()=>{ window.open(`https://zalo.me/${ph}`, '_blank', 'noopener,noreferrer'); } },
+    ] : []),
+    ...(onToggleStatus && isInactive ? [
+      { label:'Cho học lại', icon:<UserCheck size={15}/>, disabled:toggling, onClick:()=>{ void handleToggle(); } },
+    ] : []),
+  ];
+  const dangerActions = [
+    ...(onToggleStatus && !isInactive ? [
+      { label:'Cho nghỉ học', icon:<UserX size={15}/>, disabled:toggling, onClick:()=>{ setEndDateInput(new Date().toISOString().split('T')[0]); setShowEndPicker(true); } },
+    ] : []),
+    ...(onDelete ? [
+      { label:'Xóa học sinh', icon:<Trash2 size={15}/>, onClick:()=>onDelete({ type:'student', id:s.id, name:capitalizeName(s.name) || s.id }) },
+    ] : []),
+  ];
+
   return (
-    <div className="ltn-form-modal-overlay" style={MODAL_STYLE}>
-      <div className="ltn-form-modal-panel" style={{ ...DIALOG_STYLE, maxWidth:720 }}>
-        <div className="ltn-form-modal-header" style={{ padding:'18px 24px',borderBottom:'1px solid #f1f5f9',display:'flex',alignItems:'center',gap:14,background:'white',flexShrink:0 }}>
-          <div style={{ flex:1,minWidth:0 }}>
-            <h3 style={{ fontSize:17,fontWeight:800,color:'#0f172a',margin:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{capitalizeName(s.name)}</h3>
-            {isInactive&&<span style={{ display:'inline-block',marginTop:5,fontSize:12,fontWeight:700,color:'#e11d48',background:'#fff1f2',border:'1px solid #fecaca',padding:'3px 10px',borderRadius:6,textTransform:'uppercase' }}>Đã nghỉ học</span>}
-          </div>
-          <div style={{ display:'flex',alignItems:'center',gap:8,flexShrink:0 }}>
-            {ph.length>=9&&<a href={`tel:${ph}`} style={{ textDecoration:'none' }}><Button variant="outline" intent="success" size="sm" icon={<Phone size={14}/>}>Gọi</Button></a>}
-            {ph.length>=9&&<a href={`https://zalo.me/${ph}`} target="_blank" rel="noopener noreferrer" style={{ textDecoration:'none' }}><Button variant="outline" intent="primary" size="sm" icon={<MessageCircle size={14}/>}>Zalo PH</Button></a>}
-            {onEdit && <Button intent="primary" variant="outline" size="sm" onClick={() => onEdit(student)}>Sửa hồ sơ</Button>}
-            {onDelete && <Button intent="danger" variant="outline" size="sm" icon={<Trash2 size={14}/>} onClick={() => onDelete({ type:'student', id:s.id, name:capitalizeName(s.name) || s.id })}>Xóa</Button>}
-            {onToggleStatus&&(isInactive
-              ? <Button intent="success" variant="outline" size="sm" icon={<UserCheck size={14}/>} loading={toggling} onClick={()=>handleToggle()}>Học lại</Button>
-              : showEndPicker
-                ? <div style={{ display:'flex',alignItems:'center',gap:8,background:'#fff1f2',border:'1px solid #fecaca',borderRadius:8,padding:'7px 12px' }}>
-                    <span style={{ fontSize:13,fontWeight:700,color:'#be123c',whiteSpace:'nowrap' }}>Ngày nghỉ:</span>
-                    <input type="date" value={endDateInput} onChange={e=>setEndDateInput(e.target.value)} style={{ fontSize:13,fontWeight:600,color:'#9f1239',background:'transparent',border:'none',borderBottom:'1px solid #fca5a5',outline:'none' }}/>
-                    <Button size="xs" intent="danger" loading={toggling} onClick={()=>{setShowEndPicker(false);handleToggle(endDateInput);}}>Xác nhận</Button>
-                    <Button size="xs" variant="ghost" intent="neutral" onClick={()=>setShowEndPicker(false)}>Hủy</Button>
-                  </div>
-                : <Button intent="danger" variant="outline" size="sm" icon={<UserX size={14}/>} onClick={()=>{setEndDateInput(new Date().toISOString().split('T')[0]);setShowEndPicker(true);}}>Nghỉ học</Button>
-            )}
-            <IconButton icon={<X size={20}/>} label="Đóng" onClick={onClose}/>
-          </div>
-        </div>
-
-        <div className="ltn-form-modal-body" style={{ flex:1,minHeight:0,overflowY:'auto',padding:'16px 24px' }}>
-
-          <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(108px,1fr))',gap:10,marginBottom:12 }}>
+    <DetailModal
+      onClose={onClose}
+      title={capitalizeName(s.name)}
+      subtitle={`${s.id || 'Chưa có mã'} · Lớp ${s.classId || 'Chưa xếp lớp'}`}
+      status={isInactive ? <span style={{ fontSize:11,fontWeight:850,color:'#be123c',background:'#fff1f2',border:'1px solid #fecaca',padding:'3px 8px',borderRadius:999,whiteSpace:'nowrap' }}>Đã nghỉ</span> : undefined}
+      primaryAction={onEdit ? <Button intent="primary" variant="outline" size="sm" onClick={() => onEdit(student)}>Sửa hồ sơ</Button> : undefined}
+      actions={regularActions}
+      dangerActions={dangerActions}
+      busy={toggling}
+      width={800}
+      summary={(
+        <div className="ltn-student-detail-summary" style={{ display:'grid',gridTemplateColumns:'repeat(4,minmax(0,1fr))',gap:8 }}>
             <DetailMetric label="Lớp" value={s.classId || '---'} tone="violet" valueSize={18} truncate />
             <DetailMetric label="Trạng thái" value={statusText} tone={isInactive ? 'rose' : 'emerald'} valueSize={18} truncate />
             <DetailMetric label="Chuyên cần" value={attendPct === null ? '—' : `${attendPct}%`} tone={attendPct === null ? 'sky' : attendPct >= 90 ? 'emerald' : attendPct >= 70 ? 'amber' : 'rose'} valueSize={18} truncate />
             <DetailMetric label="Đã đóng" value={fmtVND(totalPaid)} tone="emerald" valueSize={18} truncate />
-          </div>
+        </div>
+      )}
+    >
+          {showEndPicker && (
+            <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap',marginBottom:12,background:'#fff1f2',border:'1px solid #fecaca',borderRadius:10,padding:'10px 12px' }}>
+              <div><p style={{ margin:0,fontSize:13,fontWeight:850,color:'#9f1239' }}>Xác nhận ngày nghỉ học</p><p style={{ margin:'2px 0 0',fontSize:11,color:'#be123c' }}>Công nợ sẽ không được tính sau ngày này.</p></div>
+              <div style={{ display:'flex',alignItems:'center',gap:8 }}>
+                <input type="date" value={endDateInput} onChange={e=>setEndDateInput(e.target.value)} style={{ height:34,fontSize:13,fontWeight:700,color:'#9f1239',background:'#fff',border:'1px solid #fca5a5',borderRadius:8,padding:'0 8px',outline:'none' }}/>
+                <Button size="xs" intent="danger" loading={toggling} onClick={()=>{ void handleToggle(endDateInput).then(()=>setShowEndPicker(false)); }}>Xác nhận</Button>
+                <Button size="xs" variant="ghost" intent="neutral" onClick={()=>setShowEndPicker(false)}>Hủy</Button>
+              </div>
+            </div>
+          )}
 
           <section className="ltn-detail-section">
             <p className="ltn-section-title">Hồ sơ</p>
@@ -316,6 +325,7 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
                   <p style={{ margin:'2px 0 0',fontSize:11,fontWeight:700,color:'#94a3b8' }}>Link hồ sơ hoặc nguồn tuyển sinh</p>
                 </div>
                 {facebookSaved && <span style={{ fontSize:11,fontWeight:900,color:'#059669',background:'#ecfdf5',border:'1px solid #a7f3d0',borderRadius:999,padding:'3px 8px',whiteSpace:'nowrap' }}>Đã lưu</span>}
+                {facebookSaveFailed && <span style={{ fontSize:11,fontWeight:900,color:'#be123c',background:'#fff1f2',border:'1px solid #fecaca',borderRadius:999,padding:'3px 8px',whiteSpace:'nowrap' }}>Chưa lưu</span>}
               </div>
               <div style={{ display:'grid',gridTemplateColumns:'minmax(0,1fr) auto auto',gap:8,padding:10,alignItems:'center' }}>
                 <input
@@ -358,6 +368,7 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
                     <p style={{ margin:'2px 0 0',fontSize:11,fontWeight:700,color:'#94a3b8' }}>Học lực, thái độ, nguồn tuyển sinh hoặc lưu ý phối hợp</p>
                   </div>
                   {noteSaved && <span style={{ fontSize:11,fontWeight:900,color:'#059669',background:'#ecfdf5',border:'1px solid #a7f3d0',borderRadius:999,padding:'3px 8px',whiteSpace:'nowrap' }}>Đã lưu</span>}
+                  {noteSaveFailed && <span style={{ fontSize:11,fontWeight:900,color:'#be123c',background:'#fff1f2',border:'1px solid #fecaca',borderRadius:999,padding:'3px 8px',whiteSpace:'nowrap' }}>Chưa lưu</span>}
                 </div>
                 <textarea
                   value={note}
@@ -437,12 +448,6 @@ export function StudentDetailModal({ student, onClose, tlogs, payments, onToggle
             }
           </div>
 
-        </div>
-
-        <div className="ltn-form-modal-footer" style={{ padding:'10px 24px',borderTop:'1px solid #f1f5f9',display:'flex',justifyContent:'flex-end',gap:10,flexShrink:0 }}>
-          <Button variant="outline" intent="neutral" size="sm" onClick={onClose}>Đóng</Button>
-        </div>
-      </div>
-    </div>
+    </DetailModal>
   );
 }

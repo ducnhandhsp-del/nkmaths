@@ -117,8 +117,11 @@ export function useDomains(cfg: DomainConfig) {
   }, [adminToken, scriptUrl]);
 
   /* ── withSave ── */
-  const withSave = useCallback(async (scope: SaveScope, fn: () => Promise<void>, successMsg?: string) => {
-    if (savingScopesRef.current.has(scope)) return;
+  const withSave = useCallback(async (scope: SaveScope, fn: () => Promise<void>, successMsg?: string, propagateError = false) => {
+    if (savingScopesRef.current.has(scope)) {
+      if (propagateError) throw new Error('Thao tác đang được lưu');
+      return;
+    }
     savingScopesRef.current.add(scope);
     activeSaveCountRef.current += 1;
     setSavingScopes(new Set(savingScopesRef.current));
@@ -132,12 +135,14 @@ export function useDomains(cfg: DomainConfig) {
         silentRef.current = true;
         toast('Yêu cầu phản hồi chậm. Đang kiểm tra lại dữ liệu...', { icon: 'i' });
         try { await loadData(); } catch {}
+        if (propagateError) throw err;
         return;
       }
       toast.error('❌ ' + (err.message || 'Lỗi khi lưu'));
       // FIX: silentRef=true → không hiện LoadingScreen khi lỗi save
       silentRef.current = true;
       try { loadData(); } catch {}
+      if (propagateError) throw err;
     } finally {
       savingScopesRef.current.delete(scope);
       activeSaveCountRef.current = Math.max(0, activeSaveCountRef.current - 1);
@@ -266,7 +271,7 @@ export function useDomains(cfg: DomainConfig) {
         classId: s.classId, startDate: s.startDate, endDate: s.endDate || '', status: s.status,
       });
       requestReloadAfterSave();
-    }, '✅ Đã lưu Facebook URL!')
+    }, '✅ Đã lưu Facebook URL!', true)
   , [withSave, api, setStudents, setSilent, loadData]);
 
   const handleSaveNote = useCallback(async (s: Student, notes: string) =>
@@ -280,7 +285,7 @@ export function useDomains(cfg: DomainConfig) {
         notes, classId: s.classId, startDate: s.startDate, endDate: s.endDate || '', status: s.status,
       });
       requestReloadAfterSave();
-    }, '✅ Đã lưu nhận xét!')
+    }, '✅ Đã lưu nhận xét!', true)
   , [withSave, api, setStudents, setSilent, loadData]);
 
   /* ════════════════════════════════════════════
@@ -405,17 +410,17 @@ export function useDomains(cfg: DomainConfig) {
         collector: form.nguoiThu || studentForFee?.teacher || '',
         nguoiThu: form.nguoiThu || studentForFee?.teacher || '',
       } as any;
-      setEditPayment(null);
       if (!editPayment) {
         setPayments(prev => [previewPayment, ...prev]);
       } else {
         setPayments(prev => prev.map(p => p.id === editPayment.id ? previewPayment : p));
       }
-      setVInvoice(previewPayment);
 
       await api({ action: editPayment ? 'updatePayment' : 'savePayment', timeStamp: t, soCT, ...clean });
+      setEditPayment(null);
+      setVInvoice(previewPayment);
       requestReloadAfterSave();
-    }, editPayment ? '✅ Đã cập nhật phiếu thu!' : '✅ Đã ghi phiếu thu!')
+    }, editPayment ? '✅ Đã cập nhật phiếu thu!' : '✅ Đã ghi phiếu thu!', true)
   , [withSave, editPayment, students, api, setPayments, setSilent, loadData]);
 
   const handleSaveExpense = useCallback(async (form: any) =>
@@ -441,7 +446,6 @@ export function useDomains(cfg: DomainConfig) {
         amount: Number(form.amount),
         spender: form.spender || '',
       };
-      setEditExpense(null);
       if (!editExpense) {
         setExpenses(prev => [optimistic, ...prev]);
       } else {
@@ -453,8 +457,9 @@ export function useDomains(cfg: DomainConfig) {
         timeStamp: t, soCT,
         ...sanitizeObject({ ...form, amount: Number(form.amount), date: dateFormatted }),
       });
+      setEditExpense(null);
       requestReloadAfterSave();
-    }, editExpense ? '✅ Đã cập nhật phiếu chi!' : '✅ Đã ghi phiếu chi!')
+    }, editExpense ? '✅ Đã cập nhật phiếu chi!' : '✅ Đã ghi phiếu chi!', true)
   , [withSave, editExpense, api, setExpenses, setSilent, loadData]);
 
   /* ════════════════════════════════════════════
@@ -666,7 +671,7 @@ export function useDomains(cfg: DomainConfig) {
         salary:     payload.baseSalary     || 0,
       });
       requestReloadAfterSave();
-    }, '✅ Đã lưu giáo viên!');
+    }, '✅ Đã lưu giáo viên!', true);
   }, [teachers, withSave, api, setTeachers, setSilent, loadData]);
 
   /* ════════════════════════════════════════════

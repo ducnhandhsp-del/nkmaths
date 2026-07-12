@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import toast from 'react-hot-toast';
-import { X, Save, DollarSign, Printer, TrendingDown, MessageCircle, Wallet } from 'lucide-react';
-import { fmtVND, formatDate, makeVietQR, BANK_DEFAULT, toInputDate, localDateStr, normalizePaymentMethod, fixVietnameseText, compareClassCode } from './helpers';
+import { Save, DollarSign, Printer, TrendingDown, MessageCircle } from 'lucide-react';
+import { fmtVND, formatDate, makeVietQR, BANK_DEFAULT, toInputDate, localDateStr, normalizePaymentMethod, fixVietnameseText, compareClassCode, parseDMY } from './helpers';
 import { getPaymentTuitionPeriod, getTuitionAccountState } from './measures';
 import { Button, FilterTabs } from './dsComponents';
+import { DetailModal } from './uiSystem';
 import type { Student, Payment, Expense, ClassRecord, TeachingLog } from './types';
 
 /* ─── Layout constants (same pattern as DiaryModal) ──────────────── */
@@ -223,7 +224,7 @@ export function PaymentFormModal({
     })),
   );
 
-  const submit = () => {
+  const submit = async () => {
     const maHS = rawStudentId;
     if (!maHS) { toast.error('Vui lòng nhập mã học sinh'); return; }
     if (!form.date) { toast.error('Vui lòng chọn ngày thu'); return; }
@@ -232,8 +233,12 @@ export function PaymentFormModal({
     if (duplicatePayment && !window.confirm(`Chu kỳ hiện tại của học sinh ${selectedStudent?.name || maHS} đã có phiếu ${duplicatePayment.docNum || duplicatePayment.id}. Bạn vẫn muốn lưu thêm phiếu cho chu kỳ tiếp theo?`)) return;
     const maLop = String(form.maLop || selectedStudent?.classId || '').trim();
     const nguoiThu = String(form.nguoiThu || selectedStudent?.teacher || teacherOf(selectedClass) || '').trim();
-    onClose();
-    return onSave({ ...form, maHS, maLop, MaLop: maLop, classId: maLop, nguoiThu, collector: nguoiThu });
+    try {
+      await onSave({ ...form, maHS, maLop, MaLop: maLop, classId: maLop, nguoiThu, collector: nguoiThu });
+      onClose();
+    } catch {
+      // Domain layer đã hiển thị lỗi; giữ modal và dữ liệu để người dùng thử lại.
+    }
   };
 
   return (
@@ -364,12 +369,16 @@ export function ExpenseFormModal({
 
   if (!open) return null;
 
-  const submit = () => {
+  const submit = async () => {
     if (!form.description?.trim()) { toast.error('Vui lòng nhập nội dung chi'); return; }
     if (!form.amount || Number(form.amount) <= 0) { toast.error('Số tiền không hợp lệ'); return; }
     if (!form.date) { toast.error('Vui lòng chọn ngày chi'); return; }
-    onClose();
-    return onSave(form);
+    try {
+      await onSave(form);
+      onClose();
+    } catch {
+      // Domain layer đã hiển thị lỗi; giữ modal và dữ liệu để người dùng thử lại.
+    }
   };
 
   return (
@@ -878,7 +887,7 @@ export function FinanceDetailModal({ student, classes, payments, tlogs, baseTuit
   }, [cycle.cycles]);
   const sPayments = payments
     .filter(p => p.studentId === s.id)
-    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    .sort((a, b) => parseDMY(b.date) - parseDMY(a.date));
   const totalPaid = sPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
   const latestPayment = sPayments[0];
   const contactPhone = String(s.parentPhone || s.studentPhone || '').replace(/\D/g, '');
@@ -899,48 +908,30 @@ export function FinanceDetailModal({ student, classes, payments, tlogs, baseTuit
                 : { label: 'Đã nghỉ', color: '#64748b', bg: '#f8fafc' };
 
   return (
-    <div className="ltn-form-modal-overlay" style={{ ...FS_WRAP, alignItems: 'center', padding: 16 }}>
-      <div className="ltn-form-modal-panel" style={{ ...FS_DLG, maxWidth: 720, borderRadius: 18, boxShadow: '0 24px 80px rgba(15,23,42,0.28)' }}>
-        <div className="ltn-form-modal-header" style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', background: 'white', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, minWidth: 0, flex: 1 }}>
-            <div style={{ width: 42, height: 42, borderRadius: 12, background: '#eef2ff', color: '#4f46e5', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <Wallet size={20} />
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <h3 style={{ fontSize: 18, fontWeight: 900, color: '#0f172a', margin: 0, lineHeight: 1.25, overflowWrap: 'anywhere' }}>{s.name}</h3>
-              <p style={{ fontSize: 13, color: '#475569', fontWeight: 850, margin: '3px 0 0' }}>
-                Lớp {s.classId || '—'} · {s.id || '—'}
-              </p>
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            {contactPhone.length >= 9 && (
-              <a href={`https://zalo.me/${contactPhone}`} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
-                <Button variant="outline" intent="primary" size="sm" icon={<MessageCircle size={14} />}>Zalo PH</Button>
-              </a>
-            )}
-            <button onClick={onClose} style={{ width: 38, height: 38, borderRadius: 12, background: '#f8fafc', border: '1px solid #e2e8f0', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <X size={17} color="#64748b" />
-            </button>
-          </div>
-        </div>
-        <div className="ltn-form-modal-body" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 18, display: 'grid', gap: 14 }}>
-          <section className="ltn-detail-section">
-            <p className="ltn-section-title">Tổng quan học phí</p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 10 }}>
+    <DetailModal
+      onClose={onClose}
+      title={s.name}
+      subtitle={`${s.id || 'Chưa có mã'} · Lớp ${s.classId || 'Chưa xếp lớp'}`}
+      status={<span style={{ fontSize:11,fontWeight:850,color:cycleMeta.color,background:cycleMeta.bg,border:'1px solid #e2e8f0',padding:'3px 8px',borderRadius:999,whiteSpace:'nowrap' }}>{cycleMeta.label}</span>}
+      actions={contactPhone.length >= 9 ? [{ label:'Mở Zalo phụ huynh', icon:<MessageCircle size={15}/>, onClick:()=>{ window.open(`https://zalo.me/${contactPhone}`, '_blank', 'noopener,noreferrer'); } }] : []}
+      width={760}
+      summary={(
+        <div className="ltn-finance-detail-summary" style={{ display:'grid',gridTemplateColumns:'repeat(4,minmax(0,1fr))',gap:8 }}>
               {[
-                { label: 'Trạng thái', value: cycleMeta.label, tone: cycleMeta.color, bg: cycleMeta.bg },
                 { label: `Chu kỳ ${currentCycle.cycleIndex}`, value: cycle.target > 0 ? `${currentCycle.done}/${cycle.target} buổi` : 'Chưa xác định', tone: '#4f46e5', bg: '#eef2ff' },
                 { label: `Cần thu · ${cycle.unpaidCollectibleCycles.length} kỳ`, value: fmtVND(cycle.totalOutstandingAmount), tone: cycle.totalOutstandingAmount ? '#e11d48' : '#059669', bg: cycle.totalOutstandingAmount ? '#fff1f2' : '#ecfdf5' },
                 { label: 'Tổng đã thu', value: fmtVND(totalPaid), tone: '#059669', bg: '#ecfdf5' },
+                { label: 'Phiếu thu', value: sPayments.length, tone: '#0284c7', bg: '#f0f9ff' },
               ].map(item => (
-                <div key={item.label} style={{ border: '1px solid #e2e8f0', borderRadius: 12, background: item.bg, padding: '11px 12px' }}>
+                <div key={item.label} style={{ minWidth:0,borderRadius:8,background:item.bg,padding:'10px 8px',textAlign:'center' }}>
                   <p style={{ margin: 0, fontSize: 10.5, color: '#64748b', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.06em' }}>{item.label}</p>
-                  <p style={{ margin: '4px 0 0', fontSize: 16, color: item.tone, fontWeight: 950, whiteSpace: 'nowrap' }}>{item.value}</p>
+                  <p style={{ margin:'4px 0 0',fontSize:16,color:item.tone,fontWeight:950,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis' }}>{item.value}</p>
                 </div>
               ))}
-            </div>
-          </section>
+        </div>
+      )}
+    >
+        <div style={{ display:'grid',gap:14 }}>
 
           <section className="ltn-detail-section soft">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
@@ -980,10 +971,6 @@ export function FinanceDetailModal({ student, classes, payments, tlogs, baseTuit
             </div>
           </section>
         </div>
-        <div className="ltn-form-modal-footer" style={{ padding: '10px 18px', borderTop: '1px solid #f1f5f9', flexShrink: 0, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-          <Button variant="outline" intent="neutral" size="sm" onClick={onClose}>Đóng</Button>
-        </div>
-      </div>
-    </div>
+    </DetailModal>
   );
 }

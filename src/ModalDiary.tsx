@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { X, Save, BookOpen, Edit3 } from 'lucide-react';
+import { Save, Edit3 } from 'lucide-react';
 import { compareClassCode, formatDate, toInputDate, localDateStr, normalizeCaDayLabel, normalizeCaDayOptions, getLessonOffReason, isLessonOffLog } from './helpers';
 
 import { Button, AttendancePicker } from './dsComponents';
 import type { AttendanceStudent } from './dsComponents';
 import type { LeaveRequest, Student } from './types';
 import { isStudentActiveOnDate } from './measures';
+import { DetailMetric, DetailModal } from './uiSystem';
 
 const FS_WRAP: React.CSSProperties = { position:'fixed',inset:0,zIndex:200,display:'flex',alignItems:'flex-end',justifyContent:'center',background:'rgba(15,23,42,0.65)',backdropFilter:'blur(5px)' };
 const FS_DLG: React.CSSProperties  = { background:'white',width:'100%',maxWidth:900,maxHeight:'95dvh',borderRadius:'12px 12px 0 0',overflow:'hidden',display:'flex',flexDirection:'column',boxShadow:'0 -8px 40px rgba(0,0,0,0.28)' };
@@ -482,44 +483,22 @@ export function DiaryDetailModal({ log, onClose, onEdit }: { log:any; onClose:()
     { key:'excused', label:'Có phép', count: detailExcused },
   ] as const;
   return (
-    <div className="ltn-form-modal-overlay" style={{ ...FS_WRAP, alignItems:'flex-start', padding:'24px 16px', overflowY:'auto' }}>
-      <div className="ltn-form-modal-panel" style={{ ...FS_DLG, maxWidth:820, height:'calc(100dvh - 48px)', maxHeight:'calc(100dvh - 48px)', minHeight:'auto', borderRadius:18, overflow:'hidden', margin:'0 auto' }}>
-        <div className="ltn-form-modal-header" style={{ background:'#F8FAFC',borderBottom:'1px solid #E2E8F0',padding:'16px 20px',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0 }}>
-          <div style={{ display:'flex',alignItems:'center',gap:12, minWidth:0 }}>
-            <div style={{ width:38,height:38,borderRadius:10,background:'#EEF2FF',display:'flex',alignItems:'center',justifyContent:'center' }}><BookOpen size={18} color="#4F46E5"/></div>
-            <div style={{ minWidth:0 }}>
-              <h3 style={{ fontSize:17,fontWeight:900,color:'#0f172a',margin:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{detailTitle}</h3>
-              <div style={{ display:'flex',alignItems:'center',gap:6,flexWrap:'wrap',marginTop:4 }}>
-                <p style={{ color:'#64748B',fontSize:13,margin:0,fontWeight:700 }}>{formatDate(l.date)}{l.caDay ? ` · ${l.caDay}` : ''}</p>
-                <span className="ltn-diary-id-chip compact">
-                  Loại buổi <strong>{detailLessonType}</strong>
-                </span>
-                {detailLessonId && (
-                  <span className="ltn-diary-id-chip compact">
-                    Mã buổi <strong>{detailLessonId}</strong>
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-          <div style={{ display:'flex',alignItems:'center',gap:8,flexShrink:0 }}>
-            {onEdit && (
-              <Button intent="primary" variant="outline" size="sm" icon={<Edit3 size={14} />} onClick={() => onEdit(l)}>
-                Sửa
-              </Button>
-            )}
-            <button onClick={onClose} style={{ width:32,height:32,borderRadius:8,background:'#F1F5F9',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center' }}><X size={14} color="#64748B"/></button>
-          </div>
+    <DetailModal
+      onClose={onClose}
+      title={detailTitle}
+      subtitle={`${formatDate(l.date)}${l.caDay ? ` · ${l.caDay}` : ''} · ${detailLessonType}${detailLessonId ? ` · ${detailLessonId}` : ''}`}
+      primaryAction={onEdit ? <Button intent="primary" variant="outline" size="sm" icon={<Edit3 size={14} />} onClick={() => onEdit(l)}>Sửa</Button> : undefined}
+      width={840}
+      summary={(
+        <div className="ltn-diary-detail-summary" style={{ display:'grid',gridTemplateColumns:'repeat(4,minmax(0,1fr))',gap:8 }}>
+          <DetailMetric label="Sĩ số" value={attendanceRows.length || detailPresent + detailAbsent + detailExcused} tone="sky" />
+          <DetailMetric label="Có mặt" value={detailPresent} tone="emerald" />
+          <DetailMetric label="Vắng" value={detailAbsent} tone="rose" />
+          <DetailMetric label="Có phép" value={detailExcused} tone="amber" />
         </div>
-        <div className="ltn-form-modal-body" style={{ flex:1,minHeight:0,overflowY:'hidden',padding:'14px 24px 18px',display:'flex',flexDirection:'column',gap:12 }}>
-          <div style={{ display:'flex',gap:8 }}>
-            {[{label:'Có mặt',val:detailPresent,color:'#059669',bg:'#ecfdf5',border:'#a7f3d0'},{label:'Vắng',val:detailAbsent,color:'#dc2626',bg:'#fef2f2',border:'#fecaca'},{label:'Có phép',val:detailExcused,color:'#d97706',bg:'#fffbeb',border:'#fde68a'}].map(({label,val,color,bg,border})=>(
-              <div key={label} style={{ flex:1,textAlign:'center',padding:'10px 8px',borderRadius:8,background:bg,border:`1.5px solid ${border}` }}>
-                <p style={{ fontSize:26,fontWeight:800,color,margin:0,lineHeight:1 }}>{val}</p>
-                <p style={{ fontSize:10,fontWeight:700,color,margin:'3px 0 0',textTransform:'uppercase' }}>{label}</p>
-              </div>
-            ))}
-          </div>
+      )}
+    >
+        <div style={{ display:'flex',flexDirection:'column',gap:12 }}>
           <section className="ltn-detail-section">
             <p className="ltn-section-title">Nội dung buổi học</p>
             <div className="ltn-info-grid">
@@ -538,7 +517,7 @@ export function DiaryDetailModal({ log, onClose, onEdit }: { log:any; onClose:()
             </div>
           </section>
           {attendanceRows.length>0&&(
-            <div style={{ border:'1.5px solid #e2e8f0',overflow:'hidden',borderRadius:10,background:'#fff',display:'flex',flexDirection:'column',minHeight:260,flex:'1 1 320px' }}>
+            <div style={{ border:'1.5px solid #e2e8f0',overflow:'hidden',borderRadius:10,background:'#fff',display:'flex',flexDirection:'column',minHeight:260,maxHeight:420 }}>
               <div style={{ padding:'9px 14px',background:'#f8fafc',borderBottom:'1.5px solid #e2e8f0',display:'grid',gridTemplateColumns:'minmax(0,1fr) auto',alignItems:'center',gap:10 }}>
                 <div style={{ minWidth:0 }}>
                   <p style={{ fontSize:11,fontWeight:900,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.08em',margin:0 }}>Danh sách điểm danh</p>
@@ -578,10 +557,6 @@ export function DiaryDetailModal({ log, onClose, onEdit }: { log:any; onClose:()
             </div>
           )}
         </div>
-        <div className="ltn-form-modal-footer" style={{ padding:'10px 24px',borderTop:'1px solid #f1f5f9',flexShrink:0,display:'flex',justifyContent:'flex-end',gap:10 }}>
-          <Button variant="outline" intent="neutral" size="sm" onClick={onClose}>Đóng</Button>
-        </div>
-      </div>
-    </div>
+    </DetailModal>
   );
 }
