@@ -365,7 +365,7 @@ export function useDomains(cfg: DomainConfig) {
         ? (editPayment.docNum || form.docNum)
         : (form.docNum || `PT-${yy}${mm}${dd}-${maHS.toUpperCase()}-${Date.now().toString(36).slice(-4).toUpperCase()}`);
       const dateFormatted = formatDate(form.date);
-      const description  = `Học phí tháng ${thangHP} năm ${namHP}`;
+      const description  = `Học phí chu kỳ - kỳ đối soát T${thangHP}/${namHP}`;
       const clean        = sanitizeObject({ ...form, maHS, maLop, MaLop: maLop, classId: maLop, soTien: Number(form.soTien), date: dateFormatted, description, thangHP, namHP });
 
       const previewPayment: Payment = {

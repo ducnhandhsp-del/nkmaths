@@ -12,6 +12,7 @@ import {
   getMonthlyTuitionState,
   getPaymentTuitionPeriod,
   getUniquePaidStudentIdsByReceiptPeriod,
+  getTuitionAccountState,
   getTuitionCycleState,
   getTuitionSessionProgress,
   isPaidFn,
@@ -268,8 +269,8 @@ cycleLogs.forEach((log, index) => {
 const cycleStudent: Student = { ...baseStudent, startDate: '01/06/2026' };
 assert.deepEqual(
   getTuitionCycleState({ student: cycleStudent, classes: [twoSlotClass], payments: [], tlogs: cycleLogs, baseTuition: 600000 }).sessionProgress,
-  { done: 9, target: 8, due: false, overdue: true },
-  'cycle counts lessons since start when there is no payment',
+  { done: 1, target: 8, due: false, overdue: false },
+  'fixed-cycle adapter exposes progress within the current attendance cycle',
 );
 const cyclePaid = getTuitionCycleState({
   student: cycleStudent,
@@ -278,17 +279,17 @@ const cyclePaid = getTuitionCycleState({
   tlogs: cycleLogs,
   baseTuition: 600000,
 });
-assert.equal(cyclePaid.status, 'paid', 'payment closes the overdue cycle');
-assert.deepEqual(cyclePaid.sessionProgress, { done: 0, target: 8, due: false, overdue: false }, 'cycle resets to 0 after payment date');
+assert.equal(cyclePaid.status, 'not_due', 'payment closes cycle one while attendance nine remains in cycle two');
+assert.deepEqual(cyclePaid.sessionProgress, { done: 1, target: 8, due: false, overdue: false }, 'payment date does not reset fixed attendance progress');
 const cycleAfterNextLesson = getTuitionCycleState({
   student: cycleStudent,
   classes: [twoSlotClass],
   payments: [{ ...payments[0], date: '09/06/2026', thangHP: 6, namHP: 2026 }],
-  tlogs: [...cycleLogs, { ...cycleLogs[0], rawDate: '10/06/2026', date: '10/06/2026', originalDate: '10/06/2026', caDay: '15h30', originalCaDay: '15h30' }],
+  tlogs: [...cycleLogs, { ...cycleLogs[0], maBuoi: 'CYCLE-10', rawDate: '10/06/2026', date: '10/06/2026', originalDate: '10/06/2026', caDay: '15h30', originalCaDay: '15h30' }],
   baseTuition: 600000,
 });
 assert.equal(cycleAfterNextLesson.status, 'not_due', 'new cycle is not due after one lesson');
-assert.deepEqual(cycleAfterNextLesson.sessionProgress, { done: 1, target: 8, due: false, overdue: false }, 'next lesson starts the new cycle at 1/8');
+assert.deepEqual(cycleAfterNextLesson.sessionProgress, { done: 2, target: 8, due: false, overdue: false }, 'tenth attendance advances fixed cycle two to 2/8');
 
 const makeCycleLog = (date: string, id: string, options: {
   classId?: string;
@@ -324,6 +325,91 @@ const julyCycleLogs = Array.from({ length: 9 }, (_, index) =>
   makeCycleLog(`${String(index + 1).padStart(2, '0')}/07/2026`, `JULY-${index + 1}`),
 );
 
+const twentyAttendances = Array.from({ length: 20 }, (_, index) => {
+  const day = index + 1;
+  const date = day <= 30
+    ? `${String(day).padStart(2, '0')}/06/2026`
+    : `${String(day - 30).padStart(2, '0')}/07/2026`;
+  return makeCycleLog(date, `FIXED-${index + 1}`);
+});
+const oneReceiptTwentyAttendanceAccount = getTuitionAccountState({
+  student: cycleStudent,
+  classes: [twoSlotClass],
+  payments: [{ ...payments[0], date: '09/06/2026' }],
+  tlogs: twentyAttendances,
+  baseTuition: 600000,
+});
+assert.equal(oneReceiptTwentyAttendanceAccount.attendanceCount, 20, 'fixed account counts all valid attendances from startDate');
+assert.deepEqual(
+  oneReceiptTwentyAttendanceAccount.cycles.map(cycle => ({ index: cycle.cycleIndex, done: cycle.done, status: cycle.status })),
+  [
+    { index: 1, done: 8, status: 'paid' },
+    { index: 2, done: 8, status: 'overdue' },
+    { index: 3, done: 4, status: 'due' },
+  ],
+  'fixed account splits attendance into stable 1-8, 9-16, and 17-24 cycles',
+);
+assert.equal(oneReceiptTwentyAttendanceAccount.currentCycle.cycleIndex, 3, 'attendance position selects the current cycle');
+assert.equal(oneReceiptTwentyAttendanceAccount.oldestUnpaidCollectibleCycle?.cycleIndex, 2, 'oldest unpaid completed cycle is collected first');
+assert.equal(oneReceiptTwentyAttendanceAccount.totalOutstandingAmount, 1200000, 'multiple unpaid cycles contribute to total debt');
+
+const lateReceiptAccount = getTuitionAccountState({
+  student: cycleStudent,
+  classes: [twoSlotClass],
+  payments: [{ ...payments[0], date: '12/06/2026' }],
+  tlogs: twentyAttendances.slice(0, 12),
+  baseTuition: 600000,
+});
+assert.equal(lateReceiptAccount.cycles[0].status, 'paid', 'late first receipt pays cycle one');
+assert.deepEqual(
+  { index: lateReceiptAccount.currentCycle.cycleIndex, done: lateReceiptAccount.currentCycle.done, status: lateReceiptAccount.currentCycle.status },
+  { index: 2, done: 4, status: 'due' },
+  'late receipt does not reset cycle two progress',
+);
+
+const sameMonthTwoReceiptAccount = getTuitionAccountState({
+  student: cycleStudent,
+  classes: [twoSlotClass],
+  payments: [
+    { ...payments[0], id: 'PT-C1', date: '02/07/2026', thangHP: 7, namHP: 2026, createdAt: '08:00:00 - 02/07/2026' },
+    { ...payments[0], id: 'PT-C2', date: '20/07/2026', thangHP: 7, namHP: 2026, createdAt: '08:00:00 - 20/07/2026' },
+  ],
+  tlogs: twentyAttendances,
+  baseTuition: 600000,
+});
+assert.deepEqual(
+  sameMonthTwoReceiptAccount.cycles.slice(0, 2).map(cycle => cycle.payment?.id),
+  ['PT-C1', 'PT-C2'],
+  'two receipts in the same tuition month pay consecutive cycles',
+);
+assert.equal(sameMonthTwoReceiptAccount.totalOutstandingAmount, 600000, 'only cycle three remains due after two receipts');
+
+const earlyReceiptAccount = getTuitionAccountState({
+  student: cycleStudent,
+  classes: [twoSlotClass],
+  payments: [{ ...payments[0], date: '03/06/2026' }],
+  tlogs: twentyAttendances.slice(0, 3),
+  baseTuition: 600000,
+});
+assert.deepEqual(
+  { index: earlyReceiptAccount.currentCycle.cycleIndex, done: earlyReceiptAccount.currentCycle.done, status: earlyReceiptAccount.currentCycle.status },
+  { index: 1, done: 3, status: 'paid' },
+  'early receipt pays cycle one while attendance remains at 3/8',
+);
+
+const sameDayReceiptAccount = getTuitionAccountState({
+  student: cycleStudent,
+  classes: [twoSlotClass],
+  payments: [
+    { ...payments[0], id: 'SAME-1', date: '09/06/2026', createdAt: '' },
+    { ...payments[0], id: 'SAME-2', date: '09/06/2026', createdAt: '' },
+  ],
+  tlogs: twentyAttendances,
+  baseTuition: 600000,
+});
+assert.deepEqual(sameDayReceiptAccount.cycles.slice(0, 2).map(cycle => cycle.payment?.id), ['SAME-1', 'SAME-2'], 'same-day receipts keep stable source order');
+assert.deepEqual(sameDayReceiptAccount.reviewReasons, ['same_day_receipt_order'], 'ambiguous same-day receipt order is flagged for review');
+
 const midMonthPaidState = getTuitionCycleState({
   student: baseStudent,
   classes: [twoSlotClass],
@@ -331,8 +417,8 @@ const midMonthPaidState = getTuitionCycleState({
   tlogs: julyCycleLogs.slice(0, 7),
   baseTuition: 600000,
 });
-assert.equal(midMonthPaidState.status, 'due', 'A: seven attendances after a late-June payment are already in the collection window');
-assert.deepEqual(midMonthPaidState.sessionProgress, { done: 7, target: 8, due: false, overdue: false }, 'A: new cycle counts only attendance after the latest payment');
+assert.equal(midMonthPaidState.status, 'paid', 'A: an early receipt pays cycle one without moving its boundary');
+assert.deepEqual(midMonthPaidState.sessionProgress, { done: 7, target: 8, due: false, overdue: false }, 'A: fixed progress includes attendance before and after the receipt');
 
 const firstCycleSeven = getTuitionCycleState({
   student: baseStudent,
@@ -384,8 +470,8 @@ const prepaidCycleState = getTuitionCycleState({
   tlogs: [makeCycleLog('28/06/2026', 'PAYMENT-DAY'), makeCycleLog('01/07/2026', 'AFTER-PAYMENT')],
   baseTuition: 600000,
 });
-assert.equal(prepaidCycleState.done, 1, 'C: tuition-period label does not change cycle; payment-day lessons are excluded safely');
-assert.equal(prepaidCycleState.status, 'not_due', 'C: prepaid tuition starts one new attendance cycle');
+assert.equal(prepaidCycleState.done, 2, 'C: payment-day attendance remains in its fixed cycle');
+assert.equal(prepaidCycleState.status, 'paid', 'C: prepaid tuition pays cycle one without starting a new boundary');
 
 const adjustedPaymentState = getTuitionCycleState({
   student: baseStudent,
@@ -463,7 +549,7 @@ assert.equal(getTuitionCycleState({
   payments: historicalPayments,
   tlogs: historicalLogs,
   baseTuition: 600000,
-}).status, 'paid', 'phase 3: current snapshot still includes the later receipt');
+}).status, 'not_due', 'phase 3: the later receipt pays cycle one while attendance nine opens cycle two');
 assert.equal(getTuitionCycleState({
   student: { ...baseStudent, status: 'inactive', endDate: '20/07/2026' },
   classes: [twoSlotClass],

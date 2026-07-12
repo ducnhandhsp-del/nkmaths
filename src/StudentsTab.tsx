@@ -4,11 +4,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ReceiptText, UserPlus } from 'lucide-react';
 import { IPP, capitalizeName, compareClassCode, fixVietnameseText, isStudentActive } from './helpers';
-import { getTuitionCycleState } from './measures';
+import { getTuitionAccountState } from './measures';
 import { Pager, Button, Select } from './dsComponents';
 import { DataTable, EmptyState, MobileRecordAction, MobileRecordList, MobileRecordMarker, MobileRecordRow, PageToolbar, StatusBadge } from './uiSystem';
 import type { Student, DeleteTarget, Payment, TeachingLog } from './types';
-import type { TuitionCycleState } from './measures';
+import type { TuitionAccountState } from './measures';
 
 interface Props {
   filtS: Student[];
@@ -75,15 +75,17 @@ function ZaloMark({ size = 18 }: { size?: number }) {
   );
 }
 
-function TuitionCycleBadge({ state }: { state?: TuitionCycleState }) {
+function TuitionCycleBadge({ state }: { state?: TuitionAccountState }) {
   if (!state) return <span style={{ color: '#94a3b8', fontWeight: 800 }}>—</span>;
+  const current = state.currentCycle;
+  if (state.reviewReasons.length > 0) return <StatusBadge domain="tuition" status="needs_review" label="Cần đối soát" tone="warning" />;
   if (state.status === 'paid') return <StatusBadge domain="tuition" status="paid" label="Đã thu" tone="success" />;
-  if (state.status === 'due') return <StatusBadge domain="tuition" status="due" label={`Cần thu ${state.done}/${state.target}`} tone="warning" />;
-  if (state.status === 'overdue') return <StatusBadge domain="tuition" status="overdue" label={`Quá hạn ${state.done}/${state.target}`} tone="danger" />;
+  if (state.status === 'due') return <StatusBadge domain="tuition" status="due" label={`Cần thu ${state.unpaidCollectibleCycles.length} kỳ`} tone="warning" />;
+  if (state.status === 'overdue') return <StatusBadge domain="tuition" status="overdue" label={`Quá hạn ${state.unpaidCollectibleCycles.length} kỳ`} tone="danger" />;
   if (state.status === 'needs_review') return <StatusBadge domain="tuition" status="needs_review" label="Cần kiểm tra" tone="warning" />;
   if (state.status === 'no_schedule') return <StatusBadge domain="tuition" status="no_schedule" label="Chưa có lịch" tone="neutral" />;
   if (state.status === 'inactive') return <StatusBadge domain="tuition" status="inactive" label="Đã nghỉ" tone="neutral" />;
-  return <StatusBadge domain="tuition" status="not_due" label={`${state.done}/${state.target} · Chưa tới hạn`} tone="neutral" />;
+  return <StatusBadge domain="tuition" status="not_due" label={`CK${current.cycleIndex} · ${current.done}/${state.target}`} tone="neutral" />;
 }
 
 export default function StudentsTab({
@@ -126,7 +128,7 @@ export default function StudentsTab({
     return [{ value: '', label: 'Lớp' }, ...rows];
   }, [uClasses]);
 
-  const tuitionStateByStudent = useMemo(() => new Map(students.map(student => [student.id, getTuitionCycleState({
+  const tuitionStateByStudent = useMemo(() => new Map(students.map(student => [student.id, getTuitionAccountState({
     student,
     classes: uClasses,
     payments,

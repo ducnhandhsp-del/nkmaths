@@ -19,7 +19,7 @@ import {
   calcStudentAbsenceStreak,
   calcStudentAttendance,
   getAttendanceRisk,
-  getTuitionCycleState,
+  getTuitionAccountState,
   getPaymentReceiptPeriod,
   normalizeAttendanceStatus,
 } from './measures';
@@ -262,7 +262,7 @@ export default function OverviewTab({
 }: Props) {
   const [quickOpen, setQuickOpen] = useState(false);
   const activeStudents = useMemo(() => students.filter(isStudentActive), [students]);
-  const tuitionStates = useMemo(() => students.map(student => getTuitionCycleState({
+  const tuitionStates = useMemo(() => students.map(student => getTuitionAccountState({
     student,
     classes: uClasses,
     payments,
@@ -278,7 +278,7 @@ export default function OverviewTab({
     [tuitionStates],
   );
   const debtAmount = useMemo(
-    () => tuitionStates.reduce((sum, state) => sum + state.outstandingAmount, 0),
+    () => tuitionStates.reduce((sum, state) => sum + state.totalOutstandingAmount, 0),
     [tuitionStates],
   );
 

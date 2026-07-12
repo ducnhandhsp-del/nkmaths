@@ -18,7 +18,7 @@ import { fmtVND, capitalizeName, compareClassCode, normalizePaymentMethod, parse
 import {
   classIdOf,
   getPaymentReceiptPeriod,
-  getTuitionCycleState,
+  getTuitionAccountState,
   parsePeriod,
 } from './measures';
 import { Badge, Button, Pager, SearchBar, Select } from './dsComponents';
@@ -56,7 +56,9 @@ interface DebtTableRow {
   student: Student;
   target: number;
   done: number;
-  cycleStartDate: string;
+  currentCycleIndex: number;
+  unpaidCycleCount: number;
+  hasReview: boolean;
   debtAmount: number;
   paidAmount: number;
   lastPayment?: Payment;
@@ -250,7 +252,7 @@ export default function FinanceTab({
     return Math.min(endOfSelectedMonth, Date.now());
   }, [selectedDebtMonth]);
   const buildDebtRow = useCallback((s: Student): DebtTableRow => {
-    const cycleState = getTuitionCycleState({
+    const cycleState = getTuitionAccountState({
       student: s,
       classes: uClasses,
       payments,
@@ -259,7 +261,7 @@ export default function FinanceTab({
       asOfTs: debtAsOfTs,
     });
     const status = cycleState.status;
-    const debtAmount = cycleState.outstandingAmount;
+    const debtAmount = cycleState.totalOutstandingAmount;
     const isInactive = status === 'inactive';
     const isProblem = status === 'overdue';
     const isWarning = status === 'due' || status === 'needs_review';
@@ -267,12 +269,14 @@ export default function FinanceTab({
       id: s.id,
       student: s,
       target: cycleState.target,
-      done: cycleState.done,
-      cycleStartDate: cycleState.cycleStartDate,
+      done: cycleState.currentCycle.done,
+      currentCycleIndex: cycleState.currentCycle.cycleIndex,
+      unpaidCycleCount: cycleState.unpaidCollectibleCycles.length,
+      hasReview: cycleState.reviewReasons.length > 0 || status === 'needs_review',
       debtAmount,
-      paidAmount: cycleState.paidAmount,
+      paidAmount: Number(cycleState.lastPayment?.amount || 0),
       lastPayment: cycleState.lastPayment,
-      adjustedPayment: cycleState.adjustedPayment,
+      adjustedPayment: !!cycleState.lastPayment && baseTuition > 0 && Number(cycleState.lastPayment.amount || 0) !== baseTuition,
       isInactive,
       isProblem,
       isWarning,
@@ -290,7 +294,7 @@ export default function FinanceTab({
 
   const debtTableRows = useMemo(() => financeCycleRows
     .filter(row => {
-      if (debtStatusFilter === 'review' && row.status !== 'needs_review') return false;
+      if (debtStatusFilter === 'review' && !row.hasReview) return false;
       if (debtStatusFilter === 'due' && row.status !== 'due') return false;
       if (debtStatusFilter === 'overdue' && row.status !== 'overdue') return false;
       if (debtStatusFilter === 'collected') {
@@ -332,10 +336,12 @@ export default function FinanceTab({
     (row: DebtTableRow) => debtStatusFilter === 'collected' ? row.paidAmount : getDebtPeriodAmount(row),
     [debtStatusFilter, getDebtPeriodAmount],
   );
-  const getDebtPeriodStatus = useCallback((row: DebtTableRow): DebtStatus => row.status, []);
+  const getDebtPeriodStatus = useCallback((row: DebtTableRow): DebtStatus => (
+    debtStatusFilter === 'review' && row.hasReview ? 'needs_review' : row.status
+  ), [debtStatusFilter]);
   const makePaymentDraft = useCallback((row: DebtTableRow) => {
     const s = row.student;
-    const amount = getDebtPeriodAmount(row) || row.debtAmount || baseTuition;
+    const amount = baseTuition;
     return {
       maHS: s.id,
       maLop: s.classId || '',
@@ -343,7 +349,7 @@ export default function FinanceTab({
       thangHP: curMo,
       namHP: curYr,
     };
-  }, [baseTuition, curMo, curYr, getDebtPeriodAmount]);
+  }, [baseTuition, curMo, curYr]);
 
   const selectedMonthPayments = useMemo(() => {
     return payments.slice().reverse().filter(p => {
@@ -356,7 +362,7 @@ export default function FinanceTab({
 
   const collectedAmount = selectedMonthPayments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
   const collectionRows = financeCycleRows.filter(row => row.status === 'due' || row.status === 'overdue');
-  const reviewRows = financeCycleRows.filter(row => row.status === 'needs_review');
+  const reviewRows = financeCycleRows.filter(row => row.hasReview);
   const dueAmount = financeCycleRows
     .filter(row => row.status === 'due')
     .reduce((sum, row) => sum + getDebtPeriodAmount(row), 0);
@@ -404,7 +410,7 @@ export default function FinanceTab({
         if (!row.target) return <span style={{ color: '#94a3b8', fontWeight: 900 }}>—</span>;
         return (
           <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 2, color: '#334155', fontWeight: 950, fontSize: 12, lineHeight: 1.1 }}>
-            {row.done}/{row.target}
+            CK{row.currentCycleIndex} · {row.done}/{row.target}
           </span>
         );
       },
@@ -421,10 +427,14 @@ export default function FinanceTab({
     },
     {
       key: 'due',
-      label: 'Bắt đầu chu kỳ',
+      label: 'Chu kỳ cần thu',
       align: 'center' as const,
       width: '10%',
-      render: (_: unknown, row: DebtTableRow) => <DateText value={row.cycleStartDate} />,
+      render: (_: unknown, row: DebtTableRow) => (
+        <span style={{ color: row.unpaidCycleCount > 1 ? '#be123c' : '#475569', fontSize: 12, fontWeight: 900 }}>
+          {row.unpaidCycleCount > 0 ? `${row.unpaidCycleCount} kỳ` : '—'}
+        </span>
+      ),
     },
     {
       key: 'status',
@@ -817,7 +827,7 @@ export default function FinanceTab({
               const receipt = getDebtPeriodPayment(row);
               const amount = getDebtDisplayAmount(row);
               const actionAmount = amount || row.debtAmount || baseTuition;
-              const sessionLabel = row.target ? `${row.done}/${row.target} buổi` : 'Chưa có lịch';
+              const sessionLabel = row.target ? `CK${row.currentCycleIndex} · ${row.done}/${row.target} buổi${row.unpaidCycleCount > 1 ? ` · ${row.unpaidCycleCount} kỳ cần thu` : ''}` : 'Chưa có lịch';
               const classId = s.classId || 'HS';
               return (
                 <MobileRecordRow

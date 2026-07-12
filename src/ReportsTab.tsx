@@ -19,7 +19,7 @@ import {
   buildDataHealthReport,
   getPaymentReceiptPeriod,
   getUniquePaidStudentIdsByReceiptPeriod,
-  getTuitionCycleState,
+  getTuitionAccountState,
   isStudentActive,
   isStudentActiveInMonth,
   parsePeriod,
@@ -249,7 +249,7 @@ export default function ReportsTab({
     return Math.min(endOfSelectedMonth, Date.now());
   }, [filterMo, filterYr]);
   const reportSnapshotLabel = `cuối T${filterMo}/${filterYr}`;
-  const tuitionCycleStates = useMemo(() => students.map(student => getTuitionCycleState({
+  const tuitionCycleStates = useMemo(() => students.map(student => getTuitionAccountState({
     student,
     classes: uClasses,
     payments,
@@ -261,17 +261,17 @@ export default function ReportsTab({
     () => tuitionCycleStates.filter(state => state.status === 'due' || state.status === 'overdue'),
     [tuitionCycleStates],
   );
-  const tuitionDebtAmount = tuitionCollectionStates.reduce((sum, state) => sum + state.outstandingAmount, 0);
+  const tuitionDebtAmount = tuitionCollectionStates.reduce((sum, state) => sum + state.totalOutstandingAmount, 0);
   const overdueTuitionStates = tuitionCycleStates.filter(state => state.status === 'overdue');
-  const overdueTuitionAmount = overdueTuitionStates.reduce((sum, state) => sum + state.outstandingAmount, 0);
-  const reviewTuitionStates = tuitionCycleStates.filter(state => state.status === 'needs_review');
+  const overdueTuitionAmount = overdueTuitionStates.reduce((sum, state) => sum + state.totalOutstandingAmount, 0);
+  const reviewTuitionStates = tuitionCycleStates.filter(state => state.status === 'needs_review' || state.reviewReasons.length > 0);
   const tuitionExportRows = tuitionCycleStates
-    .filter(state => state.status === 'due' || state.status === 'overdue' || state.status === 'needs_review')
+    .filter(state => state.status === 'due' || state.status === 'overdue' || state.status === 'needs_review' || state.reviewReasons.length > 0)
     .map(state => [
       `Đối soát công nợ ${reportSnapshotLabel}`,
       `${state.student.id} - ${state.student.name}`,
-      state.outstandingAmount,
-      `${state.student.classId || 'Chưa xếp lớp'} | ${state.status} | ${state.done}/${state.target} buổi | từ ${state.cycleStartDate || '—'}`,
+      state.totalOutstandingAmount,
+      `${state.student.classId || 'Chưa xếp lớp'} | ${state.status} | Chu kỳ ${state.currentCycle.cycleIndex}: ${state.currentCycle.done}/${state.target} buổi | ${state.unpaidCollectibleCycles.length} chu kỳ cần thu`,
     ]);
 
   const handleExport = () => {

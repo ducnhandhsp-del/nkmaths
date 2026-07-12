@@ -60,7 +60,7 @@ interface ZaloTemplate { id: string; name: string; content: string; }
 const TEMPLATE_KEY = 'ltn-message-templates';
 const DEFAULT_TEMPLATE: ZaloTemplate = {
   id: 'tuition', name: 'Nhắc phí Zalo',
-  content: 'Chào phụ huynh em [Ten], LỚP TOÁN NK thông báo học phí tháng [Thang]/[Nam] của em hiện còn [SoTien]. Phụ huynh vui lòng kiểm tra và thanh toán giúp lớp. Em cảm ơn ạ.',
+  content: 'Chào phụ huynh em [Ten], LỚP TOÁN NK thông báo học phí theo chu kỳ học hiện tại của em đang cần thu [SoTien]. Phụ huynh vui lòng kiểm tra và thanh toán giúp lớp. Em cảm ơn ạ.',
 };
 const DEFAULT_TEMPLATES: ZaloTemplate[] = [
   DEFAULT_TEMPLATE,

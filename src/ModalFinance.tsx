@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import { X, Save, DollarSign, Printer, TrendingDown, MessageCircle, Wallet } from 'lucide-react';
 import { fmtVND, formatDate, makeVietQR, BANK_DEFAULT, toInputDate, localDateStr, normalizePaymentMethod, fixVietnameseText, compareClassCode } from './helpers';
-import { getPaymentTuitionPeriod, getTuitionCycleState } from './measures';
+import { getPaymentTuitionPeriod, getTuitionAccountState } from './measures';
 import { Button, FilterTabs } from './dsComponents';
 import type { Student, Payment, Expense, ClassRecord, TeachingLog } from './types';
 
@@ -169,8 +169,8 @@ export function PaymentFormModal({
   const selectedClass = classes.find(c => classIdOf(c) === String(form.maLop || selectedStudent?.classId || '').trim());
   const duplicatePayment = useMemo(() => {
     if (!selectedStudent || editingPayment) return null;
-    const state = getTuitionCycleState({ student: selectedStudent, classes, payments, tlogs, baseTuition });
-    return state.status === 'paid' ? state.lastPayment || null : null;
+    const state = getTuitionAccountState({ student: selectedStudent, classes, payments, tlogs, baseTuition });
+    return state.currentCycle.paid ? state.currentCycle.payment || null : null;
   }, [baseTuition, classes, editingPayment, payments, selectedStudent, tlogs]);
 
   useEffect(() => {
@@ -211,7 +211,7 @@ export function PaymentFormModal({
     if (!form.date) { toast.error('Vui lòng chọn ngày thu'); return; }
     if (!form.soTien || Number(form.soTien) <= 0) { toast.error('Số tiền không hợp lệ'); return; }
     if (!form.thangHP) { toast.error('Vui lòng chọn tháng học phí'); return; }
-    if (duplicatePayment && !window.confirm(`Học sinh ${selectedStudent?.name || maHS} vừa có phiếu thu ${duplicatePayment.docNum || duplicatePayment.id} và chưa phát sinh buổi học mới. Bạn vẫn muốn lưu thêm phiếu?`)) return;
+    if (duplicatePayment && !window.confirm(`Chu kỳ hiện tại của học sinh ${selectedStudent?.name || maHS} đã có phiếu ${duplicatePayment.docNum || duplicatePayment.id}. Bạn vẫn muốn lưu thêm phiếu cho chu kỳ tiếp theo?`)) return;
     const maLop = String(form.maLop || selectedStudent?.classId || '').trim();
     const nguoiThu = String(form.nguoiThu || selectedStudent?.teacher || teacherOf(selectedClass) || '').trim();
     onClose();
@@ -482,8 +482,8 @@ export function FABModal({
   const receiptClassId = String(selectedStudent?.classId || classIdOf(selectedClass) || '').trim();
   const duplicateFeePayment = (() => {
     if (!selectedStudent || editingPayment) return null;
-    const state = getTuitionCycleState({ student: selectedStudent, classes, payments, tlogs, baseTuition });
-    return state.status === 'paid' ? state.lastPayment || null : null;
+    const state = getTuitionAccountState({ student: selectedStudent, classes, payments, tlogs, baseTuition });
+    return state.currentCycle.paid ? state.currentCycle.payment || null : null;
   })();
 
   return (
@@ -666,7 +666,7 @@ export function FABModal({
                 if (!fee.date) { toast.error('⚠️ Vui lòng chọn ngày thu!'); return; }
                 if (!fee.soTien || Number(fee.soTien) <= 0) { toast.error('⚠️ Số tiền không hợp lệ!'); return; }
                 if (!fee.thangHP) { toast.error('⚠️ Vui lòng chọn tháng học phí!'); return; }
-                if (duplicateFeePayment && !window.confirm(`Học sinh ${selectedStudent?.name || maHS} vừa có phiếu thu ${duplicateFeePayment.docNum || duplicateFeePayment.id} và chưa phát sinh buổi học mới. Bạn vẫn muốn lưu thêm phiếu?`)) return;
+                if (duplicateFeePayment && !window.confirm(`Chu kỳ hiện tại của học sinh ${selectedStudent?.name || maHS} đã có phiếu ${duplicateFeePayment.docNum || duplicateFeePayment.id}. Bạn vẫn muốn lưu thêm phiếu cho chu kỳ tiếp theo?`)) return;
                 const maLop = selectedStudent?.classId || '';
                 onClose(); onSaveFee({ ...fee, maHS, maLop, MaLop: maLop, classId: maLop, nguoiThu: collectorName, collector: collectorName });
               }}
@@ -838,9 +838,19 @@ export function FinanceDetailModal({ student, classes, payments, tlogs, baseTuit
 }) {
   const s = student;
   const cycle = useMemo(
-    () => getTuitionCycleState({ student, classes, payments, tlogs, baseTuition }),
+    () => getTuitionAccountState({ student, classes, payments, tlogs, baseTuition }),
     [baseTuition, classes, payments, student, tlogs]
   );
+  const currentCycle = cycle.currentCycle;
+  const paymentCycleByKey = useMemo(() => {
+    const map = new Map<string, number>();
+    cycle.cycles.forEach(item => {
+      if (!item.payment) return;
+      const key = String(item.payment.id || item.payment.docNum || '').trim();
+      if (key) map.set(key, item.cycleIndex);
+    });
+    return map;
+  }, [cycle.cycles]);
   const sPayments = payments
     .filter(p => p.studentId === s.id)
     .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
@@ -895,8 +905,8 @@ export function FinanceDetailModal({ student, classes, payments, tlogs, baseTuit
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 10 }}>
               {[
                 { label: 'Trạng thái', value: cycleMeta.label, tone: cycleMeta.color, bg: cycleMeta.bg },
-                { label: 'Tiến độ chu kỳ', value: cycle.target > 0 ? `${cycle.done}/${cycle.target} buổi` : 'Chưa xác định', tone: '#4f46e5', bg: '#eef2ff' },
-                { label: 'Cần thu', value: fmtVND(cycle.outstandingAmount), tone: cycle.outstandingAmount ? '#e11d48' : '#059669', bg: cycle.outstandingAmount ? '#fff1f2' : '#ecfdf5' },
+                { label: `Chu kỳ ${currentCycle.cycleIndex}`, value: cycle.target > 0 ? `${currentCycle.done}/${cycle.target} buổi` : 'Chưa xác định', tone: '#4f46e5', bg: '#eef2ff' },
+                { label: `Cần thu · ${cycle.unpaidCollectibleCycles.length} kỳ`, value: fmtVND(cycle.totalOutstandingAmount), tone: cycle.totalOutstandingAmount ? '#e11d48' : '#059669', bg: cycle.totalOutstandingAmount ? '#fff1f2' : '#ecfdf5' },
                 { label: 'Tổng đã thu', value: fmtVND(totalPaid), tone: '#059669', bg: '#ecfdf5' },
               ].map(item => (
                 <div key={item.label} style={{ border: '1px solid #e2e8f0', borderRadius: 12, background: item.bg, padding: '11px 12px' }}>
@@ -913,9 +923,9 @@ export function FinanceDetailModal({ student, classes, payments, tlogs, baseTuit
               {latestPayment && <span style={{ fontSize: 12, fontWeight: 900, color: '#059669' }}>Gần nhất: {formatDate(latestPayment.date)}</span>}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 8 }}>
-              <div className="ltn-info-cell"><p>Bắt đầu chu kỳ</p><p>{cycle.cycleStartDate ? formatDate(cycle.cycleStartDate) : '—'}</p></div>
+              <div className="ltn-info-cell"><p>Phạm vi chu kỳ</p><p>Buổi {currentCycle.startAttendanceIndex}–{currentCycle.endAttendanceIndex}</p></div>
               <div className="ltn-info-cell"><p>Bắt đầu cần thu</p><p>{cycle.collectionThreshold > 0 ? `${cycle.collectionThreshold}/${cycle.target} buổi` : '—'}</p></div>
-              <div className="ltn-info-cell"><p>Phiếu gần nhất</p><p>{cycle.lastPayment ? `${formatDate(cycle.lastPayment.date)} · ${fmtVND(cycle.paidAmount)}` : 'Chưa có'}</p></div>
+              <div className="ltn-info-cell"><p>Phiếu gần nhất</p><p>{cycle.lastPayment ? `${formatDate(cycle.lastPayment.date)} · ${fmtVND(Number(cycle.lastPayment.amount || 0))}` : 'Chưa có'}</p></div>
             </div>
           </section>
 
@@ -932,7 +942,7 @@ export function FinanceDetailModal({ student, classes, payments, tlogs, baseTuit
                   <div key={p.id || p.docNum || i} style={{ display: 'grid', gridTemplateColumns: 'minmax(86px,105px) minmax(0,1fr) auto', gap: 10, alignItems: 'center', padding: '11px 14px', borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? 'white' : '#fafafa' }}>
                     <div>
                       <p style={{ fontSize: 13, fontWeight: 900, color: '#0f172a', margin: 0 }}>{formatDate(p.date)}</p>
-                      <p style={{ fontSize: 11, color: '#64748b', margin: '2px 0 0', fontWeight: 800 }}>{(() => { const period = getPaymentTuitionPeriod(p); return period ? `T${period.m}/${period.y}` : 'Kỳ phí —'; })()}</p>
+                      <p style={{ fontSize: 11, color: '#64748b', margin: '2px 0 0', fontWeight: 800 }}>{(() => { const period = getPaymentTuitionPeriod(p); const cycleIndex = paymentCycleByKey.get(String(p.id || p.docNum || '').trim()); return `${cycleIndex ? `Chu kỳ ${cycleIndex}` : 'Chưa gán chu kỳ'} · ${period ? `T${period.m}/${period.y}` : 'Kỳ phí —'}`; })()}</p>
                     </div>
                     <div style={{ minWidth: 0 }}>
                       <p style={{ fontSize: 13, fontWeight: 800, color: '#334155', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.description || p.docNum || 'Phiếu thu'}</p>

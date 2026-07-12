@@ -217,7 +217,7 @@ function AdminApp({ adminToken, onChangeAdminAccess }: { adminToken: string; onC
   const [baseTuition,  setBaseTuition]  = useState<number>(_saved.current?.baseTuition  ?? FEE_DEFAULT);
   const [schoolYear,   setSchoolYear]   = useState<string>(_saved.current?.schoolYear   ?? '2026-2027');
   const [tuitionDueDay, setTuitionDueDay] = useState<number>(_saved.current?.tuitionDueDay ?? 15);
-  const [, setZaloTpl] = useState<string>(_saved.current?.zaloTpl ?? 'Chào phụ huynh em [Ten], LỚP TOÁN NK thông báo học phí tháng [Thang]/[Nam] của em hiện còn [SoTien]. Phụ huynh vui lòng kiểm tra và thanh toán giúp lớp. Em cảm ơn ạ.');
+  const [, setZaloTpl] = useState<string>(_saved.current?.zaloTpl ?? 'Chào phụ huynh em [Ten], LỚP TOÁN NK thông báo học phí theo chu kỳ học hiện tại của em đang cần thu [SoTien]. Phụ huynh vui lòng kiểm tra và thanh toán giúp lớp. Em cảm ơn ạ.');
   const [scriptUrl]    = useState<string>(_saved.current?.scriptUrl    ?? SCRIPT_URL_DEFAULT);
   const [centerName,   setCenterName]   = useState<string>(_saved.current?.centerName   ?? 'LỚP TOÁN NK');
   const [teacher,      setTeacher]      = useState<string>(_saved.current?.teacher      ?? 'LÊ ĐỨC NHÂN');

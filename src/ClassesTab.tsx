@@ -5,7 +5,7 @@ import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Clock, Plus, Trash2, X, Users, MapPin, User } from 'lucide-react';
 import { compareClassCode, fixVietnameseText, isStudentActive, normalizeCaDayLabel, normalizeScheduleCaText, resolveTeacher } from './helpers';
-import { getPaymentReceiptPeriod, getTuitionCycleState, getUniquePaidStudentIdsByReceiptPeriod } from './measures';
+import { getPaymentReceiptPeriod, getTuitionAccountState, getUniquePaidStudentIdsByReceiptPeriod } from './measures';
 import { Button } from './dsComponents';
 import { DataTable, DetailMetric, EmptyState, MobileRecordList, MobileRecordMarker, MobileRecordRow, MobileRecordTextAction, MoneyText, PageToolbar, StatusBadge } from './uiSystem';
 import type { Student, ClassRecord, Payment, DeleteTarget, TeachingLog } from './types';
@@ -172,7 +172,7 @@ function ClassDetailModal({ cls, curMo, curYr, students, classes, payments = [],
     s.classId === getClassCode(cls) &&
     isStudentActive(s)
   );
-  const tuitionStates = clsStudents.map(student => getTuitionCycleState({
+  const tuitionStates = clsStudents.map(student => getTuitionAccountState({
     student,
     classes,
     payments,
@@ -417,7 +417,7 @@ export default function ClassesTab({ uClasses,students,payments=[],tlogs=[],base
       s.classId === getClassCode(c) &&
       isStudentActive(s)
     );
-    const tuitionStates = cls.map(student => getTuitionCycleState({
+    const tuitionStates = cls.map(student => getTuitionAccountState({
       student,
       classes: uClasses,
       payments,

@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 
 import { isStudentActive, parseDMY } from './helpers';
-import { getPaymentReceiptPeriod, getTuitionCycleState, getUniquePaidStudentIdsByReceiptPeriod } from './measures';
+import { getPaymentReceiptPeriod, getTuitionAccountState, getUniquePaidStudentIdsByReceiptPeriod } from './measures';
 import { Button, IconButton, SearchBar, Select } from './dsComponents';
 import { DataTable, DetailMetric, EmptyState, MobileRecordAction, MobileRecordList, MobileRecordMarker, MobileRecordRow, MoneyText, PageToolbar, StatusBadge } from './uiSystem';
 import type { ClassRecord, DeleteTarget, Payment, Student, Teacher, TeachingLog } from './types';
@@ -369,7 +369,7 @@ export default function TeachersTab({
       const activeStudents = students.filter(s =>
         isStudentActive(s) && (teacherMatches(s.teacher, name) || classIds.has(s.classId))
       );
-      const tuitionStates = activeStudents.map(student => getTuitionCycleState({
+      const tuitionStates = activeStudents.map(student => getTuitionAccountState({
         student,
         classes: uClasses,
         payments,
