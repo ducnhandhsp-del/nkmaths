@@ -619,14 +619,7 @@ function AdminApp({ adminToken, onChangeAdminAccess }: { adminToken: string; onC
                   accountName={accountName} setAccountName={setAccountName}
                   scriptUrl={scriptUrl}
                   adminToken={adminToken}
-                  gsOk={gsOk} centerName={centerName} setCenterName={setCenterName}
-                  teacher={teacher}         setTeacher={setTeacher}
-                  addr1={addr1}             setAddr1={setAddr1}
-                  addr2={addr2}             setAddr2={setAddr2}
-                  phone={phone}             setPhone={setPhone}
-                  hideInactive={d.hideInactive} setHideInactive={d.setHideInactive}
-                  caDayOptions={caDayOptions}   setCaDayOptions={setCaDayOptions}
-                  teacherList={teacherList}     setTeacherList={setTeacherList}
+                  gsOk={gsOk}
                   cacheMeta={cacheMeta}
                   syncState={syncState}
                   saving={d.saving} loadData={loadData}

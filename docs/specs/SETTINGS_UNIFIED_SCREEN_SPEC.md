@@ -1,67 +1,51 @@
 # Settings Unified Screen Spec
 
-## Muc tieu
+## Mục tiêu
 
-Don dep tab Cai dat thanh mot man hinh duy nhat, it click, de scan va chi giu cac cau hinh that su can thao tac. Day la thay doi UI/settings flow, khong doi Google Apps Script contract, Google Sheets headers, schema du lieu hay nghiep vu domain.
+Tab Cài đặt là nơi cấu hình vận hành cục bộ của ứng dụng: học phí, tài khoản nhận tiền, mẫu Zalo và công cụ dữ liệu. Màn hình phải gọn, dễ quét và không hiển thị thông tin trung tâm/cơ sở/người quản lý không còn cần thao tác.
 
-## Pham vi
+Thay đổi này không sửa Google Apps Script contract, Google Sheets headers, schema domain hay quy tắc tính học phí/công nợ.
 
-- Gop cac subtab hien tai thanh mot man cuon duy nhat.
-- Bo subtab `Van hanh`.
-- Bo phan cau hinh `Ca day` khoi Settings.
-- Bo phan `Trang thai diem danh` khoi Settings vi day la nghiep vu co dinh.
-- Bo `Tuy chon hien thi` va toggle `An hoc sinh da nghi hoc theo mac dinh` khoi Settings.
-- Giu lai cac handler luu/tai du lieu/reset/cache/Zalo/QR dang co.
+## Phạm vi giao diện
 
-## Bo cuc moi
+1. Thanh điều khiển đầu trang
+   - Hiển thị tình trạng đồng bộ bằng một trạng thái duy nhất.
+   - Hiển thị lỗi cấu hình cụ thể khi có.
+   - Chỉ có một nút `Tải lại dữ liệu` và một nút `Lưu thay đổi`.
 
-Thu tu section tren mot man:
+2. Học phí & thanh toán
+   - Học phí mặc định, niên khóa và hạn đóng.
+   - Bank ID, số tài khoản, tên tài khoản và xem thử VietQR.
+   - Hướng dẫn chu kỳ 2/3 buổi ở dạng dòng hỗ trợ ngắn, không dùng card trang trí lồng nhau.
 
-1. Header trang thai
-   - Ket noi GAS.
-   - Trang thai dong bo/cache.
-   - Nut `Tai du lieu`.
-   - Nut `Luu thay doi` hoac `Da luu`.
-   - Hien canh bao cau hinh neu co.
+3. Mẫu tin nhắn Zalo
+   - Desktop: danh sách mẫu và trình soạn thảo ở hai cột.
+   - Mobile: một cột, không mất thao tác thêm/sửa/xóa/chèn biến.
+   - Xem trước là thao tác tùy chọn, không chiếm diện tích cố định.
 
-2. Ket noi du lieu
-   - Apps Script URL.
-   - Google Sheet URL.
-   - Google Doc URL.
-   - Cache offline: thoi diem cap nhat, dung luong, xoa cache.
-   - Reset cai dat trinh duyet.
+4. Hệ thống nâng cao
+   - Mặc định thu gọn.
+   - Bao gồm tải lại dữ liệu, cache offline và reset cài đặt trình duyệt.
+   - Các thao tác phá hủy luôn dùng confirm hiện có.
 
-3. Thong tin trung tam
-   - Quan ly/GV co so Nguyen Quang Bich.
-   - Quan ly/GV co so Dao Tan.
-   - Chi giu label ngan; bo cac dong giai thich dai.
+## Loại bỏ khỏi giao diện
 
-4. Hoc phi va thanh toan
-   - Hoc phi mac dinh.
-   - Nien khoa.
-   - Han dong hoc phi.
-   - Bank ID, so tai khoan, ten tai khoan.
-   - Nut xem QR VietQR.
+- Hai cơ sở/người quản lý và các trường địa chỉ/liên hệ tương ứng.
+- Google Sheet/Google Doc shortcut chỉ lưu local nhưng không tham gia nghiệp vụ.
+- Nút tải dữ liệu và xóa cache trùng lặp.
+- Nhãn trang trí dưới preview Zalo.
 
-5. Mau Zalo
-   - Danh sach mau.
-   - Them/sua/xoa mau.
-   - Noi dung mau.
-   - Chen bien.
-   - Preview ngan.
+## Tương thích dữ liệu
 
-## Nguyen tac UI
-
-- Khong dung subtab/chip navigation ben trong Settings.
-- Khong dung hero, gradient, card trang tri lon.
-- Section compact, scan nhanh, uu tien form grid.
-- Bo bot hint dai duoi field; chi giu placeholder/label va warning can thiet.
-- Desktop uu tien 2 cot khi hop ly; mobile xep 1 cot.
+- Các key localStorage cũ như `teacher`, `teacherList`, `addr1`, `addr2`, `phone` vẫn được giữ nguyên khi lưu cài đặt mới để tránh mất dữ liệu lịch sử.
+- `centerName` tiếp tục phục vụ biên lai thu/chi; không còn được chỉnh từ màn hình này.
+- `teacherList` tiếp tục phục vụ chuẩn hóa tên giáo viên trong dữ liệu cũ; chưa chuyển thành cấu hình UI trong phạm vi này.
 
 ## Acceptance criteria
 
-- Vao Settings thay du cac nhom cau hinh tren cung mot man, khong can click subtab.
-- Khong con nhom `Van hanh`, `Ca day`, `Trang thai diem danh`, `Tuy chon hien thi`.
-- Nut luu/tai du lieu/cache/reset/Zalo/QR van hoat dong nhu truoc.
-- `npm.cmd run lint` pass.
-- `npm.cmd run build` pass.
+- Không còn section Thông tin trung tâm/cơ sở/người quản lý.
+- Mỗi thao tác tải dữ liệu và xóa cache chỉ xuất hiện một lần.
+- Có thể lưu học phí, niên khóa, hạn đóng, ngân hàng và mẫu Zalo như trước.
+- Dữ liệu localStorage cũ không bị xóa khi bấm lưu.
+- Desktop và mobile đều không tràn ngang.
+- `npm.cmd run lint` và `npm.cmd run build` đạt.
