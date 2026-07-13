@@ -149,7 +149,7 @@ export default function ReportsTab({
   const isCurrentPeriod = filterMo === curMo && filterYr === curYr;
   const activeStudents = useMemo(() => students.filter(isStudentActive), [students]);
 
-  const paymentsWithPeriod = useMemo(() => payments.map(payment => ({
+  const paymentsWithPeriod = useMemo(() => payments.filter(payment => Number(payment.amount) > 0).map(payment => ({
     payment,
     period: getPaymentReceiptPeriod(payment),
   })), [payments]);
@@ -177,6 +177,7 @@ export default function ReportsTab({
   );
   const monthRevenue = monthPayments.reduce((sum, row) => sum + (row.payment.amount || 0), 0);
   const monthExpenseCount = expenses.filter(expense => {
+    if (Number(expense.amount) <= 0) return false;
     const period = parsePeriod(expense.date || '');
     return period?.m === filterMo && period?.y === filterYr;
   }).length;

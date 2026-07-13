@@ -25,6 +25,8 @@ import CommandPalette from './CommandPalette';
 import { useCommands } from './useCommands';
 import { useAppData } from './useAppData';
 import { useDomains } from './useDomains';
+import { useRoomRental } from './useRoomRental';
+import { useScores } from './useScores';
 
 import { StudentModal, StudentDetailModal } from './ModalStudent';
 import { ClassModal, BulkTransferModal } from './ModalClass';
@@ -39,6 +41,8 @@ import LearningTab    from './LearningTab';
 import FinanceTab     from './FinanceTab';
 import ReportsTab     from './ReportsTab';
 import SettingsTab    from './SettingsTab';
+import RoomRentalTab  from './RoomRentalTab';
+import ScoresTab      from './ScoresTab';
 
 const ADMIN_SESSION_TOKEN_KEY = 'ltn-admin-token';
 
@@ -255,6 +259,8 @@ function AdminApp({ adminToken, onChangeAdminAccess }: { adminToken: string; onC
     lastLoadTimeRef,
     isSavingRef,
   });
+  const rental = useRoomRental({ scriptUrl, adminToken, enabled: screen === 'room-rental' });
+  const scoreDomain = useScores({ scriptUrl, adminToken, enabled: screen === 'scores' });
 
   /* ── Modal UI state ── */
   const [showStudent,  setShowStudent]  = useState(false);
@@ -512,6 +518,43 @@ function AdminApp({ adminToken, onChangeAdminAccess }: { adminToken: string; onC
                   onAddDiary={handleAddDiary}
                   onMarkLessonOff={handleMarkLessonOff}
                   onApproveLeave={d.handleApproveLeave} onRejectLeave={d.handleRejectLeave}
+                />
+              </ErrorBoundary>
+            )}
+
+            {screen === 'room-rental' && (
+              <ErrorBoundary fallbackLabel="Thuê phòng">
+                <RoomRentalTab
+                  bookings={rental.bookings}
+                  payments={rental.payments}
+                  customers={rental.customers}
+                  pricePlans={rental.pricePlans}
+                  loading={rental.loading}
+                  saving={rental.saving}
+                  onSaveBooking={rental.saveBooking}
+                  onSavePayment={rental.savePayment}
+                  onCancelBooking={rental.cancelBooking}
+                  onCancelSeries={rental.cancelSeries}
+                  onSaveCustomer={rental.saveCustomer}
+                  onSavePricePlan={rental.savePricePlan}
+                />
+              </ErrorBoundary>
+            )}
+
+            {screen === 'scores' && (
+              <ErrorBoundary fallbackLabel="Điểm số">
+                <ScoresTab
+                  assessments={scoreDomain.assessments}
+                  scores={scoreDomain.scores}
+                  enrollments={scoreDomain.enrollments}
+                  students={students}
+                  uClasses={uClasses}
+                  loading={scoreDomain.loading}
+                  saving={scoreDomain.saving}
+                  onSaveAssessment={scoreDomain.saveAssessment}
+                  onSaveScores={scoreDomain.saveScoreDraft}
+                  onReopen={scoreDomain.reopenAssessment}
+                  onDelete={scoreDomain.deleteAssessment}
                 />
               </ErrorBoundary>
             )}

@@ -2,7 +2,9 @@ import React, { memo, useEffect, useState } from 'react';
 import {
   Activity,
   BarChart3,
+  Building2,
   Calendar,
+  ClipboardCheck,
   ChevronLeft,
   ChevronRight,
   GraduationCap,
@@ -26,12 +28,14 @@ export const NAV_ITEMS: {
   { id: 'overview', label: 'Tổng quan', shortLabel: 'Tổng quan', icon: LayoutDashboard, color: 'text-indigo-400' },
   { id: 'training', label: 'Đào tạo', shortLabel: 'Đào tạo', icon: GraduationCap, color: 'text-sky-400' },
   { id: 'operations', label: 'Vận hành', shortLabel: 'Vận hành', icon: Activity, color: 'text-violet-400' },
+  { id: 'scores', label: 'Điểm số', shortLabel: 'Điểm số', icon: ClipboardCheck, color: 'text-rose-400' },
+  { id: 'room-rental', label: 'Thuê phòng', shortLabel: 'Thuê phòng', icon: Building2, color: 'text-cyan-400' },
   { id: 'finance', label: 'Tài chính', shortLabel: 'Tài chính', icon: Wallet, color: 'text-orange-400' },
   { id: 'reports', label: 'Báo cáo', shortLabel: 'Báo cáo', icon: BarChart3, color: 'text-emerald-400' },
   { id: 'settings', label: 'Cài đặt', shortLabel: 'Cài đặt', icon: Settings, color: 'text-slate-400' },
 ];
 
-export const BOTTOM_NAV_IDS: Screen[] = ['overview', 'training', 'operations', 'finance', 'reports'];
+export const BOTTOM_NAV_IDS: Screen[] = ['overview', 'training', 'operations', 'room-rental', 'finance', 'reports'];
 
 export function useIsDesktop() {
   const [isDesktop, setIsDesktop] = useState(() =>
@@ -76,7 +80,9 @@ type FlatNavItem =
 const SIDEBAR_ITEMS: FlatNavItem[] = [
   { key: 'overview', screen: 'overview', label: 'Tổng quan', icon: LayoutDashboard },
   { key: 'training', screen: 'training', sub: 'students', label: 'Đào tạo', icon: GraduationCap },
+  { key: 'scores', screen: 'scores', label: 'Điểm số', icon: ClipboardCheck },
   { key: 'operations', screen: 'operations', sub: 'schedule', label: 'Vận hành', icon: Calendar },
+  { key: 'room-rental', screen: 'room-rental', label: 'Thuê phòng', icon: Building2 },
   { key: 'finance', screen: 'finance', sub: 'debt', label: 'Học phí', icon: Wallet },
   { key: 'reports', screen: 'reports', sub: 'finance', label: 'Báo cáo', icon: BarChart3 },
   { key: 'settings', screen: 'settings', label: 'Cài đặt', icon: Settings },
@@ -307,7 +313,7 @@ export const BottomNav = memo(({ active, set, isDesktop }: {
             <span style={{ width: 32, height: 24, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isActive ? '#eef2ff' : 'transparent', transition: 'background 0.15s' }}>
               <Icon size={16} color={isActive ? '#6366f1' : '#94a3b8'} />
             </span>
-            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase', whiteSpace: 'nowrap', color: isActive ? '#6366f1' : '#94a3b8' }}>{shortLabel || id}</span>
+            <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: '0.02em', textTransform: 'uppercase', whiteSpace: 'nowrap', color: isActive ? '#6366f1' : '#94a3b8' }}>{shortLabel || id}</span>
           </button>
         );
       })}

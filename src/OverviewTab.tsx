@@ -109,6 +109,7 @@ function getClassSlots(c: Record<string, any>) {
 }
 
 function paymentInReceiptMonth(p: Payment, mo: number, yr: number) {
+  if (Number(p.amount) <= 0) return false;
   const period = getPaymentReceiptPeriod(p);
   return period?.m === mo && period?.y === yr;
 }

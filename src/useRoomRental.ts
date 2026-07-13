@@ -1,0 +1,38 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import toast from 'react-hot-toast';
+import type { RentalBooking, RentalCustomer, RentalPayment, RentalPricePlan, RentalSeries } from './types';
+import { fetchWithTimeout, formatDate, normalizePaymentMethod } from './helpers';
+import { RULES } from './rules';
+
+export type RentalBookingInput = Omit<RentalBooking, 'id' | 'seriesId' | 'createdAt' | 'updatedAt'> & { id?: string; seriesId?: string; repeatDates?: string[]; repeatRule?: string; createSeries?: boolean };
+export type RentalPaymentInput = Omit<RentalPayment, 'id' | 'createdAt'>;
+const CACHE_KEY = 'ltn-room-rental-cache-v2';
+const asBool = (value: unknown) => ['true', '1', 'có', 'co'].includes(String(value ?? '').toLowerCase());
+
+function txBooking(raw: any): RentalBooking { return { id: String(raw.MaCaThue || raw.id || ''), seriesId: String(raw.MaLichThue || raw.seriesId || ''), customerId: String(raw.MaKhachThue || raw.customerId || ''), name: String(raw.TenLich || raw.name || ''), renterName: String(raw.NguoiThue || raw.renterName || ''), renterPhone: String(raw.SDTNguoiThue || raw.renterPhone || ''), roomName: String(raw.Phong || raw.roomName || 'Phòng học'), date: formatDate(String(raw.Ngay || raw.date || '')), startTime: String(raw.GioBatDau || raw.startTime || ''), endTime: String(raw.GioKetThuc || raw.endTime || ''), airConditioning: asBool(raw.DieuHoa ?? raw.airConditioning), amount: Number(raw.DonGia ?? raw.amount) || 0, status: String(raw.TrangThai || raw.status || 'confirmed') as RentalBooking['status'], note: String(raw.GhiChu || raw.note || ''), createdAt: String(raw.CreatedAt || raw.createdAt || ''), updatedAt: String(raw.UpdatedAt || raw.updatedAt || '') }; }
+function txPayment(raw: any): RentalPayment { const method = normalizePaymentMethod(raw.HinhThuc || raw.method || 'cash'); const amount = Number(raw.SoTien ?? raw.amount) || 0; return { id: String(raw.MaThuThue || raw.id || ''), bookingId: String(raw.MaCaThue || raw.bookingId || ''), date: formatDate(String(raw.NgayThu || raw.date || '')), amount, transactionType: String(raw.LoaiGiaoDich || raw.transactionType || (amount < 0 ? 'refund' : 'collection')) as RentalPayment['transactionType'], method: method === 'Chuyển khoản' ? 'bank' : 'cash', note: String(raw.GhiChu || raw.note || ''), createdAt: String(raw.CreatedAt || raw.createdAt || '') }; }
+function txCustomer(raw: any): RentalCustomer { return { id: String(raw.MaKhachThue || raw.id || ''), name: String(raw.HoTen || raw.name || ''), phone: String(raw.SDT || raw.phone || ''), status: String(raw.TrangThai || raw.status || 'active') as RentalCustomer['status'], note: String(raw.GhiChu || raw.note || ''), createdAt: String(raw.CreatedAt || ''), updatedAt: String(raw.UpdatedAt || '') }; }
+function txSeries(raw: any): RentalSeries { return { id: String(raw.MaLichThue || raw.id || ''), name: String(raw.TenLich || raw.name || ''), customerId: String(raw.MaKhachThue || raw.customerId || ''), roomName: String(raw.Phong || raw.roomName || 'Phòng học'), startDate: formatDate(String(raw.NgayBatDau || raw.startDate || '')), endDate: formatDate(String(raw.NgayKetThuc || raw.endDate || '')), repeatRule: String(raw.QuyTacLap || raw.repeatRule || ''), status: String(raw.TrangThai || raw.status || 'active') as RentalSeries['status'], note: String(raw.GhiChu || raw.note || '') }; }
+function txPlan(raw: any): RentalPricePlan { return { id: String(raw.MaBangGia || raw.id || ''), name: String(raw.TenBangGia || raw.name || ''), amount: Number(raw.DonGia ?? raw.amount) || 0, durationMinutes: Number(raw.ThoiLuongPhut ?? raw.durationMinutes) || 90, airConditioning: asBool(raw.DieuHoa ?? raw.airConditioning), status: String(raw.TrangThai || raw.status || 'active') as RentalPricePlan['status'], order: Number(raw.ThuTu ?? raw.order) || 0, note: String(raw.GhiChu || raw.note || '') }; }
+
+export function useRoomRental({ scriptUrl, adminToken, enabled = true }: { scriptUrl: string; adminToken: string; enabled?: boolean }) {
+  const cached = () => { try { return JSON.parse(localStorage.getItem(CACHE_KEY) || '{}'); } catch { return {}; } };
+  const [bookings, setBookings] = useState<RentalBooking[]>(() => cached().bookings || []);
+  const [payments, setPayments] = useState<RentalPayment[]>(() => cached().payments || []);
+  const [customers, setCustomers] = useState<RentalCustomer[]>(() => cached().customers || []);
+  const [series, setSeries] = useState<RentalSeries[]>(() => cached().series || []);
+  const [pricePlans, setPricePlans] = useState<RentalPricePlan[]>(() => cached().pricePlans || []);
+  const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false);
+  const persist = useCallback((next: object) => { try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)); } catch {} }, []);
+  const request = useCallback(async (body: object) => { const res = await fetchWithTimeout(scriptUrl, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ ...body, adminToken }), timeout: RULES.network.writeTimeout }); if (!res.ok) throw new Error(`Server lỗi HTTP ${res.status}`); const data = await res.json(); if (data?.ok === false) throw new Error(data.error || 'Không thể lưu dữ liệu thuê phòng'); return data; }, [adminToken, scriptUrl]);
+  const load = useCallback(async () => { if (!scriptUrl || !adminToken) return; setLoading(true); try { const data = await request({ action: 'getRoomRental' }); const next = { bookings: (data.bookings || []).map(txBooking), payments: (data.payments || []).map(txPayment), customers: (data.customers || []).map(txCustomer), series: (data.series || []).map(txSeries), pricePlans: (data.pricePlans || []).map(txPlan) }; setBookings(next.bookings); setPayments(next.payments); setCustomers(next.customers); setSeries(next.series); setPricePlans(next.pricePlans); persist(next); } catch (err: any) { toast.error(err.message || 'Chưa tải được dữ liệu thuê phòng'); } finally { setLoading(false); } }, [adminToken, persist, request, scriptUrl]);
+  useEffect(() => { if (enabled) void load(); }, [enabled, load]);
+  const write = useCallback(async (action: string, input: object, message: string) => { setSaving(true); try { await request({ action, ...input }); await load(); toast.success(message); } finally { setSaving(false); } }, [load, request]);
+  const saveBooking = useCallback((input: RentalBookingInput) => write(input.id ? 'updateRentalBooking' : 'saveRentalBooking', input, input.id ? 'Đã cập nhật ca thuê' : 'Đã tạo lịch thuê'), [write]);
+  const savePayment = useCallback((input: RentalPaymentInput) => write('saveRentalPayment', input, input.transactionType === 'refund' ? 'Đã ghi hoàn tiền' : 'Đã ghi khoản thu'), [write]);
+  const cancelBooking = useCallback((id: string) => write('cancelRentalBooking', { id }, 'Đã hủy ca thuê'), [write]);
+  const cancelSeries = useCallback((seriesId: string) => write('cancelRentalSeries', { seriesId }, 'Đã hủy các ca sắp tới của lịch lặp'), [write]);
+  const saveCustomer = useCallback((input: Omit<RentalCustomer, 'createdAt' | 'updatedAt'>) => write(input.id ? 'updateRentalCustomer' : 'saveRentalCustomer', input, 'Đã lưu khách thuê'), [write]);
+  const savePricePlan = useCallback((input: RentalPricePlan) => write(input.id ? 'updateRentalPricePlan' : 'saveRentalPricePlan', input, 'Đã lưu bảng giá'), [write]);
+  return useMemo(() => ({ bookings, payments, customers, series, pricePlans, loading, saving, saveBooking, savePayment, cancelBooking, cancelSeries, saveCustomer, savePricePlan, reload: load }), [bookings, payments, customers, series, pricePlans, loading, saving, saveBooking, savePayment, cancelBooking, cancelSeries, saveCustomer, savePricePlan, load]);
+}

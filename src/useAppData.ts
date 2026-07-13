@@ -354,8 +354,8 @@ export function useAppData({ scriptUrl, teacherList, adminToken }: { scriptUrl: 
 
   /* FIX L3: summary là useMemo — tự cập nhật ngay khi payments/expenses thay đổi (kể cả optimistic) */
   const summary = useMemo(() => ({
-    totalRevenue: payments.reduce((s, p) => s + p.amount, 0),
-    totalExpense: expenses.reduce((s, e: any) => s + e.amount, 0),
+    totalRevenue: payments.reduce((s, p) => s + (Number(p.amount) > 0 ? Number(p.amount) : 0), 0),
+    totalExpense: expenses.reduce((s, e: any) => s + (Number(e.amount) > 0 ? Number(e.amount) : 0), 0),
     chart:        buildChartData(payments, expenses),
   }), [payments, expenses]);
 

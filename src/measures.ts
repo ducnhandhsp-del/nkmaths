@@ -142,6 +142,7 @@ export const buildPaidMap = (
 ): Map<string, Set<string>> => {
   const m = new Map<string, Set<string>>();
   payments.forEach(p => {
+    if (Number(p.amount) <= 0) return;
     if (!m.has(p.studentId)) m.set(p.studentId, new Set());
     const period = getPaymentTuitionPeriod(p, curYr);
     if (!period) return;
@@ -199,16 +200,18 @@ export const calcPaidPct = (paidCount: number, totalActive: number): number =>
 /** Tổng thu trong tháng/năm */
 export const calcMonthlyRevenue = (payments: Payment[], mo: number, yr: number): number =>
   payments.filter(p => {
+    if (Number(p.amount) <= 0) return false;
     const period = getPaymentReceiptPeriod(p);
     return period?.m === mo && period?.y === yr;
-  }).reduce((sum, p) => sum + p.amount, 0);
+  }).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
 /** Tổng chi trong tháng/năm */
 export const calcMonthlyExpense = (expenses: Expense[], mo: number, yr: number): number =>
   expenses.filter(e => {
+    if (Number(e.amount) <= 0) return false;
     const period = parsePeriod(e.date || '');
     return period?.m === mo && period?.y === yr;
-  }).reduce((sum, e) => sum + e.amount, 0);
+  }).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
 /* ─────────────────────────────────────────────
    CHUYÊN CẦN — attendance measures
@@ -468,7 +471,7 @@ export const getMonthlyTuitionState = ({
   const inactive = !isStudentActiveInMonth(student, period);
   const billable = !inactive && isStudentBillableInMonth(student, period);
   const periodPayments = payments.filter(payment => {
-    if (payment.studentId !== student.id) return false;
+    if (payment.studentId !== student.id || Number(payment.amount) <= 0) return false;
     const paymentPeriod = getPaymentTuitionPeriod(payment);
     return paymentPeriod?.m === period.m && paymentPeriod?.y === period.y;
   });
@@ -863,7 +866,7 @@ export const getTuitionPeriodState = ({
   const inactive = !isStudentActiveInMonth(student, period);
   const billable = !inactive && isStudentBillableInMonth(student, period);
   const payment = payments.find(p => {
-    if (p.studentId !== student.id) return false;
+    if (p.studentId !== student.id || Number(p.amount) <= 0) return false;
     const paymentPeriod = getPaymentTuitionPeriod(p);
     return paymentPeriod?.m === period.m && paymentPeriod?.y === period.y;
   });
@@ -1020,7 +1023,7 @@ export const buildChartData = (payments: Payment[], expenses: Expense[]): ChartP
     }
     return null;
   };
-  payments.forEach(p => { const k = toKey(p.date); if (k && cmap[k]) cmap[k].Thu += p.amount / 1e6; });
-  expenses.forEach(e => { const k = toKey(e.date); if (k && cmap[k]) cmap[k].Chi += e.amount / 1e6; });
+  payments.forEach(p => { const amount = Number(p.amount); const k = toKey(p.date); if (amount > 0 && k && cmap[k]) cmap[k].Thu += amount / 1e6; });
+  expenses.forEach(e => { const amount = Number(e.amount); const k = toKey(e.date); if (amount > 0 && k && cmap[k]) cmap[k].Chi += amount / 1e6; });
   return Object.values(cmap);
 };

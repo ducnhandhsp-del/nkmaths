@@ -35,8 +35,15 @@ var SHEETS = {
   DANGKYLOP: 'DangKyLop',
   BUOIHOC: 'BuoiHoc',
   DIEMDANH: 'DiemDanh',
+  BAIKIEMTRA: 'BaiKiemTra',
+  KETQUADIEM: 'KetQuaDiem',
   HOCPHI: 'HocPhi',
   CHIPHI: 'ChiPhi',
+  KHACHTHUE: 'KhachThuePhong',
+  LICHTHUESERIES: 'LichThuePhongSeries',
+  LICHTHUE: 'LichThuePhong',
+  THUTHUE: 'ThuThuePhong',
+  BANGGIATHUE: 'BangGiaThuePhong',
   NGHIHOC: 'NghiHoc',
   NHATKYHETHONG: 'NhatKyHeThong'
 };
@@ -83,6 +90,17 @@ HEADERS[SHEETS.DIEMDANH] = [
   'MaDiemDanh', 'MaBuoi', 'MaHS', 'TrangThai', 'LoaiDiemDanh', 'GhiChu', 'UpdatedAt'
 ];
 
+HEADERS[SHEETS.BAIKIEMTRA] = [
+  'MaBaiKT', 'TenBaiKT', 'MaLop', 'MaBuoi', 'NgayKiemTra',
+  'LoaiBaiKT', 'ChuyenDe', 'DiemToiDa', 'TrongSo', 'MaGV',
+  'TrangThai', 'GhiChu', 'CreatedAt', 'UpdatedAt'
+];
+
+HEADERS[SHEETS.KETQUADIEM] = [
+  'MaKetQua', 'MaBaiKT', 'MaHS', 'Diem', 'TrangThai', 'NhanXet',
+  'CreatedAt', 'UpdatedAt'
+];
+
 HEADERS[SHEETS.HOCPHI] = [
   'MaPhieuThu', 'NgayThu', 'MaHS', 'MaLop',
   'ThangHP', 'NamHP', 'SoTien', 'HinhThuc',
@@ -95,6 +113,21 @@ HEADERS[SHEETS.CHIPHI] = [
   'SoTien', 'NoiDung', 'MaLop', 'MaGV',
   'TrangThai', 'GhiChu', 'CreatedAt', 'UpdatedAt'
 ];
+
+HEADERS[SHEETS.LICHTHUE] = [
+  'MaCaThue', 'MaLichThue', 'MaKhachThue', 'TenLich', 'NguoiThue', 'SDTNguoiThue', 'Phong',
+  'Ngay', 'GioBatDau', 'GioKetThuc', 'DieuHoa', 'DonGia', 'TrangThai',
+  'GhiChu', 'CreatedAt', 'UpdatedAt'
+];
+
+HEADERS[SHEETS.THUTHUE] = [
+  'MaThuThue', 'MaCaThue', 'NgayThu', 'SoTien', 'LoaiGiaoDich', 'HinhThuc', 'GhiChu',
+  'CreatedAt', 'UpdatedAt'
+];
+
+HEADERS[SHEETS.KHACHTHUE] = ['MaKhachThue', 'HoTen', 'SDT', 'TrangThai', 'GhiChu', 'CreatedAt', 'UpdatedAt'];
+HEADERS[SHEETS.LICHTHUESERIES] = ['MaLichThue', 'TenLich', 'MaKhachThue', 'NguoiThue', 'SDTNguoiThue', 'Phong', 'NgayBatDau', 'NgayKetThuc', 'QuyTacLap', 'DieuHoaMacDinh', 'DonGiaMacDinh', 'TrangThai', 'GhiChu', 'CreatedAt', 'UpdatedAt'];
+HEADERS[SHEETS.BANGGIATHUE] = ['MaBangGia', 'TenBangGia', 'DonGia', 'ThoiLuongPhut', 'DieuHoa', 'TrangThai', 'ThuTu', 'GhiChu', 'CreatedAt', 'UpdatedAt'];
 
 HEADERS[SHEETS.NGHIHOC] = [
   'MaNghi', 'Ngay', 'MaHS', 'MaBuoi', 'LyDo',
@@ -163,7 +196,7 @@ function checkAdminToken(d) {
 
 function isWriteAction(action) {
   action = str(action);
-  return action.indexOf('save') === 0 || action.indexOf('update') === 0 || action.indexOf('delete') === 0;
+  return action.indexOf('save') === 0 || action.indexOf('update') === 0 || action.indexOf('delete') === 0 || action.indexOf('reopen') === 0;
 }
 
 function requestIdOf(d) {
@@ -185,16 +218,6 @@ function cleanupIdempotencyKeys(props) {
       if (item.storedAt && now - Number(item.storedAt) > ttlMs) props.deleteProperty(key);
     } catch (err) {}
   });
-}
-
-function maybeCleanupIdempotencyKeys(props) {
-  var cleanupIntervalMs = 60 * 60 * 1000;
-  var now = Date.now();
-  var lastCleanupAt = Number(props.getProperty('IDEMPOTENCY_LAST_CLEANUP_AT') || 0);
-  if (lastCleanupAt && now - lastCleanupAt < cleanupIntervalMs) return;
-
-  cleanupIdempotencyKeys(props);
-  props.setProperty('IDEMPOTENCY_LAST_CLEANUP_AT', String(now));
 }
 
 function runIdempotentWrite(d, fn) {
@@ -223,7 +246,7 @@ function runIdempotentWrite(d, fn) {
         action: str(d.action),
         result: result
       }));
-      maybeCleanupIdempotencyKeys(props);
+      cleanupIdempotencyKeys(props);
     }
     return result;
   } finally {
@@ -242,6 +265,8 @@ function doPost(e) {
     var action = data.action;
     var map = {
       getData: getData,
+      getRoomRental: getRoomRental,
+      getScores: getScores,
       lookupStudentPortal: lookupStudentPortal,
 
       saveHS: saveHS,
@@ -259,6 +284,23 @@ function doPost(e) {
       saveExpense: saveExpense,
       updateExpense: updateExpense,
       deleteExpense: deleteExpense,
+
+      saveRentalBooking: saveRentalBooking,
+      updateRentalBooking: updateRentalBooking,
+      deleteRentalBooking: deleteRentalBooking,
+      cancelRentalBooking: cancelRentalBooking,
+      cancelRentalSeries: cancelRentalSeries,
+      saveRentalPayment: saveRentalPayment,
+
+      saveAssessment: saveAssessment,
+      updateAssessment: updateAssessment,
+      deleteAssessment: deleteAssessment,
+      saveScores: saveScores,
+      reopenAssessment: reopenAssessment,
+      saveRentalCustomer: saveRentalCustomer,
+      updateRentalCustomer: updateRentalCustomer,
+      saveRentalPricePlan: saveRentalPricePlan,
+      updateRentalPricePlan: updateRentalPricePlan,
 
       saveDiary: saveDiary,
       updateDiary: updateDiary,
@@ -303,8 +345,15 @@ function setupSheets() {
     SHEETS.DANGKYLOP,
     SHEETS.BUOIHOC,
     SHEETS.DIEMDANH,
+    SHEETS.BAIKIEMTRA,
+    SHEETS.KETQUADIEM,
     SHEETS.HOCPHI,
     SHEETS.CHIPHI,
+    SHEETS.KHACHTHUE,
+    SHEETS.LICHTHUESERIES,
+    SHEETS.LICHTHUE,
+    SHEETS.THUTHUE,
+    SHEETS.BANGGIATHUE,
     SHEETS.NGHIHOC,
     SHEETS.NHATKYHETHONG
   ];
@@ -315,7 +364,15 @@ function setupSheets() {
   applyTextFormats();
 
   seedConfig();
+  seedRentalPricePlans();
   logSystem('setupSheets', 'System', '', 'Created/verified headers', 'ok');
+}
+
+function seedRentalPricePlans() {
+  if (getRows(SHEETS.BANGGIATHUE).length) return;
+  var now = nowStr();
+  appendObject(SHEETS.BANGGIATHUE, { MaBangGia: makeRentalPricePlanId(), TenBangGia: '90 phut - khong dieu hoa', DonGia: 60000, ThoiLuongPhut: 90, DieuHoa: 'Khong', TrangThai: 'active', ThuTu: 1, GhiChu: '', CreatedAt: now, UpdatedAt: now });
+  appendObject(SHEETS.BANGGIATHUE, { MaBangGia: makeRentalPricePlanId(), TenBangGia: '90 phut - co dieu hoa', DonGia: 70000, ThoiLuongPhut: 90, DieuHoa: 'Co', TrangThai: 'active', ThuTu: 2, GhiChu: '', CreatedAt: now, UpdatedAt: now });
 }
 
 function ensureSheet(name, headers) {
@@ -362,6 +419,11 @@ function applyTextFormats() {
     'SDTPhuHuynh', 'SDTHocSinh', 'parentPhone', 'studentPhone'
   ]);
   formatColumnsAsText(SHEETS.GIAOVIEN, ['MaGV', 'id', 'teacherId', 'SDT', 'SDTGV', 'SoDienThoai', 'phone']);
+  formatColumnsAsText(SHEETS.BAIKIEMTRA, ['MaBaiKT', 'MaLop', 'MaBuoi', 'MaGV']);
+  formatColumnsAsText(SHEETS.KETQUADIEM, ['MaKetQua', 'MaBaiKT', 'MaHS']);
+  formatColumnsAsText(SHEETS.LICHTHUE, ['MaCaThue', 'MaLichThue', 'SDTNguoiThue']);
+  formatColumnsAsText(SHEETS.KHACHTHUE, ['MaKhachThue', 'SDT']);
+  formatColumnsAsText(SHEETS.LICHTHUESERIES, ['MaLichThue', 'MaKhachThue', 'SDTNguoiThue']);
 }
 
 function formatColumnsAsText(sheetName, headerNames) {
@@ -698,6 +760,37 @@ function getData() {
     };
   } catch (err) {
     return { ok: false, error: 'getData: ' + (err && err.stack ? err.stack : String(err)) };
+  }
+}
+
+function getRoomRental() {
+  try {
+    var readRows = createSnapshotReader();
+    return {
+      ok: true,
+      bookings: readRows(SHEETS.LICHTHUE),
+      payments: readRows(SHEETS.THUTHUE),
+      customers: readRows(SHEETS.KHACHTHUE),
+      series: readRows(SHEETS.LICHTHUESERIES),
+      pricePlans: readRows(SHEETS.BANGGIATHUE)
+    };
+  } catch (err) {
+    return { ok: false, error: 'getRoomRental: ' + String(err) };
+  }
+}
+
+function getScores() {
+  try {
+    setupSheetsIfMissingOnly();
+    var readRows = createSnapshotReader();
+    return {
+      ok: true,
+      assessments: readRows(SHEETS.BAIKIEMTRA),
+      scores: readRows(SHEETS.KETQUADIEM),
+      enrollments: readRows(SHEETS.DANGKYLOP)
+    };
+  } catch (err) {
+    return { ok: false, error: 'getScores: ' + String(err) };
   }
 }
 
@@ -1049,6 +1142,8 @@ function savePayment(d) {
   try {
     setupSheetsIfMissingOnly();
     var obj = normalizePaymentInput(d);
+    var error = validatePayment(obj);
+    if (error) return { ok: false, error: error };
     if (!obj.MaPhieuThu) obj.MaPhieuThu = makePaymentId(obj.MaHS, obj.ThangHP, obj.NamHP);
     obj.CreatedAt = obj.CreatedAt || nowStr();
     obj.UpdatedAt = nowStr();
@@ -1065,6 +1160,8 @@ function updatePayment(d) {
   try {
     setupSheetsIfMissingOnly();
     var obj = normalizePaymentInput(d);
+    var error = validatePayment(obj);
+    if (error) return { ok: false, error: error };
     if (!obj.MaPhieuThu) return savePayment(d);
 
     var row = findRowByValue(SHEETS.HOCPHI, 'MaPhieuThu', obj.MaPhieuThu);
@@ -1124,6 +1221,11 @@ function normalizePaymentInput(d) {
   };
 }
 
+function validatePayment(obj) {
+  if (!(num(obj.SoTien) > 0)) return 'Số tiền thu phải lớn hơn 0.';
+  return '';
+}
+
 // ─────────────────────────────────────────────────────────────
 // ChiPhi actions
 // ─────────────────────────────────────────────────────────────
@@ -1132,6 +1234,8 @@ function saveExpense(d) {
   try {
     setupSheetsIfMissingOnly();
     var obj = normalizeExpenseInput(d);
+    var error = validateExpense(obj);
+    if (error) return { ok: false, error: error };
     if (!obj.MaPhieuChi) obj.MaPhieuChi = makeExpenseId();
     obj.CreatedAt = obj.CreatedAt || nowStr();
     obj.UpdatedAt = nowStr();
@@ -1148,6 +1252,8 @@ function updateExpense(d) {
   try {
     setupSheetsIfMissingOnly();
     var obj = normalizeExpenseInput(d);
+    var error = validateExpense(obj);
+    if (error) return { ok: false, error: error };
     if (!obj.MaPhieuChi) return saveExpense(d);
 
     var row = findRowByValue(SHEETS.CHIPHI, 'MaPhieuChi', obj.MaPhieuChi);
@@ -1195,7 +1301,439 @@ function normalizeExpenseInput(d) {
   };
 }
 
+function validateExpense(obj) {
+  if (!(num(obj.SoTien) > 0)) return 'Số tiền chi phải lớn hơn 0.';
+  return '';
+}
+
 // ─────────────────────────────────────────────────────────────
+// Thuê phòng actions - independent from HocPhi/ChiPhi and all center reports
+// Diem so actions - isolated from attendance and lesson logs
+function normalizeAssessmentInput(d) {
+  return {
+    MaBaiKT: str(d.MaBaiKT || d.id),
+    TenBaiKT: str(d.TenBaiKT || d.name),
+    MaLop: str(d.MaLop || d.classId),
+    MaBuoi: str(d.MaBuoi || d.lessonId),
+    NgayKiemTra: formatDate(d.NgayKiemTra || d.date) || todayStr(),
+    LoaiBaiKT: str(d.LoaiBaiKT || d.type || 'quick'),
+    ChuyenDe: str(d.ChuyenDe || d.topic),
+    DiemToiDa: num(d.DiemToiDa != null ? d.DiemToiDa : d.maxScore),
+    TrongSo: num(d.TrongSo != null ? d.TrongSo : d.weight) || 1,
+    MaGV: str(d.MaGV || d.teacherId),
+    TrangThai: str(d.TrangThai || d.status || 'entering'),
+    GhiChu: str(d.GhiChu || d.note)
+  };
+}
+
+function validateAssessment(obj) {
+  if (!obj.TenBaiKT) return 'Thiếu tên bài kiểm tra.';
+  if (!obj.MaLop) return 'Thiếu lớp của bài kiểm tra.';
+  if (!obj.NgayKiemTra) return 'Thiếu ngày kiểm tra.';
+  if (!(obj.DiemToiDa > 0)) return 'Thang điểm phải lớn hơn 0.';
+  if (!(obj.TrongSo > 0)) return 'Trọng số phải lớn hơn 0.';
+  if (['draft', 'entering', 'finalized'].indexOf(obj.TrangThai) < 0) return 'Trạng thái bài kiểm tra không hợp lệ.';
+  return '';
+}
+
+function saveAssessment(d) {
+  try {
+    setupSheetsIfMissingOnly();
+    var obj = normalizeAssessmentInput(d);
+    var error = validateAssessment(obj);
+    if (error) return { ok: false, error: error };
+    obj.MaBaiKT = makeAssessmentId(obj.NgayKiemTra);
+    obj.TrangThai = obj.TrangThai === 'finalized' ? 'entering' : obj.TrangThai;
+    obj.CreatedAt = nowStr();
+    obj.UpdatedAt = nowStr();
+    appendObject(SHEETS.BAIKIEMTRA, obj);
+    logSystem('saveAssessment', SHEETS.BAIKIEMTRA, obj.MaBaiKT, 'Created assessment', 'ok');
+    return { ok: true, id: obj.MaBaiKT };
+  } catch (err) {
+    return { ok: false, error: 'saveAssessment: ' + String(err) };
+  }
+}
+
+function updateAssessment(d) {
+  try {
+    setupSheetsIfMissingOnly();
+    var id = str(d.MaBaiKT || d.id);
+    var row = findRowByValue(SHEETS.BAIKIEMTRA, 'MaBaiKT', id);
+    if (row < DATA_START) return { ok: false, error: 'Không tìm thấy bài kiểm tra.' };
+    var existing = getObjectAtRow(SHEETS.BAIKIEMTRA, row);
+    if (str(existing.TrangThai) === 'finalized') return { ok: false, error: 'Bài đã chốt. Hãy mở lại trước khi sửa.' };
+    var obj = normalizeAssessmentInput(d);
+    obj.MaBaiKT = id;
+    obj.TrangThai = str(existing.TrangThai || 'entering');
+    obj.CreatedAt = existing.CreatedAt || nowStr();
+    obj.UpdatedAt = nowStr();
+    var error = validateAssessment(obj);
+    if (error) return { ok: false, error: error };
+    updateRowObject(SHEETS.BAIKIEMTRA, row, obj);
+    logSystem('updateAssessment', SHEETS.BAIKIEMTRA, id, 'Updated assessment', 'ok');
+    return { ok: true, id: id };
+  } catch (err) {
+    return { ok: false, error: 'updateAssessment: ' + String(err) };
+  }
+}
+
+function deleteAssessment(d) {
+  try {
+    var id = str(d.MaBaiKT || d.id);
+    var row = findRowByValue(SHEETS.BAIKIEMTRA, 'MaBaiKT', id);
+    if (row < DATA_START) return { ok: false, error: 'Không tìm thấy bài kiểm tra.' };
+    var existing = getObjectAtRow(SHEETS.BAIKIEMTRA, row);
+    if (str(existing.TrangThai) === 'finalized') return { ok: false, error: 'Bài đã chốt. Hãy mở lại trước khi xóa.' };
+    getSheet(SHEETS.BAIKIEMTRA).deleteRow(row);
+    deleteRowsByValue(SHEETS.KETQUADIEM, 'MaBaiKT', id);
+    logSystem('deleteAssessment', SHEETS.BAIKIEMTRA, id, 'Deleted assessment and scores', 'ok');
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: 'deleteAssessment: ' + String(err) };
+  }
+}
+
+function normalizeScoreEntry(entry, assessment, existingCreatedAt) {
+  var studentId = str(entry.MaHS || entry.studentId);
+  var status = str(entry.TrangThai || entry.status);
+  if (!studentId) return { error: 'Có kết quả thiếu mã học sinh.' };
+  if (['scored', 'absent', 'exempt'].indexOf(status) < 0) return { error: 'Trạng thái điểm của ' + studentId + ' không hợp lệ.' };
+  var score = '';
+  if (status === 'scored') {
+    var rawScore = entry.Diem != null ? entry.Diem : entry.score;
+    if (rawScore === '' || rawScore == null || isNaN(Number(rawScore))) return { error: 'Thiếu điểm của ' + studentId + '.' };
+    score = Number(rawScore);
+    if (score < 0 || score > num(assessment.DiemToiDa)) return { error: 'Điểm của ' + studentId + ' vượt thang điểm.' };
+  }
+  return { value: {
+    MaKetQua: makeScoreId(str(assessment.MaBaiKT), studentId),
+    MaBaiKT: str(assessment.MaBaiKT),
+    MaHS: studentId,
+    Diem: score,
+    TrangThai: status,
+    NhanXet: str(entry.NhanXet || entry.comment),
+    CreatedAt: existingCreatedAt || nowStr(),
+    UpdatedAt: nowStr()
+  } };
+}
+
+function isStudentEligibleForAssessment(studentId, assessment) {
+  studentId = str(studentId);
+  var classId = str(assessment.MaLop);
+  var assessmentDate = formatDate(assessment.NgayKiemTra);
+  if (!studentId || !classId || !assessmentDate) return false;
+
+  var studentRow = findStudentRow(studentId);
+  if (studentRow < DATA_START) return false;
+  var student = getObjectAtRow(SHEETS.HOCSINH, studentRow);
+  var studentStatus = normalizeGeneralStatus(student.TrangThai || student.status);
+  var studentEndDate = student.NgayKetThuc || student.endDate;
+  if (studentStatus === 'inactive' && !str(studentEndDate)) return false;
+  if (!isDateInRange(assessmentDate, student.NgayBatDau || student.startDate, studentEndDate)) return false;
+
+  var registrations = getRows(SHEETS.DANGKYLOP);
+  for (var i = 0; i < registrations.length; i++) {
+    var registration = registrations[i];
+    if (registrationStudentIdOf(registration) !== studentId) continue;
+    if (registrationClassIdOf(registration) !== classId) continue;
+    if (isDateInRange(assessmentDate, registration.NgayVao || registration.startDate, registration.NgayRa || registration.endDate)) return true;
+  }
+  return false;
+}
+
+function assessmentRosterIds(assessment) {
+  var roster = {};
+  var classId = str(assessment.MaLop);
+  var assessmentDate = formatDate(assessment.NgayKiemTra) || todayStr();
+  getRows(SHEETS.DANGKYLOP).forEach(function(registration) {
+    if (registrationClassIdOf(registration) !== classId) return;
+    if (!isDateInRange(assessmentDate, registration.NgayVao || registration.startDate, registration.NgayRa || registration.endDate)) return;
+    var studentId = registrationStudentIdOf(registration);
+    if (studentId && isStudentEligibleForAssessment(studentId, assessment)) roster[studentId] = true;
+  });
+  return Object.keys(roster);
+}
+
+function saveScores(d) {
+  try {
+    setupSheetsIfMissingOnly();
+    var assessmentId = str(d.MaBaiKT || d.assessmentId);
+    var assessmentRow = findRowByValue(SHEETS.BAIKIEMTRA, 'MaBaiKT', assessmentId);
+    if (assessmentRow < DATA_START) return { ok: false, error: 'Không tìm thấy bài kiểm tra.' };
+    var assessment = getObjectAtRow(SHEETS.BAIKIEMTRA, assessmentRow);
+    if (str(assessment.TrangThai) === 'finalized') return { ok: false, error: 'Bài đã chốt. Hãy mở lại trước khi sửa điểm.' };
+    var inputEntries = Array.isArray(d.entries) ? d.entries : [];
+    var oldRows = getRows(SHEETS.KETQUADIEM).filter(function(item) { return str(item.MaBaiKT) === assessmentId; });
+    var eligibleStudentIds = assessmentRosterIds(assessment);
+    var eligibleById = {};
+    eligibleStudentIds.forEach(function(studentId) { eligibleById[studentId] = true; });
+    var oldCreated = {};
+    oldRows.forEach(function(item) { oldCreated[str(item.MaHS)] = item.CreatedAt; });
+    var seen = {};
+    var rows = [];
+    for (var i = 0; i < inputEntries.length; i++) {
+      var studentId = str(inputEntries[i].MaHS || inputEntries[i].studentId);
+      if (seen[studentId]) return { ok: false, error: 'Học sinh ' + studentId + ' bị trùng trong danh sách.' };
+      if (!eligibleById[studentId]) return { ok: false, error: 'Học sinh ' + studentId + ' không thuộc lớp của bài kiểm tra vào ngày kiểm tra.' };
+      seen[studentId] = true;
+      var normalized = normalizeScoreEntry(inputEntries[i], assessment, oldCreated[studentId]);
+      if (normalized.error) return { ok: false, error: normalized.error };
+      rows.push(normalized.value);
+    }
+    if (d.finalize === true) {
+      if (!eligibleStudentIds.length) return { ok: false, error: 'Không có danh sách học sinh hợp lệ để chốt.' };
+      for (var j = 0; j < eligibleStudentIds.length; j++) {
+        if (!seen[eligibleStudentIds[j]]) return { ok: false, error: 'Còn học sinh chưa nhập: ' + eligibleStudentIds[j] + '.' };
+      }
+    }
+    var assessmentBefore = Object.assign({}, assessment);
+    try {
+      deleteRowsByValue(SHEETS.KETQUADIEM, 'MaBaiKT', assessmentId);
+      if (rows.length) appendObjects(SHEETS.KETQUADIEM, rows);
+      assessment.TrangThai = d.finalize === true ? 'finalized' : (rows.length ? 'entering' : 'draft');
+      assessment.UpdatedAt = nowStr();
+      updateRowObject(SHEETS.BAIKIEMTRA, assessmentRow, assessment);
+    } catch (mutationErr) {
+      try {
+        deleteRowsByValue(SHEETS.KETQUADIEM, 'MaBaiKT', assessmentId);
+        if (oldRows.length) appendObjects(SHEETS.KETQUADIEM, oldRows);
+        updateRowObject(SHEETS.BAIKIEMTRA, assessmentRow, assessmentBefore);
+      } catch (rollbackErr) {
+        throw new Error(String(mutationErr) + ' | rollback failed: ' + String(rollbackErr));
+      }
+      throw mutationErr;
+    }
+    logSystem('saveScores', SHEETS.KETQUADIEM, assessmentId, d.finalize === true ? 'Finalized scores' : 'Saved score draft', 'ok');
+    return { ok: true, finalized: d.finalize === true, count: rows.length };
+  } catch (err) {
+    return { ok: false, error: 'saveScores: ' + String(err) };
+  }
+}
+
+function reopenAssessment(d) {
+  try {
+    var id = str(d.MaBaiKT || d.id);
+    var row = findRowByValue(SHEETS.BAIKIEMTRA, 'MaBaiKT', id);
+    if (row < DATA_START) return { ok: false, error: 'Không tìm thấy bài kiểm tra.' };
+    var assessment = getObjectAtRow(SHEETS.BAIKIEMTRA, row);
+    assessment.TrangThai = 'entering';
+    assessment.UpdatedAt = nowStr();
+    updateRowObject(SHEETS.BAIKIEMTRA, row, assessment);
+    logSystem('reopenAssessment', SHEETS.BAIKIEMTRA, id, 'Reopened assessment', 'ok');
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: 'reopenAssessment: ' + String(err) };
+  }
+}
+
+function normalizeRentalBookingInput(d, overrideDate) {
+  return {
+    MaCaThue: str(d.MaCaThue || d.id),
+    MaLichThue: str(d.MaLichThue || d.seriesId),
+    MaKhachThue: str(d.MaKhachThue || d.customerId),
+    TenLich: str(d.TenLich || d.name),
+    NguoiThue: str(d.NguoiThue || d.renterName),
+    SDTNguoiThue: str(d.SDTNguoiThue || d.renterPhone),
+    Phong: str(d.Phong || d.roomName || 'PhÃ²ng há»c'),
+    Ngay: formatDate(overrideDate || d.Ngay || d.date) || todayStr(),
+    GioBatDau: str(d.GioBatDau || d.startTime),
+    GioKetThuc: str(d.GioKetThuc || d.endTime),
+    DieuHoa: (d.DieuHoa === true || d.airConditioning === true || str(d.DieuHoa || d.airConditioning).toLowerCase() === 'true') ? 'Có' : 'Không',
+    DonGia: num(d.DonGia || d.amount),
+    TrangThai: str(d.TrangThai || d.status || 'confirmed'),
+    GhiChu: str(d.GhiChu || d.note)
+  };
+}
+
+function rentalTimeMinutes(value) {
+  var parts = str(value).split(':');
+  return Number(parts[0] || 0) * 60 + Number(parts[1] || 0);
+}
+
+function isRentalTime(value) {
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(str(value));
+}
+
+function hasRentalConflict(obj, ignoreId) {
+  var rows = getRows(SHEETS.LICHTHUE);
+  var start = rentalTimeMinutes(obj.GioBatDau);
+  var end = rentalTimeMinutes(obj.GioKetThuc);
+  if (!obj.Ngay || !isRentalTime(obj.GioBatDau) || !isRentalTime(obj.GioKetThuc) || end <= start) return 'Khung giờ thuê chưa hợp lệ.';
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i];
+    if (str(row.MaCaThue) === str(ignoreId) || str(row.TrangThai) === 'cancelled') continue;
+    if (str(row.Phong || 'PhÃ²ng há»c') !== str(obj.Phong || 'PhÃ²ng há»c')) continue;
+    if (formatDate(row.Ngay) !== obj.Ngay) continue;
+    var existingStart = rentalTimeMinutes(row.GioBatDau);
+    var existingEnd = rentalTimeMinutes(row.GioKetThuc);
+    if (start < existingEnd && end > existingStart) return 'Trùng giờ với ca thuê ' + str(row.TenLich || row.MaCaThue) + '.';
+  }
+  return '';
+}
+
+function saveRentalBooking(d) {
+  try {
+    setupSheetsIfMissingOnly();
+    var dates = Array.isArray(d.repeatDates) && d.repeatDates.length ? d.repeatDates : [d.date || d.Ngay];
+    var seriesId = str(d.seriesId || d.MaLichThue) || makeRentalSeriesId();
+    var customer = ensureRentalCustomer(d);
+    var created = [];
+    var pending = [];
+    for (var i = 0; i < dates.length; i++) {
+      var obj = normalizeRentalBookingInput(d, dates[i]);
+      obj.MaLichThue = seriesId;
+      obj.MaKhachThue = customer.MaKhachThue;
+      obj.NguoiThue = customer.HoTen;
+      obj.SDTNguoiThue = customer.SDT;
+      obj.MaCaThue = makeRentalBookingId(obj.Ngay);
+      var conflict = hasRentalConflict(obj, '');
+      if (conflict) return { ok: false, error: conflict };
+      pending.push(obj);
+    }
+    if (pending.length > 1 || d.createSeries === true) upsertRentalSeries(d, seriesId, customer, pending);
+    for (var j = 0; j < pending.length; j++) {
+      pending[j].CreatedAt = nowStr();
+      pending[j].UpdatedAt = nowStr();
+      appendObject(SHEETS.LICHTHUE, pending[j]);
+      created.push(pending[j].MaCaThue);
+    }
+    logSystem('saveRentalBooking', SHEETS.LICHTHUE, seriesId, 'Created ' + created.length + ' rental booking(s)', 'ok');
+    return { ok: true, ids: created };
+  } catch (err) {
+    return { ok: false, error: 'saveRentalBooking: ' + String(err) };
+  }
+}
+
+function updateRentalBooking(d) {
+  try {
+    setupSheetsIfMissingOnly();
+    var id = str(d.id || d.MaCaThue);
+    if (!id) return { ok: false, error: 'Thiếu mã ca thuê.' };
+    var row = findRowByValue(SHEETS.LICHTHUE, 'MaCaThue', id);
+    if (row < 0) return { ok: false, error: 'Không tìm thấy ca thuê cần cập nhật.' };
+    var existing = getObjectAtRow(SHEETS.LICHTHUE, row);
+    var obj = normalizeRentalBookingInput(d);
+    obj.MaCaThue = id;
+    obj.MaLichThue = str(d.seriesId || d.MaLichThue || existing.MaLichThue);
+    var customer = ensureRentalCustomer(d, existing);
+    obj.MaKhachThue = customer.MaKhachThue;
+    obj.NguoiThue = customer.HoTen;
+    obj.SDTNguoiThue = customer.SDT;
+    var conflict = hasRentalConflict(obj, id);
+    if (conflict) return { ok: false, error: conflict };
+    obj.CreatedAt = existing.CreatedAt || nowStr();
+    obj.UpdatedAt = nowStr();
+    updateRowObject(SHEETS.LICHTHUE, row, obj);
+    logSystem('updateRentalBooking', SHEETS.LICHTHUE, id, 'Updated rental booking', 'ok');
+    return { ok: true, id: id };
+  } catch (err) {
+    return { ok: false, error: 'updateRentalBooking: ' + String(err) };
+  }
+}
+
+function deleteRentalBooking(d) {
+  return cancelRentalBooking(d);
+}
+/* legacy hard-delete code intentionally unreachable; records are retained in V2.
+  try {
+    var id = str(d.id || d.MaCaThue);
+    if (!id) return { ok: false, error: 'Thiếu mã ca thuê.' };
+    var row = findRowByValue(SHEETS.LICHTHUE, 'MaCaThue', id);
+    if (row > 0) getSheet(SHEETS.LICHTHUE).deleteRow(row);
+    deleteRowsByValue(SHEETS.THUTHUE, 'MaCaThue', id);
+    logSystem('deleteRentalBooking', SHEETS.LICHTHUE, id, 'Deleted rental booking and its rental payments', 'ok');
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: 'deleteRentalBooking: ' + String(err) };
+  }
+} */
+
+function cancelRentalBooking(d) {
+  try {
+    var id = str(d.id || d.MaCaThue), row = findRowByValue(SHEETS.LICHTHUE, 'MaCaThue', id);
+    if (row < 0) return { ok: false, error: 'Khong tim thay ca thue.' };
+    var obj = getObjectAtRow(SHEETS.LICHTHUE, row);
+    obj.TrangThai = 'cancelled'; obj.UpdatedAt = nowStr();
+    updateRowObject(SHEETS.LICHTHUE, row, obj);
+    return { ok: true, id: id };
+  } catch (err) { return { ok: false, error: 'cancelRentalBooking: ' + String(err) }; }
+}
+
+function cancelRentalSeries(d) {
+  try {
+    var id = str(d.seriesId || d.MaLichThue), today = todayStr(), count = 0;
+    if (!id) return { ok: false, error: 'Thieu ma lich thue.' };
+    getRows(SHEETS.LICHTHUE).forEach(function(item) {
+      if (str(item.MaLichThue) === id && str(item.TrangThai) !== 'completed' && formatDate(item.Ngay) >= today) {
+        var row = findRowByValue(SHEETS.LICHTHUE, 'MaCaThue', item.MaCaThue);
+        item.TrangThai = 'cancelled'; item.UpdatedAt = nowStr(); updateRowObject(SHEETS.LICHTHUE, row, item); count++;
+      }
+    });
+    var seriesRow = findRowByValue(SHEETS.LICHTHUESERIES, 'MaLichThue', id);
+    if (seriesRow > 0) { var series = getObjectAtRow(SHEETS.LICHTHUESERIES, seriesRow); series.TrangThai = 'cancelled'; series.UpdatedAt = nowStr(); updateRowObject(SHEETS.LICHTHUESERIES, seriesRow, series); }
+    return { ok: true, count: count };
+  } catch (err) { return { ok: false, error: 'cancelRentalSeries: ' + String(err) }; }
+}
+
+function saveRentalPayment(d) {
+  try {
+    setupSheetsIfMissingOnly();
+    var bookingId = str(d.MaCaThue || d.bookingId);
+    var booking = bookingId ? findObjectByValue(SHEETS.LICHTHUE, 'MaCaThue', bookingId) : null;
+    if (!booking) return { ok: false, error: 'Không tìm thấy ca thuê để ghi khoản thu.' };
+    var amount = Math.abs(num(d.SoTien || d.amount));
+    if (amount <= 0) return { ok: false, error: 'Số tiền thu phải lớn hơn 0.' };
+    var type = str(d.LoaiGiaoDich || d.transactionType || 'collection') === 'refund' ? 'refund' : 'collection';
+    var collected = getRows(SHEETS.THUTHUE).filter(function(row) { return str(row.MaCaThue) === bookingId; }).reduce(function(sum, row) { return sum + num(row.SoTien); }, 0);
+    if (type === 'refund' && amount > collected) return { ok: false, error: 'So tien hoan vuot so da thu rong (' + collected + ').' };
+    if (type === 'refund') amount = -amount;
+    var remaining = Math.max(num(booking.DonGia) - collected, 0);
+    if (amount > remaining) return { ok: false, error: 'Số tiền thu vượt phần còn phải thu (' + remaining + 'đ).' };
+    var obj = {
+      MaThuThue: makeRentalPaymentId(),
+      MaCaThue: bookingId,
+      NgayThu: formatDate(d.NgayThu || d.date) || todayStr(),
+      SoTien: amount,
+      LoaiGiaoDich: type,
+      HinhThuc: normalizePaymentMethod(d.HinhThuc || d.method),
+      GhiChu: str(d.GhiChu || d.note),
+      CreatedAt: nowStr(),
+      UpdatedAt: nowStr()
+    };
+    appendObject(SHEETS.THUTHUE, obj);
+    logSystem('saveRentalPayment', SHEETS.THUTHUE, obj.MaThuThue, 'Recorded rental payment', 'ok');
+    return { ok: true, id: obj.MaThuThue };
+  } catch (err) {
+    return { ok: false, error: 'saveRentalPayment: ' + String(err) };
+  }
+}
+
+function ensureRentalCustomer(d, existingBooking) {
+  var id = str(d.MaKhachThue || d.customerId || (existingBooking && existingBooking.MaKhachThue));
+  var name = str(d.NguoiThue || d.renterName || (existingBooking && existingBooking.NguoiThue));
+  var phone = str(d.SDTNguoiThue || d.renterPhone || (existingBooking && existingBooking.SDTNguoiThue));
+  var found = id ? findObjectByValue(SHEETS.KHACHTHUE, 'MaKhachThue', id) : null;
+  if (found) return found;
+  if (!name || !phone) throw new Error('Can nhap ho ten va so dien thoai nguoi thue.');
+  var byPhone = getRows(SHEETS.KHACHTHUE).filter(function(r) { return str(r.SDT) === phone; })[0];
+  if (byPhone) return byPhone;
+  var obj = { MaKhachThue: makeRentalCustomerId(), HoTen: name, SDT: phone, TrangThai: 'active', GhiChu: '', CreatedAt: nowStr(), UpdatedAt: nowStr() };
+  appendObject(SHEETS.KHACHTHUE, obj); return obj;
+}
+
+function upsertRentalSeries(d, id, customer, bookings) {
+  var row = findRowByValue(SHEETS.LICHTHUESERIES, 'MaLichThue', id), dates = bookings.map(function(x) { return x.Ngay; }).sort();
+  var obj = { MaLichThue: id, TenLich: str(d.TenLich || d.name), MaKhachThue: customer.MaKhachThue, NguoiThue: customer.HoTen, SDTNguoiThue: customer.SDT, Phong: str(d.Phong || d.roomName || 'Phong hoc'), NgayBatDau: dates[0] || todayStr(), NgayKetThuc: dates[dates.length - 1] || todayStr(), QuyTacLap: str(d.repeatRule || 'custom'), DieuHoaMacDinh: bookings[0] ? bookings[0].DieuHoa : 'Khong', DonGiaMacDinh: bookings[0] ? bookings[0].DonGia : 0, TrangThai: 'active', GhiChu: str(d.GhiChu || d.note), CreatedAt: nowStr(), UpdatedAt: nowStr() };
+  if (row > 0) { var old = getObjectAtRow(SHEETS.LICHTHUESERIES, row); obj.CreatedAt = old.CreatedAt || nowStr(); updateRowObject(SHEETS.LICHTHUESERIES, row, obj); } else appendObject(SHEETS.LICHTHUESERIES, obj);
+}
+
+function normalizeRentalCustomer(d) { return { MaKhachThue: str(d.MaKhachThue || d.id), HoTen: str(d.HoTen || d.name), SDT: str(d.SDT || d.phone), TrangThai: str(d.TrangThai || d.status || 'active'), GhiChu: str(d.GhiChu || d.note) }; }
+function saveRentalCustomer(d) { try { setupSheetsIfMissingOnly(); var obj = normalizeRentalCustomer(d); if (!obj.HoTen || !obj.SDT) return { ok: false, error: 'Can nhap ho ten va so dien thoai.' }; obj.MaKhachThue = obj.MaKhachThue || makeRentalCustomerId(); obj.CreatedAt = nowStr(); obj.UpdatedAt = nowStr(); appendObject(SHEETS.KHACHTHUE, obj); return { ok: true, id: obj.MaKhachThue }; } catch (err) { return { ok: false, error: String(err) }; } }
+function updateRentalCustomer(d) { try { var obj = normalizeRentalCustomer(d), row = findRowByValue(SHEETS.KHACHTHUE, 'MaKhachThue', obj.MaKhachThue); if (row < 0) return { ok: false, error: 'Khong tim thay khach thue.' }; var old = getObjectAtRow(SHEETS.KHACHTHUE, row); obj.CreatedAt = old.CreatedAt || nowStr(); obj.UpdatedAt = nowStr(); updateRowObject(SHEETS.KHACHTHUE, row, obj); return { ok: true, id: obj.MaKhachThue }; } catch (err) { return { ok: false, error: String(err) }; } }
+function normalizeRentalPricePlan(d) { return { MaBangGia: str(d.MaBangGia || d.id), TenBangGia: str(d.TenBangGia || d.name), DonGia: num(d.DonGia || d.amount), ThoiLuongPhut: num(d.ThoiLuongPhut || d.durationMinutes || 90), DieuHoa: (d.DieuHoa === true || d.airConditioning === true || str(d.DieuHoa).toLowerCase() === 'true') ? 'Co' : 'Khong', TrangThai: str(d.TrangThai || d.status || 'active'), ThuTu: num(d.ThuTu || d.order), GhiChu: str(d.GhiChu || d.note) }; }
+function saveRentalPricePlan(d) { try { setupSheetsIfMissingOnly(); var obj = normalizeRentalPricePlan(d); if (!obj.TenBangGia || obj.DonGia <= 0) return { ok: false, error: 'Can nhap ten va don gia hop le.' }; obj.MaBangGia = obj.MaBangGia || makeRentalPricePlanId(); obj.CreatedAt = nowStr(); obj.UpdatedAt = nowStr(); appendObject(SHEETS.BANGGIATHUE, obj); return { ok: true, id: obj.MaBangGia }; } catch (err) { return { ok: false, error: String(err) }; } }
+function updateRentalPricePlan(d) { try { var obj = normalizeRentalPricePlan(d), row = findRowByValue(SHEETS.BANGGIATHUE, 'MaBangGia', obj.MaBangGia); if (row < 0) return { ok: false, error: 'Khong tim thay bang gia.' }; var old = getObjectAtRow(SHEETS.BANGGIATHUE, row); obj.CreatedAt = old.CreatedAt || nowStr(); obj.UpdatedAt = nowStr(); updateRowObject(SHEETS.BANGGIATHUE, row, obj); return { ok: true, id: obj.MaBangGia }; } catch (err) { return { ok: false, error: String(err) }; } }
+
 // BuoiHoc + DiemDanh actions
 // ─────────────────────────────────────────────────────────────
 
@@ -2090,6 +2628,29 @@ function makePaymentId(maHS, thang, nam) {
 function makeExpenseId() {
   return 'PC-' + Utilities.formatDate(new Date(), TZ, 'yyyyMMdd-HHmmss');
 }
+
+function makeRentalSeriesId() {
+  return 'LT-' + Utilities.formatDate(new Date(), TZ, 'yyyyMMdd-HHmmss') + '-' + Utilities.getUuid().replace(/-/g, '').substring(0, 5).toUpperCase();
+}
+
+function makeAssessmentId(date) {
+  return 'KT-' + ymdFromDMY(date) + '-' + Utilities.formatDate(new Date(), TZ, 'HHmmss') + '-' + Utilities.getUuid().replace(/-/g, '').substring(0, 4).toUpperCase();
+}
+
+function makeScoreId(assessmentId, studentId) {
+  return 'KQ-' + safeIdPart(assessmentId) + '-' + safeIdPart(studentId);
+}
+
+function makeRentalBookingId(date) {
+  return 'CT-' + ymdFromDMY(date) + '-' + Utilities.formatDate(new Date(), TZ, 'HHmmss') + '-' + Utilities.getUuid().replace(/-/g, '').substring(0, 5).toUpperCase();
+}
+
+function makeRentalPaymentId() {
+  return 'TT-' + Utilities.formatDate(new Date(), TZ, 'yyyyMMdd-HHmmss') + '-' + Utilities.getUuid().replace(/-/g, '').substring(0, 5).toUpperCase();
+}
+
+function makeRentalCustomerId() { return 'KT-' + Utilities.formatDate(new Date(), TZ, 'yyyyMMdd-HHmmss') + '-' + Utilities.getUuid().replace(/-/g, '').substring(0, 4).toUpperCase(); }
+function makeRentalPricePlanId() { return 'BG-' + Utilities.formatDate(new Date(), TZ, 'yyyyMMdd-HHmmss') + '-' + Utilities.getUuid().replace(/-/g, '').substring(0, 4).toUpperCase(); }
 
 function makeLeaveId(date, maHS) {
   return 'NG-' + ymdFromDMY(date) + '-' + safeIdPart(maHS);

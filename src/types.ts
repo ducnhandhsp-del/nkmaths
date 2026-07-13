@@ -1,6 +1,8 @@
 export type Screen =
   | 'overview'
   | 'operations'
+  | 'room-rental'
+  | 'scores'
   | 'training'
   | 'finance'
   | 'reports'
@@ -10,6 +12,105 @@ export type TrainingSub = 'students' | 'classes' | 'teachers';
 export type FinanceSub = 'ledger' | 'debt' | 'expense';
 export type OperationsSub = 'schedule' | 'lessons' | 'attendance';
 export type ReportsSub = 'training' | 'operations' | 'finance';
+
+export type ScoresSub = 'assessments' | 'gradebook' | 'insights';
+export type AssessmentStatus = 'draft' | 'entering' | 'finalized';
+export type ScoreEntryStatus = 'scored' | 'absent' | 'exempt';
+
+export interface Assessment {
+  id: string;
+  name: string;
+  classId: string;
+  lessonId?: string;
+  date: string;
+  type: string;
+  topic: string;
+  maxScore: number;
+  weight: number;
+  teacherId?: string;
+  status: AssessmentStatus;
+  note: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ScoreEntry {
+  id: string;
+  assessmentId: string;
+  studentId: string;
+  score: number | null;
+  status: ScoreEntryStatus;
+  comment: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type RentalBookingStatus = 'confirmed' | 'completed' | 'cancelled';
+export type RentalPaymentStatus = 'unpaid' | 'deposit' | 'paid' | 'refunded';
+export type RentalTransactionType = 'collection' | 'refund';
+
+export interface RentalBooking {
+  id: string;
+  seriesId: string;
+  customerId: string;
+  name: string;
+  renterName: string;
+  renterPhone: string;
+  roomName: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  airConditioning: boolean;
+  amount: number;
+  status: RentalBookingStatus;
+  note: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface RentalPayment {
+  id: string;
+  bookingId: string;
+  date: string;
+  amount: number;
+  transactionType: RentalTransactionType;
+  method: 'cash' | 'bank';
+  note: string;
+  createdAt?: string;
+}
+
+export interface RentalCustomer {
+  id: string;
+  name: string;
+  phone: string;
+  status: 'active' | 'inactive';
+  note: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface RentalSeries {
+  id: string;
+  name: string;
+  customerId: string;
+  roomName: string;
+  startDate: string;
+  endDate: string;
+  repeatRule: string;
+  status: 'active' | 'cancelled';
+  note: string;
+}
+
+export interface RentalPricePlan {
+  id: string;
+  name: string;
+  amount: number;
+  durationMinutes: number;
+  airConditioning: boolean;
+  status: 'active' | 'inactive';
+  order: number;
+  note: string;
+}
 
 export interface Student {
   id:            string;

@@ -44,6 +44,7 @@ export function useCommands({
       ['reports',   'Báo cáo',           'bao cao report thong ke',    '📊'],
       ['settings',  'Cài đặt',           'cai dat settings',           '⚙️'],
     ];
+    navItems.splice(3, 0, ['scores', 'Điểm số', 'diem so bai kiem tra so diem', '📝']);
     navItems.forEach(([id, label, kw, icon]) => {
       cmds.push({
         id:       `nav-${id}`,

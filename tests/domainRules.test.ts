@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 
 import {
   buildDataHealthReport,
+  buildChartData,
   buildPaidMap,
+  calcMonthlyExpense,
   calcMonthlyRevenue,
   calcStudentAttendance,
   calcStudentAbsenceStreak,
@@ -22,7 +24,7 @@ import {
   normalizeAttendanceStatus,
   summarizeTuitionAccounts,
 } from '../src/measures';
-import type { Payment, Student, TeachingLog } from '../src/types';
+import type { Expense, Payment, Student, TeachingLog } from '../src/types';
 
 const baseStudent: Student = {
   id: 'HS001',
@@ -90,6 +92,25 @@ const payments: Payment[] = [
 assert.deepEqual(getPaymentTuitionPeriod(payments[0]), { m: 5, y: 2026 }, 'tuition period prefers thangHP/namHP');
 assert.equal(isPaidFn(buildPaidMap(payments, 2026))('HS001', 5, 2026), true, 'paid map uses tuition period');
 assert.equal(isPaidFn(buildPaidMap(payments, 2026))('HS001', 6, 2026), false, 'paid map does not confuse receipt month with tuition month');
+
+const invalidAmountPayments: Payment[] = [
+  { ...payments[0], id: 'PT-ZERO', amount: 0, thangHP: 6, namHP: 2026 },
+  { ...payments[0], id: 'PT-NEGATIVE', amount: -600000, thangHP: 6, namHP: 2026 },
+];
+assert.equal(isPaidFn(buildPaidMap(invalidAmountPayments, 2026))('HS001', 6, 2026), false, 'zero or negative receipts cannot close a tuition period');
+assert.equal(
+  getMonthlyTuitionState({ student: baseStudent, period: { m: 6, y: 2026 }, payments: invalidAmountPayments, baseTuition: 600000 }).status,
+  'unpaid',
+  'zero or negative receipts do not mark monthly tuition as paid',
+);
+assert.equal(calcMonthlyRevenue(invalidAmountPayments, 6, 2026), 0, 'zero or negative receipts do not count as revenue');
+const invalidAmountExpenses: Expense[] = [
+  { id: 'PC-ZERO', date: '28/06/2026', docNum: 'PC-ZERO', description: '', category: '', amount: 0, spender: '' },
+  { id: 'PC-NEGATIVE', date: '28/06/2026', docNum: 'PC-NEGATIVE', description: '', category: '', amount: -50000, spender: '' },
+];
+assert.equal(calcMonthlyExpense(invalidAmountExpenses, 6, 2026), 0, 'zero or negative expenses do not reduce reported expense');
+const amountChart = buildChartData(invalidAmountPayments, invalidAmountExpenses);
+assert.equal(amountChart.every(point => point.Thu === 0 && point.Chi === 0), true, 'chart ignores invalid finance amounts');
 
 assert.equal(normalizeAttendanceStatus('Vắng'), 'absent');
 assert.equal(normalizeAttendanceStatus('Nghỉ có phép'), 'excused');
